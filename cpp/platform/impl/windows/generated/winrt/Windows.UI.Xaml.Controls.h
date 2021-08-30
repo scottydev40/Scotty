@@ -6673,6 +6673,80 @@ namespace winrt::impl
         check_hresult(WINRT_IMPL_SHIM(winrt::Windows::UI::Xaml::Controls::IHandwritingView)->TryOpen(&result));
         return result;
     }
+    template <typename D> WINRT_IMPL_AUTO(bool) consume_Windows_UI_Xaml_Controls_IHandwritingView2<D>::IsSwitchToKeyboardEnabled() const
+    {
+        bool value{};
+        check_hresult(WINRT_IMPL_SHIM(winrt::Windows::UI::Xaml::Controls::IHandwritingView2)->get_IsSwitchToKeyboardEnabled(&value));
+        return value;
+    }
+    template <typename D> WINRT_IMPL_AUTO(void) consume_Windows_UI_Xaml_Controls_IHandwritingView2<D>::IsSwitchToKeyboardEnabled(bool value) const
+    {
+        check_hresult(WINRT_IMPL_SHIM(winrt::Windows::UI::Xaml::Controls::IHandwritingView2)->put_IsSwitchToKeyboardEnabled(value));
+    }
+    template <typename D> WINRT_IMPL_AUTO(bool) consume_Windows_UI_Xaml_Controls_IHandwritingView2<D>::IsCommandBarOpen() const
+    {
+        bool value{};
+        check_hresult(WINRT_IMPL_SHIM(winrt::Windows::UI::Xaml::Controls::IHandwritingView2)->get_IsCommandBarOpen(&value));
+        return value;
+    }
+    template <typename D> WINRT_IMPL_AUTO(void) consume_Windows_UI_Xaml_Controls_IHandwritingView2<D>::IsCommandBarOpen(bool value) const
+    {
+        check_hresult(WINRT_IMPL_SHIM(winrt::Windows::UI::Xaml::Controls::IHandwritingView2)->put_IsCommandBarOpen(value));
+    }
+    template <typename D> WINRT_IMPL_AUTO(winrt::Windows::UI::Core::CoreInputDeviceTypes) consume_Windows_UI_Xaml_Controls_IHandwritingView2<D>::InputDeviceTypes() const
+    {
+        winrt::Windows::UI::Core::CoreInputDeviceTypes value{};
+        check_hresult(WINRT_IMPL_SHIM(winrt::Windows::UI::Xaml::Controls::IHandwritingView2)->get_InputDeviceTypes(reinterpret_cast<uint32_t*>(&value)));
+        return value;
+    }
+    template <typename D> WINRT_IMPL_AUTO(void) consume_Windows_UI_Xaml_Controls_IHandwritingView2<D>::InputDeviceTypes(winrt::Windows::UI::Core::CoreInputDeviceTypes const& value) const
+    {
+        check_hresult(WINRT_IMPL_SHIM(winrt::Windows::UI::Xaml::Controls::IHandwritingView2)->put_InputDeviceTypes(static_cast<uint32_t>(value)));
+    }
+    template <typename D> WINRT_IMPL_AUTO(winrt::event_token) consume_Windows_UI_Xaml_Controls_IHandwritingView2<D>::CandidatesChanged(winrt::Windows::Foundation::TypedEventHandler<winrt::Windows::UI::Xaml::Controls::HandwritingView, winrt::Windows::UI::Xaml::Controls::HandwritingViewCandidatesChangedEventArgs> const& handler) const
+    {
+        winrt::event_token token{};
+        check_hresult(WINRT_IMPL_SHIM(winrt::Windows::UI::Xaml::Controls::IHandwritingView2)->add_CandidatesChanged(*(void**)(&handler), put_abi(token)));
+        return token;
+    }
+    template <typename D> typename consume_Windows_UI_Xaml_Controls_IHandwritingView2<D>::CandidatesChanged_revoker consume_Windows_UI_Xaml_Controls_IHandwritingView2<D>::CandidatesChanged(auto_revoke_t, winrt::Windows::Foundation::TypedEventHandler<winrt::Windows::UI::Xaml::Controls::HandwritingView, winrt::Windows::UI::Xaml::Controls::HandwritingViewCandidatesChangedEventArgs> const& handler) const
+    {
+        return impl::make_event_revoker<D, CandidatesChanged_revoker>(this, CandidatesChanged(handler));
+    }
+    template <typename D> WINRT_IMPL_AUTO(void) consume_Windows_UI_Xaml_Controls_IHandwritingView2<D>::CandidatesChanged(winrt::event_token const& token) const noexcept
+    {
+        WINRT_VERIFY_(0, WINRT_IMPL_SHIM(winrt::Windows::UI::Xaml::Controls::IHandwritingView2)->remove_CandidatesChanged(impl::bind_in(token)));
+    }
+    template <typename D> WINRT_IMPL_AUTO(winrt::event_token) consume_Windows_UI_Xaml_Controls_IHandwritingView2<D>::TextSubmitted(winrt::Windows::Foundation::TypedEventHandler<winrt::Windows::UI::Xaml::Controls::HandwritingView, winrt::Windows::UI::Xaml::Controls::HandwritingViewTextSubmittedEventArgs> const& handler) const
+    {
+        winrt::event_token token{};
+        check_hresult(WINRT_IMPL_SHIM(winrt::Windows::UI::Xaml::Controls::IHandwritingView2)->add_TextSubmitted(*(void**)(&handler), put_abi(token)));
+        return token;
+    }
+    template <typename D> typename consume_Windows_UI_Xaml_Controls_IHandwritingView2<D>::TextSubmitted_revoker consume_Windows_UI_Xaml_Controls_IHandwritingView2<D>::TextSubmitted(auto_revoke_t, winrt::Windows::Foundation::TypedEventHandler<winrt::Windows::UI::Xaml::Controls::HandwritingView, winrt::Windows::UI::Xaml::Controls::HandwritingViewTextSubmittedEventArgs> const& handler) const
+    {
+        return impl::make_event_revoker<D, TextSubmitted_revoker>(this, TextSubmitted(handler));
+    }
+    template <typename D> WINRT_IMPL_AUTO(void) consume_Windows_UI_Xaml_Controls_IHandwritingView2<D>::TextSubmitted(winrt::event_token const& token) const noexcept
+    {
+        WINRT_VERIFY_(0, WINRT_IMPL_SHIM(winrt::Windows::UI::Xaml::Controls::IHandwritingView2)->remove_TextSubmitted(impl::bind_in(token)));
+    }
+    template <typename D> WINRT_IMPL_AUTO(winrt::Windows::Foundation::Collections::IVectorView<hstring>) consume_Windows_UI_Xaml_Controls_IHandwritingView2<D>::GetCandidates(uint32_t candidatesSessionId) const
+    {
+        void* result{};
+        check_hresult(WINRT_IMPL_SHIM(winrt::Windows::UI::Xaml::Controls::IHandwritingView2)->GetCandidates(candidatesSessionId, &result));
+        return winrt::Windows::Foundation::Collections::IVectorView<hstring>{ result, take_ownership_from_abi };
+    }
+    template <typename D> WINRT_IMPL_AUTO(void) consume_Windows_UI_Xaml_Controls_IHandwritingView2<D>::SelectCandidate(uint32_t candidatesSessionId, uint32_t selectedCandidateIndex) const
+    {
+        check_hresult(WINRT_IMPL_SHIM(winrt::Windows::UI::Xaml::Controls::IHandwritingView2)->SelectCandidate(candidatesSessionId, selectedCandidateIndex));
+    }
+    template <typename D> WINRT_IMPL_AUTO(uint32_t) consume_Windows_UI_Xaml_Controls_IHandwritingViewCandidatesChangedEventArgs<D>::CandidatesSessionId() const
+    {
+        uint32_t value{};
+        check_hresult(WINRT_IMPL_SHIM(winrt::Windows::UI::Xaml::Controls::IHandwritingViewCandidatesChangedEventArgs)->get_CandidatesSessionId(&value));
+        return value;
+    }
     template <typename D> WINRT_IMPL_AUTO(winrt::Windows::UI::Xaml::Controls::HandwritingView) consume_Windows_UI_Xaml_Controls_IHandwritingViewFactory<D>::CreateInstance(winrt::Windows::Foundation::IInspectable const& baseInterface, winrt::Windows::Foundation::IInspectable& innerInterface) const
     {
         void* value{};
@@ -6701,6 +6775,18 @@ namespace winrt::impl
     {
         void* value{};
         check_hresult(WINRT_IMPL_SHIM(winrt::Windows::UI::Xaml::Controls::IHandwritingViewStatics)->get_AreCandidatesEnabledProperty(&value));
+        return winrt::Windows::UI::Xaml::DependencyProperty{ value, take_ownership_from_abi };
+    }
+    template <typename D> WINRT_IMPL_AUTO(winrt::Windows::UI::Xaml::DependencyProperty) consume_Windows_UI_Xaml_Controls_IHandwritingViewStatics2<D>::IsSwitchToKeyboardEnabledProperty() const
+    {
+        void* value{};
+        check_hresult(WINRT_IMPL_SHIM(winrt::Windows::UI::Xaml::Controls::IHandwritingViewStatics2)->get_IsSwitchToKeyboardEnabledProperty(&value));
+        return winrt::Windows::UI::Xaml::DependencyProperty{ value, take_ownership_from_abi };
+    }
+    template <typename D> WINRT_IMPL_AUTO(winrt::Windows::UI::Xaml::DependencyProperty) consume_Windows_UI_Xaml_Controls_IHandwritingViewStatics2<D>::IsCommandBarOpenProperty() const
+    {
+        void* value{};
+        check_hresult(WINRT_IMPL_SHIM(winrt::Windows::UI::Xaml::Controls::IHandwritingViewStatics2)->get_IsCommandBarOpenProperty(&value));
         return winrt::Windows::UI::Xaml::DependencyProperty{ value, take_ownership_from_abi };
     }
     template <typename D> WINRT_IMPL_AUTO(winrt::Windows::Foundation::IInspectable) consume_Windows_UI_Xaml_Controls_IHub<D>::Header() const
@@ -33263,6 +33349,110 @@ namespace winrt::impl
 #endif
 #ifndef WINRT_LEAN_AND_MEAN
     template <typename D>
+    struct produce<D, winrt::Windows::UI::Xaml::Controls::IHandwritingView2> : produce_base<D, winrt::Windows::UI::Xaml::Controls::IHandwritingView2>
+    {
+        int32_t __stdcall get_IsSwitchToKeyboardEnabled(bool* value) noexcept final try
+        {
+            typename D::abi_guard guard(this->shim());
+            *value = detach_from<bool>(this->shim().IsSwitchToKeyboardEnabled());
+            return 0;
+        }
+        catch (...) { return to_hresult(); }
+        int32_t __stdcall put_IsSwitchToKeyboardEnabled(bool value) noexcept final try
+        {
+            typename D::abi_guard guard(this->shim());
+            this->shim().IsSwitchToKeyboardEnabled(value);
+            return 0;
+        }
+        catch (...) { return to_hresult(); }
+        int32_t __stdcall get_IsCommandBarOpen(bool* value) noexcept final try
+        {
+            typename D::abi_guard guard(this->shim());
+            *value = detach_from<bool>(this->shim().IsCommandBarOpen());
+            return 0;
+        }
+        catch (...) { return to_hresult(); }
+        int32_t __stdcall put_IsCommandBarOpen(bool value) noexcept final try
+        {
+            typename D::abi_guard guard(this->shim());
+            this->shim().IsCommandBarOpen(value);
+            return 0;
+        }
+        catch (...) { return to_hresult(); }
+        int32_t __stdcall get_InputDeviceTypes(uint32_t* value) noexcept final try
+        {
+            typename D::abi_guard guard(this->shim());
+            *value = detach_from<winrt::Windows::UI::Core::CoreInputDeviceTypes>(this->shim().InputDeviceTypes());
+            return 0;
+        }
+        catch (...) { return to_hresult(); }
+        int32_t __stdcall put_InputDeviceTypes(uint32_t value) noexcept final try
+        {
+            typename D::abi_guard guard(this->shim());
+            this->shim().InputDeviceTypes(*reinterpret_cast<winrt::Windows::UI::Core::CoreInputDeviceTypes const*>(&value));
+            return 0;
+        }
+        catch (...) { return to_hresult(); }
+        int32_t __stdcall add_CandidatesChanged(void* handler, winrt::event_token* token) noexcept final try
+        {
+            zero_abi<winrt::event_token>(token);
+            typename D::abi_guard guard(this->shim());
+            *token = detach_from<winrt::event_token>(this->shim().CandidatesChanged(*reinterpret_cast<winrt::Windows::Foundation::TypedEventHandler<winrt::Windows::UI::Xaml::Controls::HandwritingView, winrt::Windows::UI::Xaml::Controls::HandwritingViewCandidatesChangedEventArgs> const*>(&handler)));
+            return 0;
+        }
+        catch (...) { return to_hresult(); }
+        int32_t __stdcall remove_CandidatesChanged(winrt::event_token token) noexcept final
+        {
+            typename D::abi_guard guard(this->shim());
+            this->shim().CandidatesChanged(*reinterpret_cast<winrt::event_token const*>(&token));
+            return 0;
+        }
+        int32_t __stdcall add_TextSubmitted(void* handler, winrt::event_token* token) noexcept final try
+        {
+            zero_abi<winrt::event_token>(token);
+            typename D::abi_guard guard(this->shim());
+            *token = detach_from<winrt::event_token>(this->shim().TextSubmitted(*reinterpret_cast<winrt::Windows::Foundation::TypedEventHandler<winrt::Windows::UI::Xaml::Controls::HandwritingView, winrt::Windows::UI::Xaml::Controls::HandwritingViewTextSubmittedEventArgs> const*>(&handler)));
+            return 0;
+        }
+        catch (...) { return to_hresult(); }
+        int32_t __stdcall remove_TextSubmitted(winrt::event_token token) noexcept final
+        {
+            typename D::abi_guard guard(this->shim());
+            this->shim().TextSubmitted(*reinterpret_cast<winrt::event_token const*>(&token));
+            return 0;
+        }
+        int32_t __stdcall GetCandidates(uint32_t candidatesSessionId, void** result) noexcept final try
+        {
+            clear_abi(result);
+            typename D::abi_guard guard(this->shim());
+            *result = detach_from<winrt::Windows::Foundation::Collections::IVectorView<hstring>>(this->shim().GetCandidates(candidatesSessionId));
+            return 0;
+        }
+        catch (...) { return to_hresult(); }
+        int32_t __stdcall SelectCandidate(uint32_t candidatesSessionId, uint32_t selectedCandidateIndex) noexcept final try
+        {
+            typename D::abi_guard guard(this->shim());
+            this->shim().SelectCandidate(candidatesSessionId, selectedCandidateIndex);
+            return 0;
+        }
+        catch (...) { return to_hresult(); }
+    };
+#endif
+#ifndef WINRT_LEAN_AND_MEAN
+    template <typename D>
+    struct produce<D, winrt::Windows::UI::Xaml::Controls::IHandwritingViewCandidatesChangedEventArgs> : produce_base<D, winrt::Windows::UI::Xaml::Controls::IHandwritingViewCandidatesChangedEventArgs>
+    {
+        int32_t __stdcall get_CandidatesSessionId(uint32_t* value) noexcept final try
+        {
+            typename D::abi_guard guard(this->shim());
+            *value = detach_from<uint32_t>(this->shim().CandidatesSessionId());
+            return 0;
+        }
+        catch (...) { return to_hresult(); }
+    };
+#endif
+#ifndef WINRT_LEAN_AND_MEAN
+    template <typename D>
     struct produce<D, winrt::Windows::UI::Xaml::Controls::IHandwritingViewFactory> : produce_base<D, winrt::Windows::UI::Xaml::Controls::IHandwritingViewFactory>
     {
         int32_t __stdcall CreateInstance(void* baseInterface, void** innerInterface, void** value) noexcept final try
@@ -33314,6 +33504,34 @@ namespace winrt::impl
             return 0;
         }
         catch (...) { return to_hresult(); }
+    };
+#endif
+#ifndef WINRT_LEAN_AND_MEAN
+    template <typename D>
+    struct produce<D, winrt::Windows::UI::Xaml::Controls::IHandwritingViewStatics2> : produce_base<D, winrt::Windows::UI::Xaml::Controls::IHandwritingViewStatics2>
+    {
+        int32_t __stdcall get_IsSwitchToKeyboardEnabledProperty(void** value) noexcept final try
+        {
+            clear_abi(value);
+            typename D::abi_guard guard(this->shim());
+            *value = detach_from<winrt::Windows::UI::Xaml::DependencyProperty>(this->shim().IsSwitchToKeyboardEnabledProperty());
+            return 0;
+        }
+        catch (...) { return to_hresult(); }
+        int32_t __stdcall get_IsCommandBarOpenProperty(void** value) noexcept final try
+        {
+            clear_abi(value);
+            typename D::abi_guard guard(this->shim());
+            *value = detach_from<winrt::Windows::UI::Xaml::DependencyProperty>(this->shim().IsCommandBarOpenProperty());
+            return 0;
+        }
+        catch (...) { return to_hresult(); }
+    };
+#endif
+#ifndef WINRT_LEAN_AND_MEAN
+    template <typename D>
+    struct produce<D, winrt::Windows::UI::Xaml::Controls::IHandwritingViewTextSubmittedEventArgs> : produce_base<D, winrt::Windows::UI::Xaml::Controls::IHandwritingViewTextSubmittedEventArgs>
+    {
     };
 #endif
 #ifndef WINRT_LEAN_AND_MEAN
@@ -60194,6 +60412,14 @@ WINRT_EXPORT namespace winrt::Windows::UI::Xaml::Controls
     {
         return impl::call_factory_cast<winrt::Windows::UI::Xaml::DependencyProperty(*)(IHandwritingViewStatics const&), HandwritingView, IHandwritingViewStatics>([](IHandwritingViewStatics const& f) { return f.AreCandidatesEnabledProperty(); });
     }
+    inline auto HandwritingView::IsSwitchToKeyboardEnabledProperty()
+    {
+        return impl::call_factory_cast<winrt::Windows::UI::Xaml::DependencyProperty(*)(IHandwritingViewStatics2 const&), HandwritingView, IHandwritingViewStatics2>([](IHandwritingViewStatics2 const& f) { return f.IsSwitchToKeyboardEnabledProperty(); });
+    }
+    inline auto HandwritingView::IsCommandBarOpenProperty()
+    {
+        return impl::call_factory_cast<winrt::Windows::UI::Xaml::DependencyProperty(*)(IHandwritingViewStatics2 const&), HandwritingView, IHandwritingViewStatics2>([](IHandwritingViewStatics2 const& f) { return f.IsCommandBarOpenProperty(); });
+    }
     inline Hub::Hub()
     {
         winrt::Windows::Foundation::IInspectable baseInterface, innerInterface;
@@ -65104,7 +65330,7 @@ WINRT_EXPORT namespace winrt::Windows::UI::Xaml::Controls
     template <typename D, typename... Interfaces>
     struct HandwritingViewT :
         implements<D, winrt::Windows::UI::Xaml::Controls::IControlOverrides, winrt::Windows::UI::Xaml::Controls::IControlOverrides6, winrt::Windows::UI::Xaml::IFrameworkElementOverrides, winrt::Windows::UI::Xaml::IFrameworkElementOverrides2, winrt::Windows::UI::Xaml::IUIElementOverrides, winrt::Windows::UI::Xaml::IUIElementOverrides7, winrt::Windows::UI::Xaml::IUIElementOverrides8, winrt::Windows::UI::Xaml::IUIElementOverrides9, composing, Interfaces...>,
-        impl::require<D, winrt::Windows::UI::Xaml::Controls::IHandwritingView, winrt::Windows::UI::Xaml::Controls::IControl, winrt::Windows::UI::Xaml::Controls::IControl2, winrt::Windows::UI::Xaml::Controls::IControl3, winrt::Windows::UI::Xaml::Controls::IControl4, winrt::Windows::UI::Xaml::Controls::IControl5, winrt::Windows::UI::Xaml::Controls::IControl7, winrt::Windows::UI::Xaml::Controls::IControlProtected, winrt::Windows::UI::Xaml::IFrameworkElement, winrt::Windows::UI::Xaml::IFrameworkElement2, winrt::Windows::UI::Xaml::IFrameworkElement3, winrt::Windows::UI::Xaml::IFrameworkElement4, winrt::Windows::UI::Xaml::IFrameworkElement6, winrt::Windows::UI::Xaml::IFrameworkElement7, winrt::Windows::UI::Xaml::IFrameworkElementProtected7, winrt::Windows::UI::Xaml::IUIElement, winrt::Windows::UI::Xaml::IUIElement2, winrt::Windows::UI::Xaml::IUIElement3, winrt::Windows::UI::Xaml::IUIElement4, winrt::Windows::UI::Xaml::IUIElement5, winrt::Windows::UI::Xaml::IUIElement7, winrt::Windows::UI::Xaml::IUIElement8, winrt::Windows::UI::Xaml::IUIElement9, winrt::Windows::UI::Xaml::IUIElement10, winrt::Windows::UI::Composition::IAnimationObject, winrt::Windows::UI::Composition::IVisualElement, winrt::Windows::UI::Xaml::IDependencyObject, winrt::Windows::UI::Xaml::IDependencyObject2>,
+        impl::require<D, winrt::Windows::UI::Xaml::Controls::IHandwritingView, winrt::Windows::UI::Xaml::Controls::IHandwritingView2, winrt::Windows::UI::Xaml::Controls::IControl, winrt::Windows::UI::Xaml::Controls::IControl2, winrt::Windows::UI::Xaml::Controls::IControl3, winrt::Windows::UI::Xaml::Controls::IControl4, winrt::Windows::UI::Xaml::Controls::IControl5, winrt::Windows::UI::Xaml::Controls::IControl7, winrt::Windows::UI::Xaml::Controls::IControlProtected, winrt::Windows::UI::Xaml::IFrameworkElement, winrt::Windows::UI::Xaml::IFrameworkElement2, winrt::Windows::UI::Xaml::IFrameworkElement3, winrt::Windows::UI::Xaml::IFrameworkElement4, winrt::Windows::UI::Xaml::IFrameworkElement6, winrt::Windows::UI::Xaml::IFrameworkElement7, winrt::Windows::UI::Xaml::IFrameworkElementProtected7, winrt::Windows::UI::Xaml::IUIElement, winrt::Windows::UI::Xaml::IUIElement2, winrt::Windows::UI::Xaml::IUIElement3, winrt::Windows::UI::Xaml::IUIElement4, winrt::Windows::UI::Xaml::IUIElement5, winrt::Windows::UI::Xaml::IUIElement7, winrt::Windows::UI::Xaml::IUIElement8, winrt::Windows::UI::Xaml::IUIElement9, winrt::Windows::UI::Xaml::IUIElement10, winrt::Windows::UI::Composition::IAnimationObject, winrt::Windows::UI::Composition::IVisualElement, winrt::Windows::UI::Xaml::IDependencyObject, winrt::Windows::UI::Xaml::IDependencyObject2>,
         impl::base<D, HandwritingView, winrt::Windows::UI::Xaml::Controls::Control, winrt::Windows::UI::Xaml::FrameworkElement, winrt::Windows::UI::Xaml::UIElement, winrt::Windows::UI::Xaml::DependencyObject>,
         winrt::Windows::UI::Xaml::Controls::IControlOverridesT<D>, winrt::Windows::UI::Xaml::Controls::IControlOverrides6T<D>, winrt::Windows::UI::Xaml::IFrameworkElementOverridesT<D>, winrt::Windows::UI::Xaml::IFrameworkElementOverrides2T<D>, winrt::Windows::UI::Xaml::IUIElementOverridesT<D>, winrt::Windows::UI::Xaml::IUIElementOverrides7T<D>, winrt::Windows::UI::Xaml::IUIElementOverrides8T<D>, winrt::Windows::UI::Xaml::IUIElementOverrides9T<D>
     {
@@ -66615,8 +66841,12 @@ namespace std
     template<> struct hash<winrt::Windows::UI::Xaml::Controls::IHandwritingPanelClosedEventArgs> : winrt::impl::hash_base {};
     template<> struct hash<winrt::Windows::UI::Xaml::Controls::IHandwritingPanelOpenedEventArgs> : winrt::impl::hash_base {};
     template<> struct hash<winrt::Windows::UI::Xaml::Controls::IHandwritingView> : winrt::impl::hash_base {};
+    template<> struct hash<winrt::Windows::UI::Xaml::Controls::IHandwritingView2> : winrt::impl::hash_base {};
+    template<> struct hash<winrt::Windows::UI::Xaml::Controls::IHandwritingViewCandidatesChangedEventArgs> : winrt::impl::hash_base {};
     template<> struct hash<winrt::Windows::UI::Xaml::Controls::IHandwritingViewFactory> : winrt::impl::hash_base {};
     template<> struct hash<winrt::Windows::UI::Xaml::Controls::IHandwritingViewStatics> : winrt::impl::hash_base {};
+    template<> struct hash<winrt::Windows::UI::Xaml::Controls::IHandwritingViewStatics2> : winrt::impl::hash_base {};
+    template<> struct hash<winrt::Windows::UI::Xaml::Controls::IHandwritingViewTextSubmittedEventArgs> : winrt::impl::hash_base {};
     template<> struct hash<winrt::Windows::UI::Xaml::Controls::IHub> : winrt::impl::hash_base {};
     template<> struct hash<winrt::Windows::UI::Xaml::Controls::IHubFactory> : winrt::impl::hash_base {};
     template<> struct hash<winrt::Windows::UI::Xaml::Controls::IHubSection> : winrt::impl::hash_base {};
@@ -67276,6 +67506,8 @@ namespace std
     template<> struct hash<winrt::Windows::UI::Xaml::Controls::HandwritingPanelClosedEventArgs> : winrt::impl::hash_base {};
     template<> struct hash<winrt::Windows::UI::Xaml::Controls::HandwritingPanelOpenedEventArgs> : winrt::impl::hash_base {};
     template<> struct hash<winrt::Windows::UI::Xaml::Controls::HandwritingView> : winrt::impl::hash_base {};
+    template<> struct hash<winrt::Windows::UI::Xaml::Controls::HandwritingViewCandidatesChangedEventArgs> : winrt::impl::hash_base {};
+    template<> struct hash<winrt::Windows::UI::Xaml::Controls::HandwritingViewTextSubmittedEventArgs> : winrt::impl::hash_base {};
     template<> struct hash<winrt::Windows::UI::Xaml::Controls::Hub> : winrt::impl::hash_base {};
     template<> struct hash<winrt::Windows::UI::Xaml::Controls::HubSection> : winrt::impl::hash_base {};
     template<> struct hash<winrt::Windows::UI::Xaml::Controls::HubSectionCollection> : winrt::impl::hash_base {};
