@@ -93,7 +93,7 @@ ExceptionOr<ByteArray> InputStream::Read(std::int64_t size) {
 }
 
 Exception InputStream::Close() {
-  if (!fd_->isValid()) return Exception{Exception::kIo};
+  if (!fd_ || !fd_->isValid()) return Exception{Exception::kIo};
   fd_.reset();
   return {};
 }
