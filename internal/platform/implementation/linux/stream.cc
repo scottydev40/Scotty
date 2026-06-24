@@ -165,7 +165,7 @@ Exception OutputStream::Flush() {
 }
 
 Exception OutputStream::Close() {
-  if (!fd_->isValid()) return Exception{Exception::kIo};
+  if (!fd_ || !fd_->isValid()) return Exception{Exception::kIo};
 
   auto ret = close(fd_->get()) < 0 ? Exception{Exception::kIo}
                                    : Exception{Exception::kSuccess};
