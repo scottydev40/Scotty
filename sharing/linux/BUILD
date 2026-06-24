@@ -84,6 +84,53 @@ cc_binary(
 )
 
 cc_library(
+    name = "nearby_sharing_api",
+    srcs = ["nearby_sharing_api.cc"],
+    hdrs = ["nearby_sharing_api.h"],
+    alwayslink = True,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":linux_sharing_platform",
+        "//internal/base:file_path",
+        "//internal/platform/implementation/linux:system_clock",
+        "//sharing:attachments",
+        "//sharing:nearby_sharing_service",
+        "//sharing/analytics",
+        "//sharing/local_device_data",
+    ],
+)
+
+cc_static_library(
+    name = "nearby_sharing_api_static",
+    deps = [":nearby_sharing_api"],
+)
+
+cc_binary(
+    name = "nearby_sharing_api_shared",
+    linkshared = True,
+    srcs = [
+        "nearby_sharing_api.cc",
+        "nearby_sharing_api.h",
+    ],
+    visibility = ["//visibility:public"],
+    linkopts = [
+        "-Wl,--exclude-libs,ALL",
+    ],
+    deps = [
+        "//internal/platform:base",
+        ":linux_sharing_platform",
+        "//internal/base:file_path",
+        "//internal/platform/implementation:platform",
+        "//internal/platform/implementation/linux",
+        "//internal/platform/implementation/linux:system_clock",
+        "//sharing:attachments",
+        "//sharing:nearby_sharing_service",
+        "//sharing/analytics",
+        "//sharing/local_device_data",
+    ],
+)
+
+cc_library(
     name = "linux_sharing_platform",
     srcs = [
         "platform/linux_account_manager.cc",
