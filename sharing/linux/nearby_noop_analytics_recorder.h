@@ -93,8 +93,7 @@ class NoOpAnalyticsRecorder final : public analytics::AnalyticsRecorder {
                                const AttachmentContainer& attachments,
                                int transfer_position,
                                int concurrent_connections,
-                               bool advanced_protection_enabled,
-                               bool advanced_protection_mismatch) override {}
+                               bool advanced_protection_enabled) override {}
   void NewSendFastInitialization() override {}
   void NewSendStart(int64_t session_id, int transfer_position,
                     int concurrent_connections,
