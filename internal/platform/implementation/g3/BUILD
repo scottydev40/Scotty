@@ -59,10 +59,11 @@ cc_library(
         "//internal/platform/implementation:types",
         "//internal/platform/implementation/shared:count_down_latch",
         "//internal/platform/implementation/shared:posix_mutex",
-        "//internal/test",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
@@ -151,13 +152,13 @@ cc_test(
         "//internal/platform:test_util",
         "//internal/platform:uuid",
         "//internal/platform/implementation:comm",
+        "//third_party/gloop/thread/fiber",
         "@com_github_protobuf_matchers//protobuf-matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
-        "@com_google_nisaba//nisaba/port:thread_pool/fiber",
     ],
 )
 
@@ -187,7 +188,6 @@ cc_library(
     visibility = [
         "//connections:__subpackages__",
         "//connections:partners",
-        "//internal/account:__subpackages__",
         "//internal/auth:__subpackages__",
         "//internal/crypto:__subpackages__",
         "//internal/data:__subpackages__",
@@ -217,6 +217,7 @@ cc_library(
         "//internal/platform/implementation/shared:file",
         "//third_party/gloop/thread",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -235,5 +236,20 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@nlohmann_json//:json",
+    ],
+)
+
+cc_test(
+    name = "scheduled_executor_test",
+    srcs = ["scheduled_executor_test.cc"],
+    deps = [
+        ":g3",
+        ":types",
+        "//internal/platform:base",
+        "//internal/platform:test_util",
+        "//internal/platform:types",
+        "@com_github_protobuf_matchers//protobuf-matchers",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
     ],
 )
