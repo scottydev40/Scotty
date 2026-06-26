@@ -111,11 +111,11 @@ std::unique_ptr<api::ble::BleL2capSocket> BleL2capServerSocket::Accept() {
   int client_fd = accept(server_fd_, (struct sockaddr*) &client_addr, &client_len);
 
   if (client_fd < 0) {
-    if (errno == EINTR || errno == EAGAIN) {
-      LOG(INFO) << "Accept interrupted, returning nullptr";
-      return nullptr;
+    if (errno == EBADF || errno == EINVAL) {
+      LOG(INFO) << "L2CAP server socket closed, stopping accept";
+    } else if (errno != EINTR && errno != EAGAIN) {
+      LOG(ERROR) << "Failed to accept L2CAP connection: " << std::strerror(errno);
     }
-    LOG(ERROR) << "Failed to accept L2CAP connection: " << std::strerror(errno);
     return nullptr;
   }
 
@@ -148,9 +148,9 @@ Exception BleL2capServerSocket::Close() {
     closed_ = true;
     server_fd = std::exchange(server_fd_, -1);
   }
-  if (server_fd != -1 && close(server_fd) != 0) {
-    LOG(WARNING) << "Failed to close L2CAP server socket: "
-                 << std::strerror(errno);
+  if (server_fd != -1) {
+    shutdown(server_fd, SHUT_RDWR);
+    close(server_fd);
   }
   return {Exception::kSuccess};
 }
