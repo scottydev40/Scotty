@@ -47,5 +47,11 @@ NetworkManagerWifiDirectServerSocket::Accept() {
 Exception NetworkManagerWifiDirectServerSocket::Close() {
   return server_socket_.Close();
 }
+
+void NetworkManagerWifiDirectServerSocket::PopulateWifiDirectCredentials(
+    WifiDirectCredentials& wifi_direct_credentials) {
+  wifi_direct_credentials.SetIPAddress(GetIPAddress());
+  wifi_direct_credentials.SetPort(GetPort());
+}
 }  // namespace linux
 }  // namespace nearby

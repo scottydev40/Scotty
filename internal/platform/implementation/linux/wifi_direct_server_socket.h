@@ -37,6 +37,8 @@ class NetworkManagerWifiDirectServerSocket
   int GetPort() const override;
   std::unique_ptr<api::WifiDirectSocket> Accept() override;
   Exception Close() override;
+  void PopulateWifiDirectCredentials(
+      WifiDirectCredentials& wifi_direct_credentials) override;
 
  private:
   TCPServerSocket server_socket_;

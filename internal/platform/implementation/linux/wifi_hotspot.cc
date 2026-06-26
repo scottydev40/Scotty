@@ -142,6 +142,11 @@ NetworkManagerWifiHotspotMedium::ListenForService(int port) {
 
 bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
     HotspotCredentials *hotspot_credentials) {
+  return StartWifiHotspot(hotspot_credentials, false);
+}
+
+bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
+    HotspotCredentials *hotspot_credentials, bool force_24ghz) {
   if (WifiHotspotActive()) {
     LOG(ERROR) << __func__ << ": " << wireless_device_->getProxy().getObjectPath()
                        << ": cannot start WiFi hotspot, a hotspot is already "
@@ -165,7 +170,7 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
   api::WifiCapability& capability = wireless_device_->GetCapability();
   std::string selected_band;
   int selected_channel = kPreferred24GhzChannel;
-  const bool enable_5ghz_hotspot = Is5GhzHotspotEnabled();
+  const bool enable_5ghz_hotspot = !force_24ghz && Is5GhzHotspotEnabled();
   if (enable_5ghz_hotspot &&
       (capability.supports_6_ghz || capability.supports_5_ghz)) {
     selected_band = "a";  // 5/6 GHz - NetworkManager uses "a" for both 5 GHz and 6 GHz
