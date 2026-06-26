@@ -15,8 +15,8 @@
 #ifndef PLATFORM_IMPL_LINUX_WIFI_DIRECT_H_
 #define PLATFORM_IMPL_LINUX_WIFI_DIRECT_H_
 #include <memory>
-
 #include <optional>
+#include <vector>
 
 #include <sdbus-c++/IConnection.h>
 
@@ -42,15 +42,20 @@ class NetworkManagerWifiDirectMedium : public api::WifiDirectMedium {
   std::unique_ptr<api::WifiDirectServerSocket> ListenForService(
       int port) override;
   bool ConnectWifiDirect(
-      WifiDirectCredentials *wifi_direct_credentials) override;
+      const WifiDirectCredentials& wifi_direct_credentials) override;
   bool DisconnectWifiDirect() override;
 
   bool StartWifiDirect(WifiDirectCredentials *wifi_direct_credentials) override;
   bool StopWifiDirect() override;
 
-  absl::optional<std::pair<std::int32_t, std::int32_t>> GetDynamicPortRange()
+  std::optional<std::pair<std::int32_t, std::int32_t>> GetDynamicPortRange()
       override {
     return std::nullopt;
+  }
+
+  std::vector<WifiDirectAuthType> GetSupportedWifiDirectAuthTypes()
+      const override {
+    return {WifiDirectAuthType::WIFI_DIRECT_WITH_PASSWORD};
   }
 
  private:

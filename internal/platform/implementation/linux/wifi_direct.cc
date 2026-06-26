@@ -62,18 +62,12 @@ NetworkManagerWifiDirectMedium::ListenForService(int port) {
 }
 
 bool NetworkManagerWifiDirectMedium::ConnectWifiDirect(
-    WifiDirectCredentials *wifi_direct_credentials) {
-  if (wifi_direct_credentials == nullptr) {
-    LOG(ERROR) << __func__ << ": hotspot_credentials cannot be null";
-    return false;
-  }
-
-  auto ssid = wifi_direct_credentials->GetSSID();
-  auto password = wifi_direct_credentials->GetPassword();
-
-  return wireless_device_->ConnectToNetwork(ssid, password,
-                                            api::WifiAuthType::kWpaPsk) ==
-         api::WifiConnectionStatus::kConnected;
+    const WifiDirectCredentials& wifi_direct_credentials) {
+  return wireless_device_->ConnectToNetwork(
+             wifi_direct_credentials.GetSSID(),
+             wifi_direct_credentials.GetPassword(),
+             NetworkManagerWifiMedium::WifiAuthType::kWpaPsk) ==
+         NetworkManagerWifiMedium::WifiConnectionStatus::kConnected;
 }
 
 bool NetworkManagerWifiDirectMedium::DisconnectWifiDirect() {
@@ -117,7 +111,7 @@ bool NetworkManagerWifiDirectMedium::StartWifiDirect(
                                                  std::move(wireless_device));
 
   HotspotCredentials hotspot_creds;
-  if (!hotspot.StartWifiHotspot(&hotspot_creds)) return false;
+  if (!hotspot.StartWifiHotspot(&hotspot_creds, /*force_24ghz=*/true)) return false;
 
   wifi_direct_credentials->SetSSID(hotspot_creds.GetSSID());
   wifi_direct_credentials->SetPassword(hotspot_creds.GetPassword());
@@ -131,7 +125,7 @@ bool NetworkManagerWifiDirectMedium::StopWifiDirect() {
   auto hotspot = NetworkManagerWifiHotspotMedium(network_manager_,
                                                  std::move(wireless_device));
 
-  return hotspot.DisconnectWifiHotspot();
+  return hotspot.StopWifiHotspot();
 }
 
 }  // namespace linux

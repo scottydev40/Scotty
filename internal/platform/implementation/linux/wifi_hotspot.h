@@ -64,6 +64,7 @@ class NetworkManagerWifiHotspotMedium : public api::WifiHotspotMedium {
       int port) override;
 
   bool StartWifiHotspot(HotspotCredentials *hotspot_credentials) override;
+  bool StartWifiHotspot(HotspotCredentials *hotspot_credentials, bool force_24ghz);
   bool StopWifiHotspot() override;
 
   bool ConnectWifiHotspot(const HotspotCredentials& hotspot_credentials) override;
