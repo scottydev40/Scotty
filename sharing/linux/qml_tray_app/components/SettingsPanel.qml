@@ -161,12 +161,32 @@ Drawer {
                                 onToggled: fileShareController.enable5GhzHotspot = checked
                             }
                         }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+                            Label {
+                                Layout.fillWidth: true
+                                color: root.textPrimary
+                                font.pixelSize: 13
+                                text: "Developer mode"
+                            }
+                            ThemedToggle {
+                                checked: fileShareController.developerMode
+                                onToggled: fileShareController.developerMode = checked
+                            }
+                        }
                     }
                 }
 
-                SectionLabel { text: "LOGGING" }
+                // ── Developer-only settings (experimental) ────────────────
+                SectionLabel {
+                    text: "DEVELOPER"
+                    visible: fileShareController.developerMode
+                }
                 SectionCard {
                     width: settingsCol.width
+                    visible: fileShareController.developerMode
 
                     ColumnLayout {
                         anchors.left: parent.left
@@ -174,6 +194,30 @@ Drawer {
                         anchors.top: parent.top
                         anchors.margins: 12
                         spacing: 12
+
+                        Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            font.pixelSize: 12
+                            color: root.textMuted
+                            text: "Experimental. Save folder for received files (blank = default). QR/WebRTC sharing is not supported on Linux."
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+                            Label {
+                                text: "Save folder"
+                                font.pixelSize: 13
+                                color: root.textMuted
+                                Layout.preferredWidth: 110
+                            }
+                            ThemedField {
+                                font.pixelSize: 11
+                                text: fileShareController.savePath
+                                onEditingFinished: fileShareController.savePath = text
+                            }
+                        }
 
                         RowLayout {
                             Layout.fillWidth: true

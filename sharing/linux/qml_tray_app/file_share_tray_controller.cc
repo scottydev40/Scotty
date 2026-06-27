@@ -38,6 +38,9 @@ FileShareTrayController::~FileShareTrayController() {
 void FileShareTrayController::initializeService() {
   service_ = std::make_unique<NearbySharingApi>(state_.deviceName().toStdString());
   service_->Set5GhzHotspotEnabled(state_.enable5GhzHotspot());
+  if (!state_.savePath().isEmpty()) {
+    service_->SetSavePath(state_.savePath().toStdString());
+  }
   state_.SetQrCodeData(QString::fromStdString(service_->GetQrCodeUrl()), {}, 0);
   updateQrCodeData();
   emit qrCodeUrlChanged();
@@ -143,17 +146,15 @@ void FileShareTrayController::handleTransferComplete(
     handleOutgoingTransferComplete(update, name, success);
   }
 
-  // Cleanup pending send state
+  // Keep the staged file but release the target so the user stays in send
+  // mode and can send the same file to another device.
   if (state_.pendingSendTargetId() == update.share_target_id) {
-    state_.ClearPendingSendFile();
-    emit pendingSendFilePathChanged();
-    emit pendingSendFileNameChanged();
-
-    // Auto-switch to receive mode after successful send
-    if (!update.is_incoming && success) {
-      switchToReceiveMode();
-    }
+    state_.ClearPendingSendTarget();
   }
+  // NOTE: do not re-arm receive here. The connections lib already
+  // auto-re-advertises ~0.5s after disconnect. A manual StopReceiveMode/
+  // StartReceiveMode rotates the endpoint id right after the sender discovered
+  // us, so its reconnect for a second transfer targets a dead endpoint.
 
   // Deferred target removal
   if (state_.IsPendingTargetRemoval(update.share_target_id)) {
@@ -257,6 +258,13 @@ void FileShareTrayController::loadSettings() {
   if (!stored_log_path.isEmpty()) {
     state_.SetLogPath(stored_log_path);
   }
+
+  const QString stored_save_path =
+      settings.value(QStringLiteral("savePath"), QString()).toString();
+  state_.SetSavePath(resolveSavePath(stored_save_path));
+
+  state_.SetDeveloperMode(
+      settings.value(QStringLiteral("developerMode"), false).toBool());
 }
 
 void FileShareTrayController::saveSettings() const {
@@ -266,6 +274,8 @@ void FileShareTrayController::saveSettings() const {
   settings.setValue(QStringLiteral("enable5GhzHotspot"),
                     state_.enable5GhzHotspot());
   settings.setValue(QStringLiteral("logPath"), state_.logPath());
+  settings.setValue(QStringLiteral("savePath"), state_.savePath());
+  settings.setValue(QStringLiteral("developerMode"), state_.developerMode());
 }
 
 void FileShareTrayController::setDeviceName(const QString& device_name) {
@@ -314,6 +324,67 @@ void FileShareTrayController::setLogPath(const QString& path) {
   state_.SetLogPath(trimmed);
   saveSettings();
   emit logPathChanged();
+}
+
+QString FileShareTrayController::defaultSavePath() {
+  return QDir::homePath() + QStringLiteral("/Downloads/QuickShare");
+}
+
+QString FileShareTrayController::resolveSavePath(const QString& raw) const {
+  QString p = raw.trimmed();
+
+  if (!p.isEmpty()) {
+    // Expand a leading ~ to the home directory.
+    if (p == QStringLiteral("~")) {
+      p = QDir::homePath();
+    } else if (p.startsWith(QStringLiteral("~/"))) {
+      p = QDir::homePath() + p.mid(1);
+    }
+    // A relative path is interpreted under the home directory.
+    if (!QDir::isAbsolutePath(p)) {
+      p = QDir::homePath() + QLatin1Char('/') + p;
+    }
+    // Collapse //, resolve .., strip any trailing slash.
+    p = QDir::cleanPath(p);
+  }
+
+  if (p.isEmpty()) {
+    p = defaultSavePath();
+  }
+
+  // Create it and confirm it is a writable directory; otherwise fall back.
+  QDir().mkpath(p);
+  QFileInfo info(p);
+  if (!info.exists() || !info.isDir() || !info.isWritable()) {
+    const QString fallback = defaultSavePath();
+    if (p != fallback) {
+      QDir().mkpath(fallback);
+      return fallback;
+    }
+  }
+  return p;
+}
+
+void FileShareTrayController::setSavePath(const QString& path) {
+  const QString resolved = resolveSavePath(path);
+  if (resolved == state_.savePath()) {
+    return;
+  }
+  state_.SetSavePath(resolved);
+  if (service_) {
+    service_->SetSavePath(resolved.toStdString());
+  }
+  saveSettings();
+  emit savePathChanged();
+}
+
+void FileShareTrayController::setDeveloperMode(bool enabled) {
+  if (enabled == state_.developerMode()) {
+    return;
+  }
+  state_.SetDeveloperMode(enabled);
+  saveSettings();
+  emit developerModeChanged();
 }
 
 void FileShareTrayController::start() {
@@ -394,6 +465,12 @@ void FileShareTrayController::switchToReceiveMode() {
         QStringLiteral("Wait for the current transfer to complete."));
     return;
   }
+  // Drop the staged file so the UI (driven by pendingSendFilePath) returns
+  // to the receive blob.
+  state_.ClearPendingSendFile();
+  emit pendingSendFilePathChanged();
+  emit pendingSendFileNameChanged();
+
   if (state_.running())
   {
     startReceiveMode();
@@ -413,17 +490,19 @@ void FileShareTrayController::switchToSendModeWithFile(const QString& file_path)
     return;
   }
 
+  // A new send is a fresh intent. Drop finished/stale transfer records so a
+  // prior Complete/Failed (or a stalled outgoing transfer that never reached a
+  // final state) can't block this send or clutter the device cards.
+  state_.ClearFinishedTransfers();
+  emit transfersChanged();
+
   state_.SetPendingSendFile(info.absoluteFilePath(), info.fileName(), 0);
   emit pendingSendFilePathChanged();
   emit pendingSendFileNameChanged();
 
-  if (state_.running() && state_.HasActiveTransfers()) {
-    setStatus(QStringLiteral("Cannot switch mode while transfer is active"));
-    emit requestTrayMessage(
-        QStringLiteral("Transfer in progress"),
-        QStringLiteral("Wait for the current transfer to complete."));
-    return;
-  }
+  // Always (re)start send mode. Restarting discovery tears down any stalled
+  // prior connection, which is the desired behavior when the user drops a new
+  // file to send.
   if (state_.running())
   {
     startSendMode();

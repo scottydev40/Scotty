@@ -156,6 +156,12 @@ if (last_delimiter == std::wstring::npos) {
   // Construct the target file name
   std::wstring target(sanitized_path);
 
+  // Rebuilding the renamed path below drops the folder/filename delimiter
+  // (folder == substr(0, last_delimiter) has no trailing slash), so keep the
+  // separator here. Empty folder (no delimiter in path) stays separator-free.
+  const std::wstring folder_prefix =
+      folder.empty() ? std::wstring() : folder + kPathDelimiter;
+
   std::fstream file;
 
   // Open file as std::wstring
@@ -166,8 +172,8 @@ if (last_delimiter == std::wstring::npos) {
   while (!(file.rdstate() & std::ifstream::failbit)) {
     file.close();
 
-    target = (folder + file_name1 + L" (" + std::to_wstring(++count) + L")" +
-              file_name2);
+    target = (folder_prefix + file_name1 + L" (" + std::to_wstring(++count) +
+              L")" + file_name2);
 
     file.clear();
     file.open(wstring_to_string(target),

@@ -21,7 +21,7 @@ Item {
     readonly property bool canSend: fileShareController.mode === "Send"
                                     && fileShareController.pendingSendFilePath.length > 0
 
-    readonly property string targetName: modelData.name && modelData.name.length > 0
+    readonly property string targetName: (modelData && modelData.name && modelData.name.length > 0)
                                          ? modelData.name : "Unknown device"
     readonly property var transferData: transferForTarget()
     readonly property string transferStatus: transferData ? String(transferData.status || "") : ""
@@ -58,6 +58,8 @@ Item {
     }
 
     function transferForTarget() {
+        if (!modelData)
+            return null
         var transfers = fileShareController.transfers
         for (var i = 0; i < transfers.length; ++i) {
             var entry = transfers[i]

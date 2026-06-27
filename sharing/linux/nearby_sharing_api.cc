@@ -596,6 +596,13 @@ void NearbySharingApi::SetDeviceName(const std::string& device_name) {
       });
 }
 
+void NearbySharingApi::SetSavePath(const std::string& path) {
+  if (impl_->service == nullptr) {
+    return;
+  }
+  impl_->service->GetSettings()->SetCustomSavePathAsync(path, []() {});
+}
+
 void NearbySharingApi::Shutdown(std::function<void(StatusCode)> callback) {
   if (impl_->service == nullptr) {
     if (callback) {

@@ -25,6 +25,8 @@ class FileShareTrayController : public QObject {
   Q_PROPERTY(QStringList qrCodeRows READ qrCodeRows NOTIFY qrCodeChanged)
   Q_PROPERTY(int qrCodeSize READ qrCodeSize NOTIFY qrCodeChanged)
   Q_PROPERTY(QString logPath READ logPath WRITE setLogPath NOTIFY logPathChanged)
+  Q_PROPERTY(QString savePath READ savePath WRITE setSavePath NOTIFY savePathChanged)
+  Q_PROPERTY(bool developerMode READ developerMode WRITE setDeveloperMode NOTIFY developerModeChanged)
 
  public:
   explicit FileShareTrayController(QObject* parent = nullptr);
@@ -45,12 +47,16 @@ class FileShareTrayController : public QObject {
   QStringList qrCodeRows() const { return state_.qrCodeRows(); }
   int qrCodeSize() const { return state_.qrCodeSize(); }
   QString logPath() const { return state_.logPath(); }
+  QString savePath() const { return state_.savePath(); }
+  bool developerMode() const { return state_.developerMode(); }
 
   // Public methods
   void setDeviceName(const QString& device_name);
   void setAutoAcceptIncoming(bool enabled);
   void setEnable5GhzHotspot(bool enabled);
   void setLogPath(const QString& path);
+  void setSavePath(const QString& path);
+  void setDeveloperMode(bool enabled);
 
   Q_INVOKABLE void start();
   Q_INVOKABLE void stop();
@@ -76,6 +82,8 @@ class FileShareTrayController : public QObject {
   void qrCodeUrlChanged();
   void qrCodeChanged();
   void logPathChanged();
+  void savePathChanged();
+  void developerModeChanged();
 
   void requestTrayMessage(const QString& title, const QString& body);
   void requestCopyLinkTrayMessage(const QString& title, const QString& body,
@@ -90,6 +98,12 @@ class FileShareTrayController : public QObject {
 
   void startSendMode();
   void startReceiveMode();
+
+  // Default location for received files when none is configured.
+  static QString defaultSavePath();
+  // Normalize (~ expansion, absolute, cleaned), create, and verify the folder
+  // is writable. Falls back to defaultSavePath() if raw is empty/invalid.
+  QString resolveSavePath(const QString& raw) const;
   
   void updateTargetFromInfo(const NearbySharingApi::ShareTargetInfo& info);
   void handleTransferUpdate(const NearbySharingApi::TransferUpdateInfo& update);
