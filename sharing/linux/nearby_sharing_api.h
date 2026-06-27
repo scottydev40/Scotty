@@ -113,6 +113,8 @@ class __attribute__((visibility("default"))) NearbySharingApi {
   void Cancel(int64_t share_target_id, std::function<void(StatusCode)> callback);
   void Set5GhzHotspotEnabled(bool enabled);
   void SetDeviceName(const std::string& device_name);
+  // Directory where received files are saved. Empty restores the default.
+  void SetSavePath(const std::string& path);
 
   void Shutdown(std::function<void(StatusCode)> callback);
   std::string GetQrCodeUrl() const;

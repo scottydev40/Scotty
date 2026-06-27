@@ -5,9 +5,9 @@ FileShareState::FileShareState() = default;
 
 void FileShareState::AddOrUpdateTarget(qlonglong id, const QString& name,
                                        bool is_incoming) {
-  target_names_[id] = name;
-
+  // Same id already known → update in place.
   if (discovered_row_by_target_.contains(id)) {
+    target_names_[id] = name;
     const int row_index = discovered_row_by_target_.value(id);
     if (row_index >= 0 && row_index < discovered_targets_.size()) {
       QVariantMap target;
@@ -15,10 +15,50 @@ void FileShareState::AddOrUpdateTarget(qlonglong id, const QString& name,
       target[QStringLiteral("name")] = name;
       target[QStringLiteral("isIncoming")] = is_incoming;
       discovered_targets_[row_index] = target;
-      return;
     }
+    return;
   }
 
+  // New id. Nearby rotates endpoint ids, so the same physical device can
+  // reappear under a fresh id after a transfer. If another id already
+  // represents this name, reuse its row (and migrate any transfer) instead of
+  // adding a duplicate card.
+  for (auto it = discovered_row_by_target_.begin();
+       it != discovered_row_by_target_.end(); ++it) {
+    const qlonglong old_id = it.key();
+    if (target_names_.value(old_id) != name) {
+      continue;
+    }
+    const int row_index = it.value();
+
+    // Migrate an existing transfer keyed by old_id → id so the "Sent" card
+    // follows the device to its new endpoint id.
+    if (transfer_row_by_target_.contains(old_id)) {
+      const int tr = transfer_row_by_target_.take(old_id);
+      if (tr >= 0 && tr < transfers_.size()) {
+        QVariantMap transfer = transfers_[tr].toMap();
+        transfer[QStringLiteral("targetId")] = id;
+        transfers_[tr] = transfer;
+        transfer_row_by_target_.insert(id, tr);
+      }
+    }
+
+    discovered_row_by_target_.erase(it);
+    discovered_row_by_target_.insert(id, row_index);
+    target_names_.remove(old_id);
+    target_names_[id] = name;
+    if (row_index >= 0 && row_index < discovered_targets_.size()) {
+      QVariantMap target;
+      target[QStringLiteral("id")] = id;
+      target[QStringLiteral("name")] = name;
+      target[QStringLiteral("isIncoming")] = is_incoming;
+      discovered_targets_[row_index] = target;
+    }
+    return;
+  }
+
+  // Genuinely new device.
+  target_names_[id] = name;
   QVariantMap target;
   target[QStringLiteral("id")] = id;
   target[QStringLiteral("name")] = name;
@@ -133,6 +173,21 @@ bool FileShareState::HasActiveTransfers() const {
     }
   }
   return false;
+}
+
+void FileShareState::ClearFinishedTransfers() {
+  QVariantList kept;
+  transfer_row_by_target_.clear();
+  for (const QVariant& row_value : transfers_) {
+    const QVariantMap row = row_value.toMap();
+    const QString status = row.value(QStringLiteral("status")).toString();
+    if (StatusMapper::IsActiveTransferStatus(status)) {
+      transfer_row_by_target_.insert(
+          row.value(QStringLiteral("targetId")).toLongLong(), kept.size());
+      kept.append(row_value);
+    }
+  }
+  transfers_ = kept;
 }
 
 void FileShareState::AddPendingTargetRemoval(qlonglong id) {

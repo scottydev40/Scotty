@@ -34,6 +34,8 @@ class FileShareState {
   int qrCodeSize() const { return qr_code_size_; }
 
   QString logPath() const { return log_path_; }
+  QString savePath() const { return save_path_; }
+  bool developerMode() const { return developer_mode_; }
 
   // Setters
   void SetMode(const QString& mode) { mode_ = mode; }
@@ -56,6 +58,10 @@ class FileShareState {
     pending_send_target_id_ = 0;
   }
 
+  // Keep the staged file, drop only the active target. Lets the user stay in
+  // send mode after a transfer and pick another device.
+  void ClearPendingSendTarget() { pending_send_target_id_ = 0; }
+
   void SetQrCodeData(const QString& url, const QStringList& rows, int size) {
     qr_code_url_ = url;
     qr_code_rows_ = rows;
@@ -63,6 +69,8 @@ class FileShareState {
   }
 
   void SetLogPath(const QString& path) { log_path_ = path; }
+  void SetSavePath(const QString& path) { save_path_ = path; }
+  void SetDeveloperMode(bool enabled) { developer_mode_ = enabled; }
 
   // Target management
   void AddOrUpdateTarget(qlonglong id, const QString& name, bool is_incoming);
@@ -79,6 +87,7 @@ class FileShareState {
   void RemoveTransfer(qlonglong target_id);
   bool HasActiveTransferForTarget(qlonglong target_id) const;
   bool HasActiveTransfers() const;
+  void ClearFinishedTransfers();
 
   // Pending target removal management
   void AddPendingTargetRemoval(qlonglong id);
@@ -100,6 +109,8 @@ class FileShareState {
   QStringList qr_code_rows_;
   int qr_code_size_ = 0;
   QString log_path_ = QStringLiteral("/tmp/nearby_qml_file_tray.log");
+  QString save_path_;
+  bool developer_mode_ = false;
 
   // Pending send state
   QString pending_send_file_path_;

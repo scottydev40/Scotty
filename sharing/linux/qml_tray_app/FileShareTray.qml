@@ -64,6 +64,7 @@ ApplicationWindow {
                     contentWidth: width
                     contentHeight: mainCol.implicitHeight + 96
                     ScrollBar.vertical: ScrollBar {}
+                    z: 1
 
                     ColumnLayout {
                         id: mainCol
@@ -102,6 +103,37 @@ ApplicationWindow {
                             }
                         }
 
+                    }
+                }
+
+                // ── Drop a file anywhere → switch to send mode ────────────
+                DropArea {
+                    id: dropArea
+                    anchors.fill: parent
+                    z: 2
+                    keys: ["text/uri-list"]
+
+                    onDropped: function(drop) {
+                        if (drop.hasUrls && drop.urls.length > 0) {
+                            const path = drop.urls[0].toString().replace(/^file:\/\//, "")
+                            fileShareController.switchToSendModeWithFile(path)
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.fill: parent
+                        visible: dropArea.containsDrag
+                        color: "#16a34a"
+                        opacity: 0.12
+                        radius: mainContent.topLeftRadius
+
+                        Label {
+                            anchors.centerIn: parent
+                            text: "Drop to send"
+                            font.pixelSize: 22
+                            font.weight: Font.DemiBold
+                            color: "#16a34a"
+                        }
                     }
                 }
             }
