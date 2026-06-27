@@ -251,6 +251,7 @@ class NearbySharingServiceImpl
   std::optional<std::vector<uint8_t>> CreateEndpointInfo(
       proto::DeviceVisibility visibility,
       const std::optional<std::string>& device_name) const;
+  void ClearAdvertisingEndpointInfoCache();
   void StartFastInitiationAdvertising();
   void OnStartFastInitiationAdvertising();
   void OnStartFastInitiationAdvertisingError();
@@ -542,6 +543,16 @@ class NearbySharingServiceImpl
   absl::Time share_foreground_send_surface_start_timestamp_;
   std::unique_ptr<nearby::api::AppInfo> app_info_;
   std::optional<uint16_t> alternate_service_uuid_;
+
+  struct AdvertisingEndpointInfoCache {
+    proto::DeviceVisibility visibility;
+    std::optional<std::string> device_name;
+    Advertisement::BlockedVendorId vendor_id;
+    std::vector<uint8_t> endpoint_info;
+  };
+  std::optional<AdvertisingEndpointInfoCache>
+      advertising_endpoint_info_cache_;
+
   // If true, a new endpoint id will be generated at the next advertisement.
   bool force_new_endpoint_id_ = false;
   OutgoingTargetsManager outgoing_targets_manager_;

@@ -129,6 +129,8 @@ constexpr absl::Duration kBackgroundAdvertisementRotationDelayMax =
     absl::Seconds(870);
 constexpr absl::Duration kInvalidateSurfaceStateDelayAfterTransferDone =
     absl::Milliseconds(3000);
+constexpr absl::Duration kInvalidateSurfaceStateDelayAfterIncomingTransferDone =
+    absl::Seconds(1);
 constexpr absl::Duration kProcessShutdownPendingTimerDelay =  // NOLINT
     absl::Seconds(15);
 constexpr absl::Duration kProcessNetworkChangeTimerDelay = absl::Seconds(1);
@@ -383,6 +385,7 @@ void NearbySharingServiceImpl::Cleanup() {
   SetInHighVisibility(false);
 
   endpoint_discovery_events_ = {};
+  ClearAdvertisingEndpointInfoCache();
 
   outgoing_targets_manager_.Cleanup();
   for (auto& it : incoming_share_session_map_) {
@@ -1338,6 +1341,7 @@ void NearbySharingServiceImpl::OnLoginSucceeded(absl::string_view account_id) {
 
     // Reset endpoint id after login.  Needs to happen before ResetAllSettings
     // which starts advertising.
+    ClearAdvertisingEndpointInfoCache();
     force_new_endpoint_id_ = true;
     ResetAllSettings(/*logout=*/false);
   });
@@ -1351,6 +1355,7 @@ void NearbySharingServiceImpl::OnLogoutSucceeded(absl::string_view account_id,
 
         // Reset endpoint id after logout.  Needs to happen before
         // ResetAllSettings which starts advertising.
+        ClearAdvertisingEndpointInfoCache();
         force_new_endpoint_id_ = true;
         // Reset all settings.
         ResetAllSettings(/*logout=*/true);
@@ -1557,6 +1562,10 @@ NearbySharingServiceImpl::CreateEndpointInfo(
   } else {
     return std::nullopt;
   }
+}
+
+void NearbySharingServiceImpl::ClearAdvertisingEndpointInfoCache() {
+  advertising_endpoint_info_cache_.reset();
 }
 
 void NearbySharingServiceImpl::StartFastInitiationAdvertising() {
@@ -2004,15 +2013,32 @@ void NearbySharingServiceImpl::InvalidateAdvertisingState() {
     device_name = local_device_data_manager_->GetDeviceName();
   }
 
+  BlockedVendorId vendor_id =
+      visibility == DeviceVisibility::DEVICE_VISIBILITY_EVERYONE
+          ? GetReceivingVendorId()
+          : BlockedVendorId::kNone;
+  bool can_reuse_endpoint_info =
+      advertising_endpoint_info_cache_.has_value() &&
+      advertising_endpoint_info_cache_->visibility == visibility &&
+      advertising_endpoint_info_cache_->device_name == device_name &&
+      advertising_endpoint_info_cache_->vendor_id == vendor_id;
+
   // Starts advertising through Nearby Connections. Caller is expected to ensure
   // |listener| remains valid until StopAdvertising is called.
-  std::optional<std::vector<uint8_t>> endpoint_info =
-      CreateEndpointInfo(visibility, device_name);
-  if (!endpoint_info) {
+  if (!can_reuse_endpoint_info) {
+    std::optional<std::vector<uint8_t>> endpoint_info =
+        CreateEndpointInfo(visibility, device_name);
+    if (!endpoint_info) {
+      VLOG(1) << __func__
+              << ": Unable to advertise since could not parse the "
+                 "endpoint info from the advertisement.";
+      return;
+    }
+    advertising_endpoint_info_cache_ = AdvertisingEndpointInfoCache{
+        visibility, device_name, vendor_id, std::move(*endpoint_info)};
+  } else {
     VLOG(1) << __func__
-            << ": Unable to advertise since could not parse the "
-               "endpoint info from the advertisement.";
-    return;
+            << ": Reusing endpoint info for advertising restart.";
   }
   if (device_name.has_value()) {
     service_observers_.NotifyHighVisibilityChangeRequested();
@@ -2022,11 +2048,12 @@ void NearbySharingServiceImpl::InvalidateAdvertisingState() {
 
   VLOG(1) << "Advertising endpoint_info: "
           << absl::BytesToHexString(absl::string_view(
-                 reinterpret_cast<const char*>(endpoint_info->data()),
-                 endpoint_info->size()));
+                 reinterpret_cast<const char*>(
+                     advertising_endpoint_info_cache_->endpoint_info.data()),
+                 advertising_endpoint_info_cache_->endpoint_info.size()));
 
   nearby_connections_manager_->StartAdvertising(
-      *endpoint_info,
+      advertising_endpoint_info_cache_->endpoint_info,
       /*listener=*/this, power_level, data_usage,
       visibility == DeviceVisibility::DEVICE_VISIBILITY_EVERYONE,
       force_new_endpoint_id_, [this, visibility, data_usage](Status status) {
@@ -2152,6 +2179,7 @@ NearbySharingService::StatusCodes NearbySharingServiceImpl::StopScanning() {
 }
 
 void NearbySharingServiceImpl::StopAdvertisingAndInvalidateSurfaceState() {
+  ClearAdvertisingEndpointInfoCache();
   if (advertising_power_level_ != PowerLevel::kUnknown) StopAdvertising();
   InvalidateSurfaceState();
 }
@@ -2174,6 +2202,7 @@ void NearbySharingServiceImpl::OnRotateBackgroundAdvertisementTimerFired() {
   if (!foreground_receive_callbacks_map_.empty()) {
     ScheduleRotateBackgroundAdvertisementTimer();
   } else {
+    ClearAdvertisingEndpointInfoCache();
     StopAdvertising();
     InvalidateSurfaceState();
   }
@@ -2181,18 +2210,22 @@ void NearbySharingServiceImpl::OnRotateBackgroundAdvertisementTimerFired() {
 
 void NearbySharingServiceImpl::OnTransferComplete() {
   bool was_sending_files = is_sending_files_;
+  bool was_receiving_files = is_receiving_files_;
   is_receiving_files_ = false;
   is_transferring_ = false;
   is_sending_files_ = false;
 
   VLOG(1) << __func__ << ": NearbySharing state change transfer finished";
-  // Files transfer is done! Receivers can immediately cancel, but senders
-  // should add a short delay to ensure the final in-flight packet(s) make
-  // it to the remote device.
+  // Files transfer is done. Senders add a short delay to ensure the final
+  // in-flight packet(s) reach the remote device. Receivers briefly remain
+  // unavailable so the sender can retire the completed endpoint.
+  // force_new_endpoint_id_ intentionally not set: StopAdvertising now correctly
+  // unregisters BlueZ advertisements, so Android gets a genuine EndpointLost
+  // before re-discovery. Same endpoint ID reuse avoids unnecessary UI churn.
   RunOnNearbySharingServiceThreadDelayed(
       "transfer_done_delay",
       was_sending_files ? kInvalidateSurfaceStateDelayAfterTransferDone
-                        : absl::Milliseconds(1),
+                        : kInvalidateSurfaceStateDelayAfterIncomingTransferDone,
       [this]() { InvalidateSurfaceState(); });
 }
 

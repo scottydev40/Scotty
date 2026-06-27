@@ -171,7 +171,7 @@ class BleV2Medium final : public api::ble::BleMedium {
 
   std::unique_ptr<bluez::LEAdvertisementManager> adv_manager_;
 
-    int psm_;
+  int psm_ = 0;
 
   absl::Mutex cur_adv_mutex_;
   std::unique_ptr<bluez::LEAdvertisement> cur_adv_
