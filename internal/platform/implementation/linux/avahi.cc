@@ -17,9 +17,35 @@
 #include "internal/platform/logging.h"
 #include "internal/platform/nsd_service_info.h"
 
+#include <arpa/inet.h>
+#include <ifaddrs.h>
+#include <netinet/in.h>
+
 namespace nearby {
 namespace linux {
 namespace avahi {
+
+namespace {
+bool IsLocalAddress(const std::string& addr) {
+  struct ifaddrs* ifaddr;
+  if (getifaddrs(&ifaddr) != 0) return false;
+  bool found = false;
+  for (struct ifaddrs* ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
+    if (!ifa->ifa_addr) continue;
+    char buf[INET6_ADDRSTRLEN] = {};
+    if (ifa->ifa_addr->sa_family == AF_INET) {
+      inet_ntop(AF_INET, &reinterpret_cast<sockaddr_in*>(ifa->ifa_addr)->sin_addr, buf, sizeof(buf));
+    } else if (ifa->ifa_addr->sa_family == AF_INET6) {
+      inet_ntop(AF_INET6, &reinterpret_cast<sockaddr_in6*>(ifa->ifa_addr)->sin6_addr, buf, sizeof(buf));
+    } else {
+      continue;
+    }
+    if (addr == buf) { found = true; break; }
+  }
+  freeifaddrs(ifaddr);
+  return found;
+}
+}  // namespace
 void Server::onResolveServiceReply(const int32_t& interface,
     const int32_t& protocol, const std::string& name,
     const std::string& type, const std::string& domain,
@@ -35,6 +61,10 @@ void Server::onResolveServiceReply(const int32_t& interface,
   }
 
   LOG(INFO) << "Resolved reply received: name=" << name << " address=" << address << " port=" << port;
+  if (IsLocalAddress(address)) {
+    LOG(INFO) << "Resolved reply: skipping own IP " << address;
+    return;
+  }
   NsdServiceInfo info;
 
   info.SetServiceName(name);

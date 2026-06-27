@@ -128,7 +128,7 @@ constexpr absl::Duration kBackgroundAdvertisementRotationDelayMin =
 constexpr absl::Duration kBackgroundAdvertisementRotationDelayMax =
     absl::Seconds(870);
 constexpr absl::Duration kInvalidateSurfaceStateDelayAfterTransferDone =
-    absl::Milliseconds(3000);
+    absl::Milliseconds(1000);
 constexpr absl::Duration kInvalidateSurfaceStateDelayAfterIncomingTransferDone =
     absl::Seconds(1);
 constexpr absl::Duration kProcessShutdownPendingTimerDelay =  // NOLINT
