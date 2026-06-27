@@ -1828,6 +1828,41 @@ TEST_F(NearbySharingServiceImplTest,
   EXPECT_TRUE(fake_nearby_connections_manager_->IsAdvertising());
 }
 
+TEST_F(NearbySharingServiceImplTest, AdvertisingRestartReusesEndpointInfo) {
+  SetLanConnected(true);
+  SetVisibility(DeviceVisibility::DEVICE_VISIBILITY_ALL_CONTACTS);
+  certificate_manager()->set_next_salt({0x00, 0x01});
+
+  MockTransferUpdateCallback background_callback;
+  NearbySharingService::StatusCodes result = RegisterReceiveSurface(
+      &background_callback,
+      NearbySharingService::ReceiveSurfaceState::kBackground);
+  EXPECT_EQ(result, NearbySharingService::StatusCodes::kOk);
+  ScopedReceiveSurface background_surface(service_.get(),
+                                           &background_callback);
+  ASSERT_TRUE(fake_nearby_connections_manager_->IsAdvertising());
+  auto endpoint_info_initial =
+      fake_nearby_connections_manager_->advertising_endpoint_info();
+
+  certificate_manager()->set_next_salt({0x00, 0x02});
+  MockTransferUpdateCallback foreground_callback;
+  {
+    result = RegisterReceiveSurface(
+        &foreground_callback,
+        NearbySharingService::ReceiveSurfaceState::kForeground);
+    EXPECT_EQ(result, NearbySharingService::StatusCodes::kOk);
+    ScopedReceiveSurface foreground_surface(service_.get(),
+                                             &foreground_callback);
+    ASSERT_TRUE(fake_nearby_connections_manager_->IsAdvertising());
+    EXPECT_EQ(endpoint_info_initial,
+              fake_nearby_connections_manager_->advertising_endpoint_info());
+  }
+
+  ASSERT_TRUE(fake_nearby_connections_manager_->IsAdvertising());
+  EXPECT_EQ(endpoint_info_initial,
+            fake_nearby_connections_manager_->advertising_endpoint_info());
+}
+
 TEST_F(NearbySharingServiceImplTest,
        DataUsageChangedRegisterReceiveSurfaceRestartsAdvertising) {
   SetLanConnected(true);

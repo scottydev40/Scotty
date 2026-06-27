@@ -248,9 +248,11 @@ BleV2Medium::StartAdvertising(
 
   bool BleV2Medium::StopAdvertising() {
     absl::MutexLock l(&advs_mutex_);
+    LOG(INFO) << "StopAdvertising: advs_.size()=" << advs_.size();
     try {
       for (auto& adv: advs_)
       {
+        LOG(INFO) << "StopAdvertising: unregistering " << adv->getObject().getObjectPath();
         adv_manager_->UnregisterAdvertisementSync(adv->getObject().getObjectPath());
       }
     } catch (const sdbus::Error &e) {
@@ -509,6 +511,12 @@ BleV2Medium::OpenL2capServerSocket(const std::string &service_id) {
 
   auto server_socket = std::make_unique<linux::BleL2capServerSocket>(
       psm_, service_id);
+  if (!server_socket->IsValid()) {
+    LOG(ERROR) << __func__
+               << ": Failed to open L2CAP server socket for service "
+               << service_id;
+    return nullptr;
+  }
 
   return server_socket;
 }

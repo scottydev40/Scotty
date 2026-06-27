@@ -34,7 +34,7 @@ void Server::onResolveServiceReply(const int32_t& interface,
     return;
   }
 
-  LOG(INFO) << "Resolved reply received";
+  LOG(INFO) << "Resolved reply received: name=" << name << " address=" << address << " port=" << port;
   NsdServiceInfo info;
 
   info.SetServiceName(name);

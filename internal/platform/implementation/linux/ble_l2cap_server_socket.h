@@ -37,19 +37,22 @@ class BleL2capServerSocket final : public api::ble::BleL2capServerSocket {
       std::string service_id = "");
   ~BleL2capServerSocket() override;
 
-  int GetPSM() const override { return psm_; }
+  int GetPSM() const override ABSL_LOCKS_EXCLUDED(mutex_);
   void SetPSM(int psm);
 
   std::unique_ptr<api::ble::BleL2capSocket> Accept() override
       ABSL_LOCKS_EXCLUDED(mutex_);
   Exception Close() override ABSL_LOCKS_EXCLUDED(mutex_);
+  bool IsValid() const ABSL_LOCKS_EXCLUDED(mutex_);
 
 
  private:
+  bool Open() ABSL_LOCKS_EXCLUDED(mutex_);
+  bool IsClosed() const ABSL_LOCKS_EXCLUDED(mutex_);
 
-  absl::Mutex mutex_;
+  mutable absl::Mutex mutex_;
   bool closed_ ABSL_GUARDED_BY(mutex_) = false;
-  int psm_ = 0;
+  int psm_ ABSL_GUARDED_BY(mutex_) = 0;
   std::string service_id_ ABSL_GUARDED_BY(mutex_);
   int server_fd_ ABSL_GUARDED_BY(mutex_) = -1;
 };

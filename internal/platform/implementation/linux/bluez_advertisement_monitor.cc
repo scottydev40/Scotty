@@ -60,8 +60,11 @@ void AdvertisementMonitor::DeviceFound(const sdbus::ObjectPath &device) {
     adv_data.service_data.emplace(*uuid,
                                   std::string(bytes.begin(), bytes.end()));
   }
-  auto id = std::stoull(std::regex_replace(peripheral->GetMacAddress().ToString(),
-      std::regex("[:\\-]"), ""), nullptr, 16);
+  auto mac = peripheral->GetMacAddress().ToString();
+  auto id = std::stoull(std::regex_replace(mac, std::regex("[:\\-]"), ""),
+                        nullptr, 16);
+  LOG(INFO) << "DeviceFound: path=" << device << " mac=" << mac
+            << " id=" << id << " service_data_entries=" << adv_data.service_data.size();
   scan_callback_.advertisement_found_cb(id, adv_data);
 }
 
