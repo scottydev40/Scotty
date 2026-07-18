@@ -115,6 +115,7 @@ Item {
     Label {
         x: 48; y: 48
         visible: fileShareController.running
+                 && fileShareController.transfers.length === 0
         text: isSendMode
               ? "Ready to send"
               : "Ready to receive"

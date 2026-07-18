@@ -61,10 +61,35 @@
 
 namespace nearby {
 namespace api {
+namespace {
+
+// If `candidate` already exists, return "name (1).ext", "name (2).ext", … until
+// a free name is found, so a second file with the same name is kept, not
+// overwritten.
+std::string DedupIfExists(std::filesystem::path candidate) {
+  std::error_code ec;
+  if (!std::filesystem::exists(candidate, ec)) {
+    return candidate.string();
+  }
+  const std::filesystem::path dir = candidate.parent_path();
+  const std::string stem = candidate.stem().string();
+  const std::string ext = candidate.extension().string();
+  for (int count = 1; count < 10000; ++count) {
+    std::filesystem::path next =
+        dir / (stem + " (" + std::to_string(count) + ")" + ext);
+    if (!std::filesystem::exists(next, ec)) {
+      return next.string();
+    }
+  }
+  return candidate.string();
+}
+
+}  // namespace
+
 std::string ImplementationPlatform::GetCustomSavePath(
     const std::string &parent_folder, const std::string &file_name) {
   auto fs = std::filesystem::path(parent_folder);
-  return (fs / file_name).string();
+  return DedupIfExists(fs / file_name);
 }
 
 std::string ImplementationPlatform::GetDownloadPath(
@@ -84,8 +109,9 @@ std::string ImplementationPlatform::GetDownloadPath(
     }
   }
   
-  return (downloads / std::filesystem::path(parent_folder).filename() /
-          std::filesystem::path(file_name).filename()).string();
+  return DedupIfExists(downloads /
+                       std::filesystem::path(parent_folder).filename() /
+                       std::filesystem::path(file_name).filename());
 }
 
 std::string ImplementationPlatform::GetDownloadPath(

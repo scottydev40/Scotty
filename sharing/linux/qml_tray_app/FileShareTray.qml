@@ -67,9 +67,10 @@ ApplicationWindow {
 
                 ColumnLayout {
                     visible: !mainContent.isSendMode
+                             && fileShareController.transfers.length === 0
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottom: parent.bottom
-                    anchors.bottomMargin: 56
+                    anchors.bottomMargin: 92
                     spacing: 8
                     z: 1
 
@@ -155,22 +156,23 @@ ApplicationWindow {
                     }
                 }
 
-                // ── Idle: recent/incoming transfers over the blob ─────────
+                // ── Idle: incoming/recent transfers, below the headline ───
                 Flickable {
                     visible: !mainContent.isSendMode
                              && fileShareController.transfers.length > 0
                     anchors.top: parent.top
                     anchors.left: parent.left
                     anchors.right: parent.right
-                    anchors.topMargin: 48
+                    anchors.bottom: parent.bottom
+                    anchors.topMargin: 92
                     anchors.leftMargin: 48
                     anchors.rightMargin: 48
-                    height: Math.min(idleTransferList.implicitHeight,
-                                     parent.height * 0.5)
+                    anchors.bottomMargin: 48
                     contentWidth: width
                     contentHeight: idleTransferList.implicitHeight
                     clip: true
                     z: 1
+                    ScrollBar.vertical: ScrollBar {}
 
                     TransferList {
                         id: idleTransferList
