@@ -24,6 +24,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "internal/base/file_path.h"
 #include "location/nearby/sharing/lib/rpc/sharing_rpc_client.h"
 #include "location/nearby/sharing/lib/sync/sync_binding_prefs.pb.h"
@@ -81,6 +82,24 @@ class SyncManager {
 
   bool IsFileSyncBinding(absl::string_view binding_id) const {
     return GetSyncBinding(binding_id).has_value();
+  }
+
+  bool HasSyncBindings() const {
+    if (preference_manager_ == nullptr) {
+      return false;
+    }
+    std::optional<sync::SyncBindingPrefs> prefs =
+        preference_manager_->GetSyncBindingValue();
+    return prefs.has_value() && prefs->sync_bindings_size() > 0;
+  }
+
+  void SetSyncConfigBackupTime(absl::string_view binding_id,
+                               bool backup_complete, absl::Time backup_time) {
+    // Sync config storage is not available in this build; backup timestamps
+    // have nowhere to persist.
+    static_cast<void>(binding_id);
+    static_cast<void>(backup_complete);
+    static_cast<void>(backup_time);
   }
 
   std::optional<sync::SyncConfigPrefs> GetSyncConfig(

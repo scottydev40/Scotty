@@ -159,7 +159,7 @@ std::unique_ptr<api::BluetoothSocket> BluetoothClassicMedium::ConnectToService(
       new BluetoothSocket(device, fd.value()));
 }
 
-std::unique_ptr<api::BluetoothServerSocket>
+std::shared_ptr<api::BluetoothServerSocket>
 BluetoothClassicMedium::ListenForService(const std::string &service_name,
                                          const std::string &service_uuid) {
   if (!profile_manager_->ProfileRegistered(service_uuid)) {
@@ -171,7 +171,7 @@ BluetoothClassicMedium::ListenForService(const std::string &service_name,
     }
   }
 
-  return std::unique_ptr<api::BluetoothServerSocket>(
+  return std::shared_ptr<api::BluetoothServerSocket>(
       new BluetoothServerSocket(*profile_manager_, service_uuid));
 }
 
