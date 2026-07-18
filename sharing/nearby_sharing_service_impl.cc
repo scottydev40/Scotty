@@ -31,6 +31,7 @@
 #include <utility>
 #include <vector>
 
+#include "location/nearby/cpp/sharing/clients/cpp/common/nearby_sharing_common.h"
 #include "location/nearby/sharing/lib/account/account_manager.h"
 #include "location/nearby/sharing/lib/rpc/sharing_rpc_client.h"
 #include "location/nearby/sharing/lib/sync/sync_binding_prefs.pb.h"
@@ -43,6 +44,7 @@
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "internal/base/file_path.h"
@@ -134,6 +136,12 @@ constexpr absl::Duration kInvalidateSurfaceStateDelayAfterIncomingTransferDone =
 constexpr absl::Duration kProcessShutdownPendingTimerDelay =  // NOLINT
     absl::Seconds(15);
 constexpr absl::Duration kProcessNetworkChangeTimerDelay = absl::Seconds(1);
+
+// Delay invalidating the surface state after a resume event.
+// Network activities can cause system to resume for short periods before
+// suspending again. This delay allows us to ignore those and only resume
+// fully when the system is stable.
+constexpr absl::Duration kResumeDelay = absl::Milliseconds(500);
 
 // The maximum number of certificate downloads that can be performed during a
 // discovery session.
@@ -253,6 +261,24 @@ sync::SyncBinding::SourceDeviceType ShareTargetTypeToSourceDeviceType(
       return sync::SyncBinding::SOURCE_DEVICE_TYPE_UNKNOWN;
   }
 }
+
+location::nearby::proto::sharing::SharingUseCase
+IntroductionUseCaseToLoggingUseCase(
+    IntroductionFrame::SharingUseCase use_case) {
+  switch (use_case) {
+    case IntroductionFrame::NEARBY_SHARE:
+      return location::nearby::proto::sharing::SharingUseCase::
+          USE_CASE_NEARBY_SHARE;
+    case IntroductionFrame::TAP_TO_SHARE:
+      return location::nearby::proto::sharing::SharingUseCase::
+          USE_CASE_TAP_TO_SHARE;
+    case IntroductionFrame::FILE_SYNC:
+      return location::nearby::proto::sharing::SharingUseCase::
+          USE_CASE_FILE_SYNC;
+   default:
+      return location::nearby::proto::sharing::SharingUseCase::USE_CASE_UNKNOWN;
+  }
+}
 }  // namespace
 
 NearbySharingServiceImpl::NearbySharingServiceImpl(
@@ -320,6 +346,13 @@ NearbySharingServiceImpl::NearbySharingServiceImpl(
         OnLockStateChanged(screen_status ==
                            nearby::api::DeviceInfo::ScreenStatus::kLocked);
       });
+  if (NearbyFlags::GetInstance().GetBoolFlag(
+          config_package_nearby::nearby_sharing_feature::
+              kEnableSuspendResumeListener)) {
+    suspend_resume_listener_id_ =
+        device_info_.RegisterSuspendResumeListener(absl::bind_front(
+            &NearbySharingServiceImpl::OnSuspendResumeEvent, this));
+  }
 
   account_manager_.AddObserver(this);
   settings_->AddSettingsObserver(this);
@@ -367,6 +400,8 @@ void NearbySharingServiceImpl::Shutdown(
         background_receive_callbacks_map_.clear();
 
         device_info_.UnregisterScreenLockedListener(kScreenStateListenerName);
+        device_info_.UnregisterSuspendResumeListener(
+            suspend_resume_listener_id_);
 
         settings_->RemoveSettingsObserver(this);
 
@@ -671,7 +706,7 @@ void NearbySharingServiceImpl::RegisterReceiveSurface(
           VLOG(1) << "[Call Identity API] ForceUploadPrivateCertificates.";
           certificate_manager_->ForceUploadPrivateCertificates();
         }
-        InvalidateReceiveSurfaceState();
+        InvalidateAdvertisingState();
         status_codes_callback(StatusCodes::kOk);
       });
 }
@@ -1401,6 +1436,42 @@ void NearbySharingServiceImpl::OnLockStateChanged(bool locked) {
   });
 }
 
+void NearbySharingServiceImpl::OnSuspendResumeEvent(
+    nearby::api::DeviceInfo::SuspendResumeEvent event) {
+  bool suspended =
+      event == nearby::api::DeviceInfo::SuspendResumeEvent::kSuspend;
+  {
+    absl::MutexLock lock(suspend_mutex_);
+    suspended_ = suspended;
+    if (!suspended) {
+      resume_delay_timer_ = std::make_unique<ThreadTimer>(
+          *service_thread_, "suspend_resume_timer", kResumeDelay, [this]() {
+            {
+              absl::MutexLock lock(suspend_mutex_);
+              if (suspended_) {
+                return;
+              }
+            }
+            LOG(INFO) << "InvalidateSurfaceState due to system resume";
+            InvalidateSurfaceState();
+          });
+    }
+  }
+  if (suspended) {
+    RunOnNearbySharingServiceThread("on_suspend", [this]() {
+      LOG(INFO) << "InvalidateSurfaceState due to system suspend";
+      {
+        absl::MutexLock lock(suspend_mutex_);
+        if (!suspended_) {
+          return;
+        }
+        resume_delay_timer_.reset();
+      }
+      InvalidateSurfaceState();
+    });
+  }
+}
+
 void NearbySharingServiceImpl::AdapterPresentChanged(
     sharing::api::BluetoothAdapter* adapter, bool present) {
   RunOnNearbySharingServiceThread("bt_adapter_present_changed", [this, adapter,
@@ -1854,7 +1925,7 @@ bool NearbySharingServiceImpl::HasAvailableConnectionMediums() {
 
 void NearbySharingServiceImpl::InvalidateSurfaceState() {
   InvalidateSendSurfaceState();
-  InvalidateReceiveSurfaceState();
+  InvalidateAdvertisingState();
 }
 
 void NearbySharingServiceImpl::InvalidateSendSurfaceState() {
@@ -1863,6 +1934,16 @@ void NearbySharingServiceImpl::InvalidateSendSurfaceState() {
 }
 
 void NearbySharingServiceImpl::InvalidateScanningState() {
+  {
+    absl::MutexLock lock(suspend_mutex_);
+    if (suspended_) {
+      StopScanning();
+      VLOG(1) << __func__
+              << ": Stopping discovery because the system is suspended.";
+      return;
+    }
+  }
+
   // Stop scanning when screen is off.
   if (is_screen_locked_) {
     StopScanning();
@@ -1900,6 +1981,17 @@ void NearbySharingServiceImpl::InvalidateScanningState() {
 }
 
 void NearbySharingServiceImpl::InvalidateFastInitiationAdvertising() {
+  {
+    absl::MutexLock lock(suspend_mutex_);
+    if (suspended_) {
+      StopFastInitiationAdvertising();
+      VLOG(1) << __func__
+              << ": Stopping fast initiation advertising because the "
+                 "system is suspended.";
+      return;
+    }
+  }
+
   // Screen is off. Do no work.
   if (is_screen_locked_) {
     StopFastInitiationAdvertising();
@@ -1938,13 +2030,26 @@ void NearbySharingServiceImpl::InvalidateFastInitiationAdvertising() {
   StartFastInitiationAdvertising();
 }
 
-void NearbySharingServiceImpl::InvalidateReceiveSurfaceState() {
-  InvalidateAdvertisingState();
-}
-
 void NearbySharingServiceImpl::InvalidateAdvertisingState() {
-  // Do not advertise on lock screen unless Self Share is enabled.
-  if (is_screen_locked_) {
+  {
+    absl::MutexLock lock(suspend_mutex_);
+    if (suspended_) {
+      StopAdvertising();
+      VLOG(1) << __func__
+              << ": Stopping advertising because the system is suspended.";
+      return;
+    }
+  }
+
+  bool supports_advertising_on_lock_screen =
+      NearbyFlags::GetInstance().GetBoolFlag(
+          config_package_nearby::nearby_sharing_feature::
+              kEnableBackup) &&
+      sync_manager_.HasSyncBindings();
+  DeviceVisibility visibility = settings_->GetVisibility();
+  // Do not advertise on lock screen unless Self Share is enabled, or Backup is
+  // enabled and there are existing SyncBindings.
+  if (is_screen_locked_ && !supports_advertising_on_lock_screen) {
     StopAdvertising();
     VLOG(1) << __func__
             << ": Stopping advertising because the screen is locked.";
@@ -1978,11 +2083,34 @@ void NearbySharingServiceImpl::InvalidateAdvertisingState() {
 
   // We should only advertise if the user has set the visibility to something
   // other than HIDDEN or UNSPECIFIED.
-  if (!IsVisibleInBackground(settings_->GetVisibility())) {
+  if (!IsVisibleInBackground(visibility)) {
     StopAdvertising();
     VLOG(1) << __func__
             << ": Stopping advertising because device is visible to NO_ONE.";
     return;
+  }
+
+  if (is_screen_locked_ && supports_advertising_on_lock_screen) {
+    if (visibility != DeviceVisibility::DEVICE_VISIBILITY_SELF_SHARE) {
+      VLOG(1) << __func__
+              << ": Restarting advertising to SELF_SHARE on lock screen.";
+      visibility = DeviceVisibility::DEVICE_VISIBILITY_SELF_SHARE;
+    }
+  }
+
+  bool need_to_restart_advertising = false;
+
+  // This is used to set up the PairedKeyVerificationRunner correctly on
+  // incoming connections.
+  advertising_on_screen_locked_ = is_screen_locked_;
+
+  if (last_advertised_device_visibility_ !=
+          DeviceVisibility::DEVICE_VISIBILITY_UNSPECIFIED &&
+      visibility != last_advertised_device_visibility_) {
+    StopAdvertising();
+    need_to_restart_advertising = true;
+    VLOG(1) << __func__
+            << ": Restarting advertising because visibility has changed.";
   }
 
   PowerLevel power_level;
@@ -1991,16 +2119,15 @@ void NearbySharingServiceImpl::InvalidateAdvertisingState() {
   } else {
     power_level = PowerLevel::kLowPower;
   }
-
   DataUsage data_usage = settings_->GetDataUsage();
-  if (advertising_power_level_ != PowerLevel::kUnknown) {
+  if (!need_to_restart_advertising &&
+      advertising_power_level_ != PowerLevel::kUnknown) {
     if (power_level == advertising_power_level_) {
       VLOG(1) << __func__ << ": Ignoring, already advertising with power level "
               << PowerLevelToString(advertising_power_level_)
               << " and data usage preference " << static_cast<int>(data_usage);
       return;
     }
-
     StopAdvertising();
     VLOG(1) << __func__ << ": Restart advertising with power level "
             << PowerLevelToString(power_level) << " and data usage preference "
@@ -2008,7 +2135,6 @@ void NearbySharingServiceImpl::InvalidateAdvertisingState() {
   }
 
   std::optional<std::string> device_name;
-  DeviceVisibility visibility = settings_->GetVisibility();
   if (visibility == DeviceVisibility::DEVICE_VISIBILITY_EVERYONE) {
     device_name = local_device_data_manager_->GetDeviceName();
   }
@@ -2070,11 +2196,13 @@ void NearbySharingServiceImpl::InvalidateAdvertisingState() {
   force_new_endpoint_id_ = false;
 
   advertising_power_level_ = power_level;
+  last_advertised_device_visibility_ = visibility;
   VLOG(1) << __func__
           << ": StartAdvertising requested over Nearby Connections: "
           << " power level: " << PowerLevelToString(power_level)
+          << " screen locked: " << is_screen_locked_
           << " visibility: "
-          << DeviceVisibility_Name(settings_->GetVisibility())
+          << DeviceVisibility_Name(visibility)
           << " data usage: " << DataUsage_Name(data_usage)
           << " advertise device name?: "
           << (device_name.has_value() ? "yes" : "no");
@@ -2117,7 +2245,7 @@ void NearbySharingServiceImpl::StartScanning() {
   scanning_start_timestamp_ = context_->GetClock()->Now();
   share_foreground_send_surface_start_timestamp_ = absl::InfinitePast();
   is_scanning_ = true;
-  InvalidateReceiveSurfaceState();
+  InvalidateAdvertisingState();
 
   outgoing_targets_manager_.AllTargetsLost(
       Milliseconds(NearbyFlags::GetInstance().GetInt64Flag(
@@ -2366,6 +2494,15 @@ void NearbySharingServiceImpl::OnIncomingTransferUpdate(
         LOG(WARNING) << __func__ << ": Unknown file paths are not empty.";
       }
     }
+    // If backup session, update last backup time in preference.
+    if (session.session_usage() == ShareSessionUsage::kFileSync) {
+      if (session.certificate()) {
+        sync_manager_.SetSyncConfigBackupTime(
+            session.certificate()->binding_id(),
+            metadata.status() == TransferMetadata::Status::kComplete,
+            context_->GetClock()->Now());
+      }
+    }
   } else if (metadata.status() ==
              TransferMetadata::Status::kAwaitingLocalConfirmation) {
     OnTransferStarted(/*is_incoming=*/true);
@@ -2496,6 +2633,7 @@ void NearbySharingServiceImpl::OnIncomingDecryptedCertificate(
           .visibility = settings_->GetVisibility(),
           .last_visibility = settings_->GetLastVisibility(),
           .last_visibility_time = settings_->GetLastVisibilityTimestamp(),
+          .screen_locked_advertising = advertising_on_screen_locked_,
       },
       GetCertificateManager(),
       absl::bind_front(
@@ -2656,6 +2794,20 @@ void NearbySharingServiceImpl::BeginOutgoingPairing(
       });
 }
 
+std::vector<std::string> NearbySharingServiceImpl::GetCertIdsForSyncBinding() {
+  std::vector<std::string> cert_ids;
+  cert_ids.reserve(2);
+  if (auto id = certificate_manager_->GetPrivateCertificateId(
+          proto::DeviceVisibility::DEVICE_VISIBILITY_SELF_SHARE)) {
+    cert_ids.push_back(*id);
+  }
+  if (auto id = certificate_manager_->GetPrivateCertificateId(
+          proto::DeviceVisibility::DEVICE_VISIBILITY_ALL_CONTACTS)) {
+    cert_ids.push_back(*id);
+  }
+  return cert_ids;
+}
+
 void NearbySharingServiceImpl::OnInitiateSyncBindingResponse(
     int64_t share_target_id, absl::StatusOr<std::string> binding_status) {
   RunOnNearbySharingServiceThread(
@@ -2674,7 +2826,7 @@ void NearbySharingServiceImpl::OnInitiateSyncBindingResponse(
           LOG(INFO) << __func__
                     << ": Sync binding rpc succeeded: id=" << binding_id;
           session->StartPeerBinding(
-              binding_id, BindingRequest::FILESYNC,
+              binding_id, BindingRequest::FILESYNC, GetCertIdsForSyncBinding(),
               [this, share_target_id,
                binding_id](BindingResponse::Status status) {
                 OnPeerSyncBindingComplete(share_target_id, binding_id, status);
@@ -2769,7 +2921,9 @@ void NearbySharingServiceImpl::OnReceivedIntroduction(
   // Log analytics event of receiving introduction.
   analytics_recorder_.NewReceiveIntroduction(
       session.session_id(), session.share_target(),
-      /*referrer_package=*/std::nullopt, session.os_type());
+      /*referrer_package=*/std::nullopt, session.os_type(),
+      IntroductionUseCaseToLoggingUseCase(frame.use_case()),
+      nearby::sharing::cpp::common::GetPowerStatus());
 
   std::optional<size_t> available_storage =
       device_info_.GetAvailableDiskSpaceInBytes(save_path);
