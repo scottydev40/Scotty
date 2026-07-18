@@ -141,7 +141,18 @@ class QuerySharedCredentialsResponse {
 };
 
 class QuerySharedCredentialsWithBindingIdsRequest
-    : public QuerySharedCredentialsRequest {};
+    : public QuerySharedCredentialsRequest {
+ public:
+  google::protobuf::Timestamp* mutable_join_binding_time() {
+    return &join_binding_time_;
+  }
+  const google::protobuf::Timestamp& join_binding_time() const {
+    return join_binding_time_;
+  }
+
+ private:
+  google::protobuf::Timestamp join_binding_time_;
+};
 
 class QuerySharedCredentialsWithBindingIdsResponse
     : public QuerySharedCredentialsResponse {};

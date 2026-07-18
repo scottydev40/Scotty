@@ -9,6 +9,13 @@ cc_library(
 )
 
 cc_library(
+    name = "sync_config_prefs_cc_proto",
+    hdrs = ["sync_config_prefs.pb.h"],
+    visibility = ["//visibility:public"],
+    deps = [":sync_binding_prefs_cc_proto"],
+)
+
+cc_library(
     name = "sync_manager",
     hdrs = ["sync_manager.h"],
     visibility = ["//visibility:public"],
@@ -21,6 +28,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/strings:string_view",
     ],
 )

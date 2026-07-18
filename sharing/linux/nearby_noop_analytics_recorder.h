@@ -69,7 +69,9 @@ class NoOpAnalyticsRecorder final : public analytics::AnalyticsRecorder {
   void NewReceiveIntroduction(
       int64_t session_id, const ShareTarget& share_target,
       std::optional<std::string> referrer_package,
-      location::nearby::proto::sharing::OSType share_target_os_type) override {}
+      location::nearby::proto::sharing::OSType share_target_os_type,
+      location::nearby::proto::sharing::SharingUseCase sharing_use_case,
+      location::nearby::proto::sharing::PowerStatus power_status) override {}
   void NewRespondToIntroduction(
       location::nearby::proto::sharing::ResponseToIntroduction action,
       int64_t session_id) override {}
@@ -105,7 +107,8 @@ class NoOpAnalyticsRecorder final : public analytics::AnalyticsRecorder {
   void NewSendIntroduction(
       int64_t session_id, const ShareTarget& share_target,
       int transfer_position, int concurrent_connections,
-      location::nearby::proto::sharing::OSType share_target_os_type) override {}
+      location::nearby::proto::sharing::OSType share_target_os_type,
+      location::nearby::proto::sharing::PowerStatus power_status) override {}
   void NewSetVisibility(proto::DeviceVisibility src_visibility,
                         proto::DeviceVisibility dst_visibility,
                         int64_t duration_millis) override {}

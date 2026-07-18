@@ -8,3 +8,9 @@ cc_library(
     deps = ["@com_google_protobuf//:protobuf"],
 )
 
+alias(
+    name = "timestamp",
+    actual = "@com_google_protobuf//:timestamp_proto",
+    visibility = ["//visibility:public"],
+)
+

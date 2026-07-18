@@ -194,6 +194,15 @@ class LinuxPreferenceManager final : public PreferenceManager {
       NotifyPreferenceChanged(key);
     }
   }
+  void SetSyncConfigValue(
+      absl::string_view binding_id,
+      const nearby::sharing::sync::SyncConfigPrefs& value) override {
+    std::string serialized;
+    if (value.SerializeToString(&serialized)) {
+      SetString(absl::StrCat(PrefNames::kSyncConfigPrefix, binding_id),
+                serialized);
+    }
+  }
   void SetSyncBindingValue(
       const nearby::sharing::sync::SyncBindingPrefs& value) override {
     std::string serialized;
@@ -312,6 +321,22 @@ class LinuxPreferenceManager final : public PreferenceManager {
       absl::string_view key, absl::string_view dictionary_item) const override {
     return GetDictionaryValue<std::string>(key, dictionary_item);
   }
+  std::optional<nearby::sharing::sync::SyncConfigPrefs> GetSyncConfigValue(
+      absl::string_view binding_id) const override {
+    std::string serialized = GetString(
+        absl::StrCat(PrefNames::kSyncConfigPrefix, binding_id), "");
+    if (serialized.empty()) {
+      return std::nullopt;
+    }
+    nearby::sharing::sync::SyncConfigPrefs value;
+    if (!value.ParseFromString(serialized)) {
+      return std::nullopt;
+    }
+    return value;
+  }
+  void RemoveSyncConfigPref(absl::string_view binding_id) override {
+    Remove(absl::StrCat(PrefNames::kSyncConfigPrefix, binding_id));
+  }
   std::optional<nearby::sharing::sync::SyncBindingPrefs> GetSyncBindingValue()
       const override {
     std::string serialized =
@@ -331,6 +356,12 @@ class LinuxPreferenceManager final : public PreferenceManager {
     if (storage_ != nullptr) {
       storage_->Remove(key);
       NotifyPreferenceChanged(key);
+    }
+  }
+  void RemoveAllSyncConfigs() override {
+    if (storage_ != nullptr &&
+        storage_->RemoveKeyPrefix(PrefNames::kSyncConfigPrefix)) {
+      NotifyPreferenceChanged(PrefNames::kSyncConfigPrefix);
     }
   }
   void RemoveAllBindingConfigs() override {
