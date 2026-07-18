@@ -208,7 +208,7 @@ static const char *const kTestServiceID = "TestServiceID";
 }
 
 - (void)testStartMultipleServicesScanning_Success {
-  std::vector<nearby::Uuid> service_uuids = {nearby::Uuid(0, 0)};
+  std::vector<nearby::Uuid> service_uuids = {nearby::Uuid(0x0000FE2C00001000, 0x800000805F9B34FB)};
   nearby::api::ble::TxPowerLevel tx_power_level = nearby::api::ble::TxPowerLevel::kUltraLow;
 
   bool result = _medium->StartMultipleServicesScanning(service_uuids, tx_power_level, {});
@@ -217,7 +217,7 @@ static const char *const kTestServiceID = "TestServiceID";
 }
 
 - (void)testStartMultipleServicesScanning_Failure {
-  std::vector<nearby::Uuid> service_uuids = {nearby::Uuid(0, 0)};
+  std::vector<nearby::Uuid> service_uuids = {nearby::Uuid(0x0000FE2C00001000, 0x800000805F9B34FB)};
   nearby::api::ble::TxPowerLevel tx_power_level = nearby::api::ble::TxPowerLevel::kUltraLow;
   _fakeGNCBLEMedium.startScanningError = [NSError errorWithDomain:@"test" code:0 userInfo:nil];
 
@@ -300,7 +300,7 @@ static const char *const kTestServiceID = "TestServiceID";
                         const nearby::api::ble::BleAdvertisementData &advertisement) {
             [expectation fulfill];
           })};
-  _medium->StartScanning(nearby::Uuid(0, 0), nearby::api::ble::TxPowerLevel::kUltraLow,
+  _medium->StartScanning(nearby::Uuid(0x0000FE2C00001000, 0x800000805F9B34FB), nearby::api::ble::TxPowerLevel::kUltraLow,
                          std::move(callback));
   if (_fakeGNCBLEMedium.advertisementFoundHandler) {
     _fakeGNCBLEMedium.advertisementFoundHandler(fakePeripheral, serviceData);
@@ -326,7 +326,7 @@ static const char *const kTestServiceID = "TestServiceID";
                         const nearby::api::ble::BleAdvertisementData &advertisement) {
             [expectation fulfill];
           })};
-  _medium->StartScanning(nearby::Uuid(0, 0), nearby::api::ble::TxPowerLevel::kUltraLow,
+  _medium->StartScanning(nearby::Uuid(0x0000FE2C00001000, 0x800000805F9B34FB), nearby::api::ble::TxPowerLevel::kUltraLow,
                          std::move(callback));
   if (_fakeGNCBLEMedium.advertisementFoundHandler) {
     _fakeGNCBLEMedium.advertisementFoundHandler(fakePeripheral, serviceData);
@@ -385,7 +385,7 @@ static const char *const kTestServiceID = "TestServiceID";
                         const nearby::api::ble::BleAdvertisementData &advertisement) {
             [expectation fulfill];
           })};
-  _medium->StartScanning(nearby::Uuid(0, 0), nearby::api::ble::TxPowerLevel::kUltraLow,
+  _medium->StartScanning(nearby::Uuid(0x0000FE2C00001000, 0x800000805F9B34FB), nearby::api::ble::TxPowerLevel::kUltraLow,
                          std::move(callback));
   if (_fakeGNCBLEMedium.advertisementFoundHandler) {
     _fakeGNCBLEMedium.advertisementFoundHandler(fakePeripheral, serviceData);
@@ -413,7 +413,7 @@ static const char *const kTestServiceID = "TestServiceID";
                         const nearby::api::ble::BleAdvertisementData &advertisement) {
             [expectation fulfill];
           })};
-  _medium->StartScanning(nearby::Uuid(0, 0), nearby::api::ble::TxPowerLevel::kUltraLow,
+  _medium->StartScanning(nearby::Uuid(0x0000FE2C00001000, 0x800000805F9B34FB), nearby::api::ble::TxPowerLevel::kUltraLow,
                          std::move(callback));
   if (_fakeGNCBLEMedium.advertisementFoundHandler) {
     _fakeGNCBLEMedium.advertisementFoundHandler(fakePeripheral, serviceData);
@@ -450,7 +450,7 @@ static const char *const kTestServiceID = "TestServiceID";
                         const nearby::api::ble::BleAdvertisementData &advertisement) {
             [expectation fulfill];
           })};
-  _medium->StartScanning(nearby::Uuid(0, 0), nearby::api::ble::TxPowerLevel::kUltraLow,
+  _medium->StartScanning(nearby::Uuid(0x0000FE2C00001000, 0x800000805F9B34FB), nearby::api::ble::TxPowerLevel::kUltraLow,
                          std::move(callback));
   if (_fakeGNCBLEMedium.advertisementFoundHandler) {
     _fakeGNCBLEMedium.advertisementFoundHandler(fakePeripheral, serviceData);
@@ -483,7 +483,7 @@ static const char *const kTestServiceID = "TestServiceID";
                         const nearby::api::ble::BleAdvertisementData &advertisement) {
             [expectation fulfill];
           })};
-  _medium->StartScanning(nearby::Uuid(0, 0), nearby::api::ble::TxPowerLevel::kUltraLow,
+  _medium->StartScanning(nearby::Uuid(0x0000FE2C00001000, 0x800000805F9B34FB), nearby::api::ble::TxPowerLevel::kUltraLow,
                          std::move(callback));
   if (_fakeGNCBLEMedium.advertisementFoundHandler) {
     _fakeGNCBLEMedium.advertisementFoundHandler(fakePeripheral, serviceData);
@@ -669,7 +669,7 @@ static const char *const kTestServiceID = "TestServiceID";
                         const nearby::api::ble::BleAdvertisementData &advertisement) {
             [expectation fulfill];
           })};
-  _medium->StartScanning(nearby::Uuid(0, 0), nearby::api::ble::TxPowerLevel::kUltraLow,
+  _medium->StartScanning(nearby::Uuid(0x0000FE2C00001000, 0x800000805F9B34FB), nearby::api::ble::TxPowerLevel::kUltraLow,
                          std::move(callback));
   if (_fakeGNCBLEMedium.advertisementFoundHandler) {
     _fakeGNCBLEMedium.advertisementFoundHandler(fakePeripheral, serviceData);
@@ -717,7 +717,7 @@ static const char *const kTestServiceID = "TestServiceID";
             [expectation fulfill];
           })};
 
-  _medium->StartScanning(nearby::Uuid(0, 0), nearby::api::ble::TxPowerLevel::kUltraLow,
+  _medium->StartScanning(nearby::Uuid(0x0000FE2C00001000, 0x800000805F9B34FB), nearby::api::ble::TxPowerLevel::kUltraLow,
                          std::move(callback));
 
   if (_fakeGNCBLEMedium.advertisementFoundHandler) {
@@ -742,7 +742,7 @@ static const char *const kTestServiceID = "TestServiceID";
             const nearby::api::ble::BleAdvertisementData &advertisement) {
             [expectation1 fulfill];
           })};
-  _medium->StartScanning(nearby::Uuid(0, 0), nearby::api::ble::TxPowerLevel::kUltraLow,
+  _medium->StartScanning(nearby::Uuid(0x0000FE2C00001000, 0x800000805F9B34FB), nearby::api::ble::TxPowerLevel::kUltraLow,
                          std::move(callback1));
   if (_fakeGNCBLEMedium.advertisementFoundHandler) {
     _fakeGNCBLEMedium.advertisementFoundHandler(fakePeripheral, serviceData1);
@@ -766,7 +766,7 @@ static const char *const kTestServiceID = "TestServiceID";
                                   serviceData2[[CBUUID UUIDWithString:kTestServiceUUIDString]]);
             [expectation2 fulfill];
           })};
-  _medium->StartScanning(nearby::Uuid(0, 0), nearby::api::ble::TxPowerLevel::kUltraLow,
+  _medium->StartScanning(nearby::Uuid(0x0000FE2C00001000, 0x800000805F9B34FB), nearby::api::ble::TxPowerLevel::kUltraLow,
                          std::move(callback2));
 
   if (_fakeGNCBLEMedium.advertisementFoundHandler) {
@@ -799,7 +799,7 @@ static const char *const kTestServiceID = "TestServiceID";
               [expectation2 fulfill];
             }
           })};
-  _medium->StartScanning(nearby::Uuid(0, 0), nearby::api::ble::TxPowerLevel::kUltraLow,
+  _medium->StartScanning(nearby::Uuid(0x0000FE2C00001000, 0x800000805F9B34FB), nearby::api::ble::TxPowerLevel::kUltraLow,
                          std::move(callback));
   if (_fakeGNCBLEMedium.advertisementFoundHandler) {
     _fakeGNCBLEMedium.advertisementFoundHandler(fakePeripheral, serviceData);
@@ -826,7 +826,7 @@ static const char *const kTestServiceID = "TestServiceID";
             const nearby::api::ble::BleAdvertisementData &advertisement) {
             [expectation1 fulfill];
           })};
-  _medium->StartScanning(nearby::Uuid(0, 0), nearby::api::ble::TxPowerLevel::kUltraLow,
+  _medium->StartScanning(nearby::Uuid(0x0000FE2C00001000, 0x800000805F9B34FB), nearby::api::ble::TxPowerLevel::kUltraLow,
                          std::move(callback1));
   if (_fakeGNCBLEMedium.advertisementFoundHandler) {
     _fakeGNCBLEMedium.advertisementFoundHandler(fakePeripheral, serviceData);
@@ -843,7 +843,7 @@ static const char *const kTestServiceID = "TestServiceID";
             const nearby::api::ble::BleAdvertisementData &advertisement) {
             [expectation2 fulfill];
           })};
-  _medium->StartScanning(nearby::Uuid(0, 0), nearby::api::ble::TxPowerLevel::kUltraLow,
+  _medium->StartScanning(nearby::Uuid(0x0000FE2C00001000, 0x800000805F9B34FB), nearby::api::ble::TxPowerLevel::kUltraLow,
                          std::move(callback2));
 
   if (_fakeGNCBLEMedium.advertisementFoundHandler) {

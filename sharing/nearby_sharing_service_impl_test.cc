@@ -4673,6 +4673,34 @@ TEST_F(NearbySharingServiceImplTest, ScreenLocksDuringAdvertising) {
   EXPECT_FALSE(fake_nearby_connections_manager_->is_shutdown());
 }
 
+TEST_F(NearbySharingServiceImplTest,
+       ScreenLocksDuringAdvertisingWithBackupAndSyncBindings) {
+  // Enable Backup flag.
+  NearbyFlags::GetInstance().OverrideBoolFlagValue(
+      config_package_nearby::nearby_sharing_feature::kEnableBackup, true);
+
+  // Add SyncBindings.
+  nearby::sharing::sync::SyncBindingPrefs sync_binding_prefs;
+  auto* binding = sync_binding_prefs.add_sync_bindings();
+  binding->set_binding_id("test_binding_id");
+  service_->GetSettings()->SetSyncBindingPrefs(sync_binding_prefs);
+
+  SetLanConnected(true);
+  SetVisibility(DeviceVisibility::DEVICE_VISIBILITY_ALL_CONTACTS);
+  MockTransferUpdateCallback callback;
+  NearbySharingService::StatusCodes result = RegisterReceiveSurface(
+      &callback, NearbySharingService::ReceiveSurfaceState::kForeground);
+  EXPECT_EQ(result, NearbySharingService::StatusCodes::kOk);
+  ScopedReceiveSurface r(service_.get(), &callback);
+  EXPECT_TRUE(fake_nearby_connections_manager_->IsAdvertising());
+  EXPECT_FALSE(fake_nearby_connections_manager_->is_shutdown());
+
+  // Screen locks, but we should STILL be advertising.
+  SetScreenLocked(true);
+  EXPECT_TRUE(fake_nearby_connections_manager_->IsAdvertising());
+  EXPECT_FALSE(fake_nearby_connections_manager_->is_shutdown());
+}
+
 TEST_F(NearbySharingServiceImplTest, ScreenLocksDuringDiscovery) {
   SetLanConnected(true);
   MockTransferUpdateCallback transfer_callback;
@@ -5186,6 +5214,7 @@ TEST_F(NearbySharingServiceImplTest,
   EXPECT_EQ(frame->v1().bindings().binding_request().binding_id(), kBindingId);
   EXPECT_EQ(frame->v1().bindings().binding_request().type(),
             service::proto::BindingRequest::FILESYNC);
+  EXPECT_EQ(frame->v1().bindings().binding_request().cert_ids_size(), 2);
 
   // BindingResponse frame timeout.
   FastForward(absl::Seconds(60));
