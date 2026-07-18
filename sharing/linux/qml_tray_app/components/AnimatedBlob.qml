@@ -353,7 +353,7 @@ Item {
 
             Label {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: incomingHeadline(String(incomingTransfer.status || ""))
+                text: incomingHeadline(incomingTransfer ? String(incomingTransfer.status || "") : "")
                 font.pixelSize: 12
                 font.weight: Font.DemiBold
                 color: "#059669"
@@ -367,8 +367,8 @@ Item {
 
             Label {
                 width: parent.width
-                visible: String(incomingTransfer.fileName || "").length > 0
-                text: String(incomingTransfer.fileName || "")
+                visible: incomingTransfer !== null && String(incomingTransfer.fileName || "").length > 0
+                text: incomingTransfer ? String(incomingTransfer.fileName || "") : ""
                 font.pixelSize: 13
                 font.weight: Font.StyleItalic
                 color: textPrimary

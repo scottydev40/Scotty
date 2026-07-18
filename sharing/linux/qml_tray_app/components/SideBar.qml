@@ -47,8 +47,11 @@ Item {
                         Layout.fillWidth: true
                         text: !fileShareController.running
                               ? "Inactive"
-                              : fileShareController.mode === "Send" ? "Discovering" : "Always visible"
+                              : fileShareController.mode === "Send"
+                                ? "Discovering"
+                                : "Receiving as “" + fileShareController.deviceName + "”"
                         font.weight: Font.Medium
+                        elide: Text.ElideRight
                         color: textPrimary
                     }
                 }

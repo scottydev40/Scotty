@@ -51,6 +51,24 @@ Item {
     readonly property color ringColor: isTransferComplete ? ringComplete
                                         : isTransferFailed ? ringFailed
                                         : ringActive
+    readonly property string statusText: {
+        if (!hasTransfer)
+            return canSend ? "Tap to send" : ""
+        switch (transferStatus) {
+        case "Queued": return "Queued…"
+        case "Connecting": return "Connecting…"
+        case "AwaitingLocalConfirmation": return "Confirm on this device…"
+        case "AwaitingRemoteAcceptance": return "Waiting for them to accept…"
+        case "InProgress":
+            var pct = Math.round(transferProgress * 100)
+            return pct > 0 ? "Sending… " + pct + "%" : "Sending…"
+        case "Complete": return "Sent"
+        default: return "Couldn't send — tap to retry"
+        }
+    }
+    readonly property color statusColor: isTransferFailed ? ringFailed
+                                          : isTransferComplete ? ringComplete
+                                          : textMuted
 
     function initialLetter(label) {
         if (!label || label.length === 0) return "?"
@@ -176,8 +194,11 @@ Item {
             MouseArea {
                 anchors.fill: parent
                 cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                enabled: canSend
-                onClicked: fileShareController.sendPendingFileToTarget(modelData.id)
+                enabled: canSend && (!hasTransfer || isTransferFailed || isTransferComplete)
+                onClicked: {
+                    if (modelData)
+                        fileShareController.sendPendingFileToTarget(modelData.id)
+                }
             }
         }
 
@@ -192,6 +213,19 @@ Item {
             maximumLineCount: 2
             wrapMode: Text.Wrap
             color: textPrimary
+        }
+
+        Label {
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            visible: statusText.length > 0
+            text: statusText
+            font.pixelSize: 11
+            elide: Text.ElideRight
+            maximumLineCount: 2
+            wrapMode: Text.Wrap
+            color: statusColor
         }
     }
 
