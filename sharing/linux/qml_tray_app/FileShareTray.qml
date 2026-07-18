@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Dialogs
 
 import "components"
 
@@ -55,6 +56,49 @@ ApplicationWindow {
                 // ── Idle: animated blob ───────────────────────────────────
                 AnimatedBlob { visible: !mainContent.isSendMode }
 
+                FileDialog {
+                    id: sendFileDialog
+                    title: "Select a file to send"
+                    onAccepted: {
+                        const path = selectedFile.toString().replace(/^file:\/\//, "")
+                        fileShareController.switchToSendModeWithFile(path)
+                    }
+                }
+
+                ColumnLayout {
+                    visible: !mainContent.isSendMode
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 56
+                    spacing: 8
+                    z: 1
+
+                    Button {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: "Select a file to send"
+                        font.pixelSize: 15
+                        padding: 14
+                        background: Rectangle {
+                            radius: 22
+                            color: parent.down ? "#15803d" : parent.hovered ? "#16a34a" : "#22c55e"
+                        }
+                        contentItem: Label {
+                            text: parent.text
+                            font: parent.font
+                            color: "#ffffff"
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+                        onClicked: sendFileDialog.open()
+                    }
+
+                    Label {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: "or drop a file anywhere in this window"
+                        font.pixelSize: 12
+                        color: "#6b7280"
+                    }
+                }
+
                 // ── Non-idle: scrollable device + transfer cards ──────────
                 Flickable {
                     id: mainFlickable
@@ -103,6 +147,34 @@ ApplicationWindow {
                             }
                         }
 
+                        TransferList {
+                            Layout.fillWidth: true
+                            Layout.topMargin: 16
+                        }
+
+                    }
+                }
+
+                // ── Idle: recent/incoming transfers over the blob ─────────
+                Flickable {
+                    visible: !mainContent.isSendMode
+                             && fileShareController.transfers.length > 0
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.topMargin: 48
+                    anchors.leftMargin: 48
+                    anchors.rightMargin: 48
+                    height: Math.min(idleTransferList.implicitHeight,
+                                     parent.height * 0.5)
+                    contentWidth: width
+                    contentHeight: idleTransferList.implicitHeight
+                    clip: true
+                    z: 1
+
+                    TransferList {
+                        id: idleTransferList
+                        width: parent.width
                     }
                 }
 
