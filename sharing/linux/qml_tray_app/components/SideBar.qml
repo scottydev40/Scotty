@@ -100,7 +100,11 @@ Item {
                 Layout.leftMargin: 12
                 Layout.topMargin: 16
                 Layout.bottomMargin: 8
-                text: "Sharing 1 file"
+                text: {
+                    const n = fileShareController.pendingSendFileCount
+                    return n === 1 ? "Sharing 1 file"
+                                   : "Sharing " + n + " files"
+                }
                 font.weight: Font.Medium
                 color: textPrimary
             }
@@ -114,12 +118,15 @@ Item {
 
                 Label {
                     anchors.centerIn: parent
-                    text: "📄"
+                    text: fileShareController.pendingSendFileCount > 1 ? "🗂" : "📄"
                     font.pixelSize: 28
                 }
             }
 
+            // File name(s). Single file shows inline; multiple files list in a
+            // capped, scrollable column.
             Label {
+                visible: fileShareController.pendingSendFileCount <= 1
                 Layout.fillWidth: true
                 Layout.leftMargin: 12
                 Layout.topMargin: 8
@@ -128,6 +135,36 @@ Item {
                 elide: Text.ElideRight
                 font.pixelSize: 13
                 color: textMuted
+            }
+
+            Flickable {
+                visible: fileShareController.pendingSendFileCount > 1
+                Layout.fillWidth: true
+                Layout.leftMargin: 12
+                Layout.topMargin: 8
+                Layout.rightMargin: 12
+                Layout.preferredHeight: Math.min(nameCol.implicitHeight, 140)
+                contentWidth: width
+                contentHeight: nameCol.implicitHeight
+                clip: true
+                ScrollBar.vertical: ScrollBar {}
+
+                Column {
+                    id: nameCol
+                    width: parent.width
+                    spacing: 2
+
+                    Repeater {
+                        model: fileShareController.pendingSendFileNames
+                        delegate: Label {
+                            width: nameCol.width
+                            text: "• " + modelData
+                            elide: Text.ElideRight
+                            font.pixelSize: 13
+                            color: textMuted
+                        }
+                    }
+                }
             }
 
             Label {
@@ -146,10 +183,12 @@ Item {
 
         FileDialog {
             id: anotherFileDialog
-            title: "Select a file to send"
+            title: "Select file(s) to send"
+            fileMode: FileDialog.OpenFiles
             onAccepted: {
-                const path = selectedFile.toString().replace(/^file:\/\//, "")
-                fileShareController.switchToSendModeWithFile(path)
+                const paths = selectedFiles.map(
+                    u => u.toString().replace(/^file:\/\//, ""))
+                fileShareController.switchToSendModeWithFiles(paths)
             }
         }
 

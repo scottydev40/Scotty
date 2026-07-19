@@ -58,10 +58,12 @@ ApplicationWindow {
 
                 FileDialog {
                     id: sendFileDialog
-                    title: "Select a file to send"
+                    title: "Select file(s) to send"
+                    fileMode: FileDialog.OpenFiles
                     onAccepted: {
-                        const path = selectedFile.toString().replace(/^file:\/\//, "")
-                        fileShareController.switchToSendModeWithFile(path)
+                        const paths = selectedFiles.map(
+                            u => u.toString().replace(/^file:\/\//, ""))
+                        fileShareController.switchToSendModeWithFiles(paths)
                     }
                 }
 
@@ -171,8 +173,9 @@ ApplicationWindow {
 
                     onDropped: function(drop) {
                         if (drop.hasUrls && drop.urls.length > 0) {
-                            const path = drop.urls[0].toString().replace(/^file:\/\//, "")
-                            fileShareController.switchToSendModeWithFile(path)
+                            const paths = drop.urls.map(
+                                u => u.toString().replace(/^file:\/\//, ""))
+                            fileShareController.switchToSendModeWithFiles(paths)
                         }
                     }
 

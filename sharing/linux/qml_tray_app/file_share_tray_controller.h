@@ -17,6 +17,8 @@ class FileShareTrayController : public QObject {
   Q_PROPERTY(bool running READ running NOTIFY runningChanged)
   Q_PROPERTY(QString pendingSendFileName READ pendingSendFileName NOTIFY pendingSendFileNameChanged)
   Q_PROPERTY(QString pendingSendFilePath READ pendingSendFilePath NOTIFY pendingSendFilePathChanged)
+  Q_PROPERTY(QStringList pendingSendFileNames READ pendingSendFileNames NOTIFY pendingSendFilePathChanged)
+  Q_PROPERTY(int pendingSendFileCount READ pendingSendFileCount NOTIFY pendingSendFilePathChanged)
   Q_PROPERTY(QVariantList discoveredTargets READ discoveredTargets NOTIFY discoveredTargetsChanged)
   Q_PROPERTY(QVariantList transfers READ transfers NOTIFY transfersChanged)
   Q_PROPERTY(bool autoAcceptIncoming READ autoAcceptIncoming WRITE setAutoAcceptIncoming NOTIFY autoAcceptIncomingChanged)
@@ -39,6 +41,8 @@ class FileShareTrayController : public QObject {
   bool running() const { return state_.running(); }
   QString pendingSendFileName() const { return state_.pendingSendFileName(); }
   QString pendingSendFilePath() const { return state_.pendingSendFilePath(); }
+  QStringList pendingSendFileNames() const { return state_.pendingSendFileNames(); }
+  int pendingSendFileCount() const { return state_.pendingSendFileCount(); }
   QVariantList discoveredTargets() const { return state_.discoveredTargets(); }
   QVariantList transfers() const { return state_.transfers(); }
   bool autoAcceptIncoming() const { return state_.autoAcceptIncoming(); }
@@ -62,6 +66,7 @@ class FileShareTrayController : public QObject {
   Q_INVOKABLE void stop();
   Q_INVOKABLE void switchToReceiveMode();
   Q_INVOKABLE void switchToSendModeWithFile(const QString& file_path);
+  Q_INVOKABLE void switchToSendModeWithFiles(const QStringList& file_paths);
   Q_INVOKABLE void sendPendingFileToTarget(qlonglong share_target_id);
   Q_INVOKABLE void copyTextToClipboard(const QString& text);
   Q_INVOKABLE void openFileLocation(const QString& file_path);
