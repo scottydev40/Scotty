@@ -120,7 +120,16 @@ ColumnLayout {
 
     Label {
         Layout.alignment: Qt.AlignHCenter
-        text: root.fileName.length > 0 ? "Sending: " + root.fileName : ""
+        Layout.fillWidth: true
+        horizontalAlignment: Text.AlignHCenter
+        wrapMode: Text.Wrap
+        text: {
+            if (root.fileName.length === 0)
+                return ""
+            const n = fileShareController.pendingSendFileCount
+            return n > 1 ? "Sending: " + root.fileName + " +" + (n - 1) + " more"
+                         : "Sending: " + root.fileName
+        }
         font.pixelSize: compact ? 12 : 13
         color: "#6b7280"
         visible: text.length > 0
