@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Dialogs
 
 Drawer {
     id: root
@@ -203,6 +204,15 @@ Drawer {
                             text: "Experimental. Save folder for received files (blank = default). QR/WebRTC sharing is not supported on Linux."
                         }
 
+                        FolderDialog {
+                            id: saveFolderDialog
+                            title: "Choose save folder for received files"
+                            onAccepted: {
+                                fileShareController.savePath =
+                                    selectedFolder.toString().replace(/^file:\/\//, "")
+                            }
+                        }
+
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 10
@@ -212,10 +222,30 @@ Drawer {
                                 color: root.textMuted
                                 Layout.preferredWidth: 110
                             }
-                            ThemedField {
+                            Label {
+                                Layout.fillWidth: true
+                                elide: Text.ElideMiddle
                                 font.pixelSize: 11
-                                text: fileShareController.savePath
-                                onEditingFinished: fileShareController.savePath = text
+                                color: root.textPrimary
+                                text: fileShareController.savePath.length > 0
+                                      ? fileShareController.savePath
+                                      : "Default (~/Downloads)"
+                            }
+                            Button {
+                                text: "Browse…"
+                                font.pixelSize: 11
+                                padding: 8
+                                background: Rectangle {
+                                    radius: 8
+                                    color: parent.down ? "#15803d"
+                                           : parent.hovered ? "#16a34a" : "#22c55e"
+                                }
+                                contentItem: Label {
+                                    text: parent.text
+                                    font: parent.font
+                                    color: "#ffffff"
+                                }
+                                onClicked: saveFolderDialog.open()
                             }
                         }
 

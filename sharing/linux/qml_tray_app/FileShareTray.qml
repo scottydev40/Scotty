@@ -156,30 +156,6 @@ ApplicationWindow {
                     }
                 }
 
-                // ── Idle: incoming/recent transfers, below the headline ───
-                Flickable {
-                    visible: !mainContent.isSendMode
-                             && fileShareController.transfers.length > 0
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    anchors.topMargin: 92
-                    anchors.leftMargin: 48
-                    anchors.rightMargin: 48
-                    anchors.bottomMargin: 48
-                    contentWidth: width
-                    contentHeight: idleTransferList.implicitHeight
-                    clip: true
-                    z: 1
-                    ScrollBar.vertical: ScrollBar {}
-
-                    TransferList {
-                        id: idleTransferList
-                        width: parent.width
-                    }
-                }
-
                 // ── Drop a file anywhere → switch to send mode ────────────
                 DropArea {
                     id: dropArea
