@@ -179,7 +179,155 @@ Item {
             }
         }
 
-        Item { Layout.fillHeight: true }
+        // ── This-session transfer history (scrollable, fills the middle) ──
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.topMargin: 16
+            Layout.leftMargin: 12
+            Layout.rightMargin: 12
+            spacing: 8
+            visible: fileShareController.transfers.length > 0
+
+            RowLayout {
+                Layout.fillWidth: true
+                Label {
+                    Layout.fillWidth: true
+                    text: "This session"
+                    font.pixelSize: 13
+                    font.weight: Font.Medium
+                    color: textMuted
+                }
+                Label {
+                    text: "Clear"
+                    font.pixelSize: 12
+                    color: textMuted
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -6
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: fileShareController.clearTransfers()
+                    }
+                }
+            }
+
+            Flickable {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                contentWidth: width
+                contentHeight: histCol.implicitHeight
+                clip: true
+                ScrollBar.vertical: ScrollBar {}
+
+                Column {
+                    id: histCol
+                    width: parent.width
+                    spacing: 8
+
+                    Repeater {
+                        model: fileShareController.transfers
+                        delegate: Rectangle {
+                            id: histCard
+                            required property var modelData
+                            width: histCol.width
+                            height: histRow.implicitHeight + 20
+                            radius: 10
+                            color: surface
+                            border.color: "#e5e7eb"
+
+                            function isActive(s) {
+                                return s === "InProgress" || s === "Queued"
+                                    || s === "Connecting"
+                                    || s === "AwaitingLocalConfirmation"
+                                    || s === "AwaitingRemoteAcceptance"
+                            }
+                            function statusText(m) {
+                                const s = String(m.status || "")
+                                const inc = String(m.direction || "") === "incoming"
+                                switch (s) {
+                                case "Queued": return "Queued…"
+                                case "Connecting": return "Connecting…"
+                                case "AwaitingLocalConfirmation": return "Waiting to accept…"
+                                case "AwaitingRemoteAcceptance": return "Waiting for them…"
+                                case "InProgress": {
+                                    const p = Math.round(Number(m.progress || 0) * 100)
+                                    const v = inc ? "Receiving" : "Sending"
+                                    return p > 0 ? v + "… " + p + "%" : v + "…"
+                                }
+                                case "Complete": return inc ? "Received" : "Sent"
+                                default: return "Failed"
+                                }
+                            }
+
+                            ColumnLayout {
+                                id: histRow
+                                anchors.fill: parent
+                                anchors.margins: 10
+                                spacing: 4
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    Label {
+                                        text: String(modelData.direction) === "incoming" ? "↓" : "↑"
+                                        font.pixelSize: 15
+                                        font.weight: Font.Bold
+                                        color: String(modelData.status) === "Complete" ? "#16a34a"
+                                               : histCard.isActive(String(modelData.status)) ? textMuted : "#ef4444"
+                                    }
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: {
+                                            const f = String(modelData.fileName || "")
+                                            return f.length > 0 ? f : "File transfer"
+                                        }
+                                        font.pixelSize: 13
+                                        font.weight: Font.Medium
+                                        elide: Text.ElideMiddle
+                                        color: textPrimary
+                                    }
+                                }
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: {
+                                        const who = String(modelData.targetName || "")
+                                        const st = histCard.statusText(modelData)
+                                        const dir = String(modelData.direction) === "incoming" ? "from " : "to "
+                                        return who.length > 0 ? st + " · " + dir + who : st
+                                    }
+                                    font.pixelSize: 11
+                                    elide: Text.ElideRight
+                                    color: String(modelData.status) === "Complete" ? "#16a34a"
+                                           : histCard.isActive(String(modelData.status)) ? textMuted : "#ef4444"
+                                }
+
+                                Label {
+                                    visible: String(modelData.status) === "Complete"
+                                             && String(modelData.direction) === "incoming"
+                                             && String(modelData.filePath || "").length > 0
+                                    text: "Open folder"
+                                    font.pixelSize: 11
+                                    font.weight: Font.Medium
+                                    color: "#16a34a"
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        anchors.margins: -6
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: fileShareController.openFileLocation(String(modelData.filePath))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Item {
+            Layout.fillHeight: true
+            visible: fileShareController.transfers.length === 0
+        }
 
         FileDialog {
             id: anotherFileDialog
@@ -243,7 +391,14 @@ Item {
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: fileShareController.switchToReceiveMode()
+                    onClicked: {
+                        // "Done" ends the session view: leave send mode and wipe
+                        // the session transfer history. "Cancel" (active send) just
+                        // leaves send mode without clearing.
+                        if (!sendActive)
+                            fileShareController.clearTransfers()
+                        fileShareController.switchToReceiveMode()
+                    }
                 }
             }
         }

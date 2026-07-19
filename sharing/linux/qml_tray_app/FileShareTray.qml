@@ -119,7 +119,7 @@ ApplicationWindow {
                         width: mainFlickable.width - 96
                         spacing: 32
 
-                        // ── Left: nearby devices + transfers (actionable) ──
+                        // ── Left: nearby devices (progress shown on each card) ──
                         ColumnLayout {
                             Layout.fillWidth: true
                             Layout.alignment: Qt.AlignTop
@@ -147,11 +147,6 @@ ApplicationWindow {
                                         delegate: DeviceCard {}
                                     }
                                 }
-                            }
-
-                            TransferList {
-                                Layout.fillWidth: true
-                                Layout.topMargin: 8
                             }
                         }
 
