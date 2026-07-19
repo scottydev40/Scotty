@@ -480,10 +480,24 @@ void FileShareTrayController::switchToReceiveMode() {
 }
 
 void FileShareTrayController::switchToSendModeWithFile(const QString& file_path) {
-  const QString trimmed_path = file_path.trimmed();
-  QFileInfo info(trimmed_path);
+  switchToSendModeWithFiles(QStringList{file_path});
+}
 
-  if (trimmed_path.isEmpty() || !info.exists() || !info.isFile()) {
+void FileShareTrayController::switchToSendModeWithFiles(
+    const QStringList& file_paths) {
+  QStringList paths;
+  QStringList names;
+  for (const QString& raw : file_paths) {
+    const QString trimmed_path = raw.trimmed();
+    QFileInfo info(trimmed_path);
+    if (trimmed_path.isEmpty() || !info.exists() || !info.isFile()) {
+      continue;
+    }
+    paths.append(info.absoluteFilePath());
+    names.append(info.fileName());
+  }
+
+  if (paths.isEmpty()) {
     setStatus(QStringLiteral("Selected file is not valid"));
     emit requestTrayMessage(QStringLiteral("Send canceled"),
                             QStringLiteral("Please choose a valid file."));
@@ -496,7 +510,7 @@ void FileShareTrayController::switchToSendModeWithFile(const QString& file_path)
   state_.ClearFinishedTransfers();
   emit transfersChanged();
 
-  state_.SetPendingSendFile(info.absoluteFilePath(), info.fileName(), 0);
+  state_.SetPendingSendFiles(paths, names, 0);
   emit pendingSendFilePathChanged();
   emit pendingSendFileNameChanged();
 
@@ -510,11 +524,14 @@ void FileShareTrayController::switchToSendModeWithFile(const QString& file_path)
     emit modeChanged();
   }
 
+  const QString summary = paths.size() == 1
+      ? names.first()
+      : QStringLiteral("%1 files").arg(paths.size());
   setStatus(QStringLiteral("Discovery started. Choose a nearby device."));
   emit requestTrayMessage(
       QStringLiteral("Send mode"),
       QStringLiteral("Selected %1. Choose a nearby device to send.")
-          .arg(info.fileName()));
+          .arg(summary));
 }
 
 void FileShareTrayController::sendPendingFileToTarget(qlonglong share_target_id) {
@@ -522,10 +539,16 @@ void FileShareTrayController::sendPendingFileToTarget(qlonglong share_target_id)
     return;
   }
 
-  const QString file_path = state_.pendingSendFilePath();
-  QFileInfo file_info(file_path);
+  const QStringList file_paths = state_.pendingSendFilePaths();
+  std::vector<std::string> valid_paths;
+  for (const QString& path : file_paths) {
+    QFileInfo info(path);
+    if (!path.isEmpty() && info.exists() && info.isFile()) {
+      valid_paths.push_back(info.absoluteFilePath().toStdString());
+    }
+  }
 
-  if (file_path.isEmpty() || !file_info.exists() || !file_info.isFile()) {
+  if (valid_paths.empty()) {
     setStatus(QStringLiteral("Selected file is not available"));
     emit requestTrayMessage(QStringLiteral("Send failed"),
                             QStringLiteral("Selected file is not available."));
@@ -533,15 +556,20 @@ void FileShareTrayController::sendPendingFileToTarget(qlonglong share_target_id)
   }
 
   const QString target_name = state_.GetTargetName(share_target_id);
-  state_.SetPendingSendFile(file_path, file_info.fileName(), share_target_id);
+  state_.SetPendingSendFiles(state_.pendingSendFilePaths(),
+                             state_.pendingSendFileNames(), share_target_id);
 
+  // One transfer row represents the whole set; label reflects the count.
+  const QString row_name = file_paths.size() == 1
+      ? state_.pendingSendFileName()
+      : QStringLiteral("%1 files").arg(file_paths.size());
   state_.AddOrUpdateTransfer(share_target_id, target_name, QStringLiteral("Queued"), 0.0, 0,
-                             QStringLiteral("outgoing"), file_info.fileName(),
-                             file_info.absoluteFilePath());
+                             QStringLiteral("outgoing"), row_name,
+                             state_.pendingSendFilePath());
   emit transfersChanged();
 
-  service_->SendFile(
-      share_target_id, file_info.absoluteFilePath().toStdString(),
+  service_->SendFiles(
+      share_target_id, valid_paths,
       [this, share_target_id](NearbySharingApi::StatusCode status) {
         QMetaObject::invokeMethod(
             this,

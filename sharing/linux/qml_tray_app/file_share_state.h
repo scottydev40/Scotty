@@ -26,6 +26,12 @@ class FileShareState {
   QString pendingSendFilePath() const { return pending_send_file_path_; }
   qlonglong pendingSendTargetId() const { return pending_send_target_id_; }
 
+  // Full staged set for multi-file send. The singular getters above return the
+  // first entry so existing single-file bindings keep working.
+  QStringList pendingSendFilePaths() const { return pending_send_file_paths_; }
+  QStringList pendingSendFileNames() const { return pending_send_file_names_; }
+  int pendingSendFileCount() const { return pending_send_file_paths_.size(); }
+
   QVariantList discoveredTargets() const { return discovered_targets_; }
   QVariantList transfers() const { return transfers_; }
 
@@ -50,11 +56,30 @@ class FileShareState {
     pending_send_file_path_ = file_path;
     pending_send_file_name_ = file_name;
     pending_send_target_id_ = target_id;
+    if (file_path.isEmpty()) {
+      pending_send_file_paths_.clear();
+      pending_send_file_names_.clear();
+    } else {
+      pending_send_file_paths_ = QStringList{file_path};
+      pending_send_file_names_ = QStringList{file_name};
+    }
+  }
+
+  void SetPendingSendFiles(const QStringList& file_paths,
+                           const QStringList& file_names,
+                           qlonglong target_id) {
+    pending_send_file_paths_ = file_paths;
+    pending_send_file_names_ = file_names;
+    pending_send_file_path_ = file_paths.isEmpty() ? QString() : file_paths.first();
+    pending_send_file_name_ = file_names.isEmpty() ? QString() : file_names.first();
+    pending_send_target_id_ = target_id;
   }
 
   void ClearPendingSendFile() {
     pending_send_file_path_.clear();
     pending_send_file_name_.clear();
+    pending_send_file_paths_.clear();
+    pending_send_file_names_.clear();
     pending_send_target_id_ = 0;
   }
 
@@ -115,6 +140,8 @@ class FileShareState {
   // Pending send state
   QString pending_send_file_path_;
   QString pending_send_file_name_;
+  QStringList pending_send_file_paths_;
+  QStringList pending_send_file_names_;
   qlonglong pending_send_target_id_ = 0;
 
   // Discovered targets

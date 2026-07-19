@@ -108,6 +108,9 @@ class __attribute__((visibility("default"))) NearbySharingApi {
 
   void SendFile(int64_t share_target_id, const std::string& file_path,
                 std::function<void(StatusCode)> callback);
+  void SendFiles(int64_t share_target_id,
+                 const std::vector<std::string>& file_paths,
+                 std::function<void(StatusCode)> callback);
   void Accept(int64_t share_target_id, std::function<void(StatusCode)> callback);
   void Reject(int64_t share_target_id, std::function<void(StatusCode)> callback);
   void Cancel(int64_t share_target_id, std::function<void(StatusCode)> callback);

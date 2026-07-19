@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <openssl/bn.h>
 #include <openssl/ec.h>
@@ -481,34 +482,52 @@ void NearbySharingApi::StopReceiveMode(std::function<void(StatusCode)> callback)
 void NearbySharingApi::SendFile(int64_t share_target_id,
                                 const std::string& file_path,
                                 std::function<void(StatusCode)> callback) {
+  SendFiles(share_target_id, std::vector<std::string>{file_path},
+            std::move(callback));
+}
+
+void NearbySharingApi::SendFiles(int64_t share_target_id,
+                                 const std::vector<std::string>& file_paths,
+                                 std::function<void(StatusCode)> callback) {
   if (impl_->service == nullptr) {
     if (callback) {
       callback(StatusCode::kError);
     }
     return;
   }
-  if (file_path.empty()) {
+  if (file_paths.empty()) {
     if (callback) {
       callback(StatusCode::kInvalidArgument);
     }
     return;
   }
 
-  FilePath path(file_path);
-  std::optional<uintmax_t> file_size = nearby::Files::GetFileSize(path);
-  if (!file_size.has_value() || *file_size == 0 ||
-      *file_size >
-          static_cast<uintmax_t>(std::numeric_limits<int64_t>::max())) {
-    if (callback) {
-      callback(StatusCode::kInvalidArgument);
-    }
-    return;
-  }
-
+  // Bundle every requested file into a single AttachmentContainer so the whole
+  // set is delivered as one Quick Share session, matching the multi-file
+  // behavior of the Android/Windows clients.
   nearby::sharing::AttachmentContainer::Builder builder;
-  nearby::sharing::FileAttachment attachment(path);
-  attachment.set_size(static_cast<int64_t>(*file_size));
-  builder.AddFileAttachment(std::move(attachment));
+  for (const std::string& file_path : file_paths) {
+    if (file_path.empty()) {
+      if (callback) {
+        callback(StatusCode::kInvalidArgument);
+      }
+      return;
+    }
+    FilePath path(file_path);
+    std::optional<uintmax_t> file_size = nearby::Files::GetFileSize(path);
+    if (!file_size.has_value() || *file_size == 0 ||
+        *file_size >
+            static_cast<uintmax_t>(std::numeric_limits<int64_t>::max())) {
+      if (callback) {
+        callback(StatusCode::kInvalidArgument);
+      }
+      return;
+    }
+    nearby::sharing::FileAttachment attachment(path);
+    attachment.set_size(static_cast<int64_t>(*file_size));
+    builder.AddFileAttachment(std::move(attachment));
+  }
+
   std::unique_ptr<nearby::sharing::AttachmentContainer> attachments =
       builder.Build();
   if (!attachments || !attachments->HasAttachments()) {
