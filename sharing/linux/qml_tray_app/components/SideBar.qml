@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Dialogs
 
 Item {
     Layout.preferredWidth: 280
@@ -10,6 +11,22 @@ Item {
     readonly property color cardBorder: "#bbf7d0"
     readonly property color textPrimary: "#111827"
     readonly property color textMuted: "#6b7280"
+
+    // True while an outgoing transfer is still active (not yet sent/failed).
+    readonly property bool sendActive: {
+        const list = fileShareController.transfers
+        for (var i = 0; i < list.length; ++i) {
+            const t = list[i]
+            if (String(t.direction) !== "outgoing")
+                continue
+            const s = String(t.status)
+            if (s === "InProgress" || s === "Queued" || s === "Connecting"
+                || s === "AwaitingLocalConfirmation"
+                || s === "AwaitingRemoteAcceptance")
+                return true
+        }
+        return false
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -127,29 +144,68 @@ Item {
 
         Item { Layout.fillHeight: true }
 
-        // Cancel (only visible in send mode)
-        Rectangle {
+        FileDialog {
+            id: anotherFileDialog
+            title: "Select a file to send"
+            onAccepted: {
+                const path = selectedFile.toString().replace(/^file:\/\//, "")
+                fileShareController.switchToSendModeWithFile(path)
+            }
+        }
+
+        // Send-mode actions
+        ColumnLayout {
             visible: fileShareController.pendingSendFilePath.length > 0
             Layout.leftMargin: 12
+            Layout.rightMargin: 12
             Layout.bottomMargin: 12
-            height: 40
-            width: cancelLbl.implicitWidth + 24
-            radius: 12
-            color: "#f3f4f6"
-            border.color: "#d1d5db"
+            spacing: 8
 
-            Label {
-                id: cancelLbl
-                anchors.centerIn: parent
-                text: "Cancel"
-                font.weight: Font.Medium
-                color: textPrimary
+            // Primary: pick another file to send
+            Rectangle {
+                Layout.fillWidth: true
+                height: 42
+                radius: 12
+                color: anotherArea.containsMouse
+                       ? (anotherArea.pressed ? "#047857" : "#059669")
+                       : "#10b981"
+
+                Label {
+                    anchors.centerIn: parent
+                    text: "Send another file"
+                    font.weight: Font.Medium
+                    color: "#ffffff"
+                }
+
+                MouseArea {
+                    id: anotherArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: anotherFileDialog.open()
+                }
             }
 
-            MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: fileShareController.switchToReceiveMode()
+            // Secondary: leave send mode (label reflects transfer state)
+            Rectangle {
+                Layout.fillWidth: true
+                height: 40
+                radius: 12
+                color: "#f3f4f6"
+                border.color: "#d1d5db"
+
+                Label {
+                    anchors.centerIn: parent
+                    text: sendActive ? "Cancel" : "Done"
+                    font.weight: Font.Medium
+                    color: textPrimary
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: fileShareController.switchToReceiveMode()
+                }
             }
         }
     }

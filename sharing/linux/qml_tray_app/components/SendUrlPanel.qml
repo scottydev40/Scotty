@@ -15,12 +15,12 @@ ColumnLayout {
     readonly property color qrInk: "#14532d"
     readonly property color accentSoft: "#d1fae5"
     readonly property color accentStrong: "#34d399"
-    readonly property bool compact: width < 360
-    readonly property real qrFrameSize: 360
+    property real qrFrameSize: 360
+    readonly property bool compact: qrFrameSize < 300
     readonly property real qrInnerSize: qrFrameSize - (compact ? 34 : 42)
 
     spacing: compact ? 14 : 18
-    implicitWidth: 420
+    implicitWidth: qrFrameSize + 10
 
     Label {
         Layout.alignment: Qt.AlignHCenter
