@@ -231,21 +231,18 @@ Drawer {
                                       ? fileShareController.savePath
                                       : "Default (~/Downloads)"
                             }
-                            Button {
-                                text: "Browse…"
-                                font.pixelSize: 11
-                                padding: 8
-                                background: Rectangle {
-                                    radius: 8
-                                    color: parent.down ? "#15803d"
-                                           : parent.hovered ? "#16a34a" : "#22c55e"
-                                }
-                                contentItem: Label {
-                                    text: parent.text
-                                    font: parent.font
-                                    color: "#ffffff"
-                                }
+                            BrowseButton {
                                 onClicked: saveFolderDialog.open()
+                            }
+                        }
+
+                        FileDialog {
+                            id: logFileDialog
+                            title: "Choose log file"
+                            fileMode: FileDialog.SaveFile
+                            onAccepted: {
+                                fileShareController.logPath =
+                                    selectedFile.toString().replace(/^file:\/\//, "")
                             }
                         }
 
@@ -258,15 +255,38 @@ Drawer {
                                 color: root.textMuted
                                 Layout.preferredWidth: 110
                             }
-                            ThemedField {
+                            Label {
+                                Layout.fillWidth: true
+                                elide: Text.ElideMiddle
                                 font.pixelSize: 11
-                                text: fileShareController.logPath
-                                onEditingFinished: fileShareController.logPath = text
+                                color: root.textPrimary
+                                text: fileShareController.logPath.length > 0
+                                      ? fileShareController.logPath
+                                      : "Default"
+                            }
+                            BrowseButton {
+                                onClicked: logFileDialog.open()
                             }
                         }
                     }
                 }
             }
+        }
+    }
+
+    component BrowseButton: Button {
+        text: "Browse…"
+        font.pixelSize: 11
+        padding: 8
+        background: Rectangle {
+            radius: 8
+            color: parent.down ? "#047857"
+                   : parent.hovered ? "#059669" : "#10b981"
+        }
+        contentItem: Label {
+            text: parent.text
+            font: parent.font
+            color: "#ffffff"
         }
     }
 
