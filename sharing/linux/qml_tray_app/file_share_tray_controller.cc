@@ -1,5 +1,7 @@
 #include "file_share_tray_controller.h"
 
+#include <chrono>
+#include <future>
 #include <iostream>
 #include <QClipboard>
 #include <QDesktopServices>
@@ -31,7 +33,18 @@ FileShareTrayController::FileShareTrayController(QObject* parent)
 FileShareTrayController::~FileShareTrayController() {
   stop();
   if (service_) {
-    service_->Shutdown([](NearbySharingApi::StatusCode) {});
+    // Shutdown() is asynchronous: it posts a task to the service thread that
+    // still dereferences the platform/context (e.g. StopFastInitiationAdvertising
+    // -> GetFastInitiationManager). If we let service_ (and the platform it owns)
+    // destruct before that task runs, the task makes a pure-virtual call on the
+    // half-destroyed platform and aborts. Block until the shutdown callback fires
+    // (bounded) so teardown is ordered.
+    std::promise<void> shutdown_done;
+    std::future<void> done = shutdown_done.get_future();
+    service_->Shutdown([&shutdown_done](NearbySharingApi::StatusCode) {
+      shutdown_done.set_value();
+    });
+    done.wait_for(std::chrono::seconds(5));
   }
 }
 
@@ -114,6 +127,18 @@ void FileShareTrayController::handleTransferUpdate(
       state_.pendingSendTargetId() == update.share_target_id &&
       !state_.pendingSendFileName().isEmpty()) {
     file_name = state_.pendingSendFileName();
+  }
+  // Collapse a multi-attachment set into "<first> +N more" for the row label.
+  const int attachment_count =
+      update.total_attachments > 0
+          ? update.total_attachments
+          : (state_.pendingSendTargetId() == update.share_target_id
+                 ? state_.pendingSendFileCount()
+                 : 1);
+  if (attachment_count > 1 && !file_name.isEmpty()) {
+    file_name = QStringLiteral("%1 +%2 more")
+                    .arg(file_name)
+                    .arg(attachment_count - 1);
   }
 
   state_.AddOrUpdateTransfer(update.share_target_id, name, status, update.progress,
@@ -562,7 +587,9 @@ void FileShareTrayController::sendPendingFileToTarget(qlonglong share_target_id)
   // One transfer row represents the whole set; label reflects the count.
   const QString row_name = file_paths.size() == 1
       ? state_.pendingSendFileName()
-      : QStringLiteral("%1 files").arg(file_paths.size());
+      : QStringLiteral("%1 +%2 more")
+            .arg(state_.pendingSendFileName())
+            .arg(file_paths.size() - 1);
   state_.AddOrUpdateTransfer(share_target_id, target_name, QStringLiteral("Queued"), 0.0, 0,
                              QStringLiteral("outgoing"), row_name,
                              state_.pendingSendFilePath());

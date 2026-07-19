@@ -146,7 +146,13 @@ class BluetoothClassic {
 
   static constexpr int kMaxConcurrentAcceptLoops = 5;
 
-  static constexpr int kConnectAttemptsLimit = 3;
+  // On Linux/BlueZ an outgoing BR/EDR connect to an UNBONDED device that fails
+  // with `br-connection-create-socket` fails identically on every retry (it's a
+  // page/socket failure, not a transient one), so 3 attempts just burns ~15s
+  // and lets the endpoint get marked lost before the connection loop can fall
+  // through to the WIFI_LAN endpoint. Fail after a single attempt so medium
+  // fallback (and the user's retry) stay fast.
+  static constexpr int kConnectAttemptsLimit = 1;
 
   // Constructs UUID object from arbitrary string, using MD5 hash, and then
   // converts UUID to a readable UUID string and returns it.
