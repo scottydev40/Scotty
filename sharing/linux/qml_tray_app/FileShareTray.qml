@@ -67,7 +67,6 @@ ApplicationWindow {
 
                 ColumnLayout {
                     visible: !mainContent.isSendMode
-                             && fileShareController.transfers.length === 0
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: 92
@@ -81,7 +80,7 @@ ApplicationWindow {
                         padding: 14
                         background: Rectangle {
                             radius: 22
-                            color: parent.down ? "#15803d" : parent.hovered ? "#16a34a" : "#22c55e"
+                            color: parent.down ? "#047857" : parent.hovered ? "#059669" : "#10b981"
                         }
                         contentItem: Label {
                             text: parent.text
