@@ -110,48 +110,55 @@ ApplicationWindow {
                     ScrollBar.vertical: ScrollBar {}
                     z: 1
 
-                    ColumnLayout {
+                    RowLayout {
                         id: mainCol
                         x: 48
                         y: 48
                         width: mainFlickable.width - 96
-                        spacing: 16
+                        spacing: 32
 
-                        SendUrlPanel {
-                            Layout.alignment: Qt.AlignHCenter
-                            width: Math.max(240, Math.min(mainCol.width, 420))
-                        }
-
-
-                        Label {
-                            text: "Nearby devices"
-                            font.pixelSize: 20
-                            font.weight: Font.Medium
-                            color: "#111827"
-                        }
-
-                        Item {
+                        // ── Left: nearby devices + transfers (actionable) ──
+                        ColumnLayout {
                             Layout.fillWidth: true
-                            implicitHeight: deviceFlow.childrenRect.height
-                            visible: fileShareController.discoveredTargets.length > 0
+                            Layout.alignment: Qt.AlignTop
+                            spacing: 16
 
-                            Flow {
-                                id: deviceFlow
-                                width: parent.width
-                                spacing: 20
+                            Label {
+                                text: "Nearby devices"
+                                font.pixelSize: 20
+                                font.weight: Font.Medium
+                                color: "#111827"
+                            }
 
-                                Repeater {
-                                    model: fileShareController.discoveredTargets
-                                    delegate: DeviceCard {}
+                            Item {
+                                Layout.fillWidth: true
+                                implicitHeight: deviceFlow.childrenRect.height
+                                visible: fileShareController.discoveredTargets.length > 0
+
+                                Flow {
+                                    id: deviceFlow
+                                    width: parent.width
+                                    spacing: 20
+
+                                    Repeater {
+                                        model: fileShareController.discoveredTargets
+                                        delegate: DeviceCard {}
+                                    }
                                 }
+                            }
+
+                            TransferList {
+                                Layout.fillWidth: true
+                                Layout.topMargin: 8
                             }
                         }
 
-                        TransferList {
-                            Layout.fillWidth: true
-                            Layout.topMargin: 16
+                        // ── Right: compact QR, off to the side ──────────────
+                        SendUrlPanel {
+                            Layout.alignment: Qt.AlignTop
+                            Layout.preferredWidth: 240
+                            qrFrameSize: 230
                         }
-
                     }
                 }
 
