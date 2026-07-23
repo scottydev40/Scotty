@@ -7,6 +7,7 @@
 #include <QDesktopServices>
 #include <QDebug>
 #include <QDir>
+#include <QDirIterator>
 #include <QFileInfo>
 #include <QCoreApplication>
 #include <QFile>
@@ -592,14 +593,57 @@ void FileShareTrayController::switchToSendModeWithFile(const QString& file_path)
   switchToSendModeWithFiles(QStringList{file_path});
 }
 
+// A sendable file: the transport needs a real, non-empty size, and a single
+// zero-byte entry fails the *whole* batch (NearbySharingApi::SendFiles returns
+// kInvalidArgument for the set), so they are dropped rather than passed on.
+static bool IsSendableFile(const QFileInfo& info) {
+  return info.exists() && info.isFile() && info.size() > 0;
+}
+
+// Quick Share has no folder attachment type, so a selected folder contributes
+// the files inside it — the same thing Android does when you share a folder.
+// Directory structure is not preserved; the receiver gets a flat set.
+static void CollectSendableFiles(const QString& root, QStringList* out) {
+  // Not following symlinked directories: they can form cycles.
+  QDirIterator it(root, QDir::Files | QDir::NoDotAndDotDot | QDir::Readable,
+                  QDirIterator::Subdirectories);
+  while (it.hasNext()) {
+    it.next();
+    if (IsSendableFile(it.fileInfo())) {
+      out->append(it.fileInfo().absoluteFilePath());
+    }
+  }
+}
+
 void FileShareTrayController::switchToSendModeWithFiles(
     const QStringList& file_paths) {
   QStringList paths;
   QStringList names;
+  int skipped_empty = 0;
   for (const QString& raw : file_paths) {
     const QString trimmed_path = raw.trimmed();
-    QFileInfo info(trimmed_path);
-    if (trimmed_path.isEmpty() || !info.exists() || !info.isFile()) {
+    if (trimmed_path.isEmpty()) {
+      continue;
+    }
+    const QFileInfo info(trimmed_path);
+    if (!info.exists()) {
+      continue;
+    }
+
+    if (info.isDir()) {
+      QStringList expanded;
+      CollectSendableFiles(info.absoluteFilePath(), &expanded);
+      for (const QString& path : expanded) {
+        paths.append(path);
+        names.append(QFileInfo(path).fileName());
+      }
+      continue;
+    }
+
+    if (!IsSendableFile(info)) {
+      if (info.isFile()) {
+        ++skipped_empty;
+      }
       continue;
     }
     paths.append(info.absoluteFilePath());
@@ -607,9 +651,12 @@ void FileShareTrayController::switchToSendModeWithFiles(
   }
 
   if (paths.isEmpty()) {
-    setStatus(QStringLiteral("Selected file is not valid"));
-    emit requestTrayMessage(QStringLiteral("Send canceled"),
-                            QStringLiteral("Please choose a valid file."));
+    const QString detail =
+        skipped_empty > 0
+            ? QStringLiteral("Empty files can't be sent.")
+            : QStringLiteral("Please choose a valid file or folder.");
+    setStatus(QStringLiteral("Nothing to send"));
+    emit requestTrayMessage(QStringLiteral("Send canceled"), detail);
     return;
   }
 
@@ -651,8 +698,8 @@ void FileShareTrayController::sendPendingFileToTarget(qlonglong share_target_id)
   const QStringList file_paths = state_.pendingSendFilePaths();
   std::vector<std::string> valid_paths;
   for (const QString& path : file_paths) {
-    QFileInfo info(path);
-    if (!path.isEmpty() && info.exists() && info.isFile()) {
+    const QFileInfo info(path);
+    if (!path.isEmpty() && IsSendableFile(info)) {
       valid_paths.push_back(info.absoluteFilePath().toStdString());
     }
   }
