@@ -237,6 +237,30 @@ Popup {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 10
+                            ColumnLayout {
+                                spacing: 1
+                                Label {
+                                    color: root.textPrimary
+                                    font.pixelSize: 13
+                                    text: "Show tray icon"
+                                }
+                                Label {
+                                    color: root.textMuted
+                                    font.pixelSize: 11
+                                    text: "Off if you drive it from the GNOME Quick Settings tile."
+                                }
+                            }
+                            Item { Layout.fillWidth: true }
+                            ThemedToggle {
+                                Layout.alignment: Qt.AlignVCenter
+                                checked: fileShareController.showTrayIcon
+                                onToggled: fileShareController.showTrayIcon = checked
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
                             Label {
                                 Layout.fillWidth: true
                                 color: root.textPrimary

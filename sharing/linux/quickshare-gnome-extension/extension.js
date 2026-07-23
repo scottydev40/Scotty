@@ -1,0 +1,217 @@
+// Quick Share — GNOME Shell Quick Settings tile.
+//
+// Adds a tile (and an optional panel indicator icon) that controls the Nearby /
+// Quick Share Linux app over D-Bus. The app exposes:
+//
+//   io.github.ashpika40.QuickShare  at  /io/github/ashpika40/QuickShare
+//     GetVisibility() -> i          (0 Everyone, 1 Contacts, 2 Hidden)
+//     SetVisibility(i)
+//     GetRunning() -> b
+//     Show()
+//     Quit()
+//     signal VisibilityChanged(i)
+//     signal RunningChanged(b)
+
+import GObject from 'gi://GObject';
+import Gio from 'gi://Gio';
+
+import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import {
+    QuickMenuToggle,
+    SystemIndicator,
+} from 'resource:///org/gnome/shell/ui/quickSettings.js';
+
+const BUS_NAME = 'io.github.ashpika40.QuickShare';
+const OBJECT_PATH = '/io/github/ashpika40/QuickShare';
+const APP_BINARY = 'nearby_qml_file_tray_app';
+
+const IFACE = `
+<node>
+  <interface name="io.github.ashpika40.QuickShare">
+    <method name="GetVisibility"><arg type="i" direction="out"/></method>
+    <method name="SetVisibility"><arg type="i" direction="in"/></method>
+    <method name="GetRunning"><arg type="b" direction="out"/></method>
+    <method name="Show"/>
+    <method name="Quit"/>
+    <signal name="VisibilityChanged"><arg type="i"/></signal>
+    <signal name="RunningChanged"><arg type="b"/></signal>
+  </interface>
+</node>`;
+
+const QuickShareProxy = Gio.DBusProxy.makeProxyWrapper(IFACE);
+
+const VIS_LABEL = {
+    0: 'Visible to everyone',
+    1: 'Visible to contacts',
+    2: 'Hidden',
+};
+
+const QuickShareToggle = GObject.registerClass(
+class QuickShareToggle extends QuickMenuToggle {
+    _init(ext) {
+        super._init({
+            title: 'Quick Share',
+            gicon: ext.icon,
+            toggleMode: true,
+        });
+        this._ext = ext;
+
+        this.menu.setHeader(ext.icon, 'Quick Share', VIS_LABEL[0]);
+
+        // Visibility radio items.
+        this._items = {};
+        for (const [val, label] of [[0, 'Everyone'], [1, 'Contacts'], [2, 'Hidden']]) {
+            const item = new PopupMenu.PopupMenuItem(label);
+            item.connect('activate', () => this._ext.setVisibility(val));
+            this.menu.addMenuItem(item);
+            this._items[val] = item;
+        }
+
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        const openItem = new PopupMenu.PopupMenuItem('Open Quick Share');
+        openItem.connect('activate', () => this._ext.openWindow());
+        this.menu.addMenuItem(openItem);
+
+        // Toggling the tile itself: on → Everyone, off → Hidden.
+        this.connect('clicked', () => {
+            this._ext.setVisibility(this.checked ? 0 : 2);
+        });
+    }
+
+    syncVisibility(vis) {
+        this.checked = vis !== 2;
+        this.subtitle = VIS_LABEL[vis] ?? '';
+        this.menu.setHeader(this._ext.icon, 'Quick Share', VIS_LABEL[vis] ?? '');
+        for (const [val, item] of Object.entries(this._items)) {
+            item.setOrnament(Number(val) === vis
+                ? PopupMenu.Ornament.DOT
+                : PopupMenu.Ornament.NONE);
+        }
+    }
+
+    syncRunning(running) {
+        this.reactive = true;
+        this.subtitle = running ? (this.subtitle || VIS_LABEL[0]) : 'Not running';
+    }
+});
+
+const QuickShareIndicator = GObject.registerClass(
+class QuickShareIndicator extends SystemIndicator {
+    _init(ext) {
+        super._init();
+        this._panelIcon = this._addIndicator();
+        this._panelIcon.gicon = ext.icon;
+        this._panelIcon.visible = false; // shown only while advertising
+
+        this.toggle = new QuickShareToggle(ext);
+        this.quickSettingsItems.push(this.toggle);
+    }
+
+    setPanelVisible(visible) {
+        this._panelIcon.visible = visible;
+    }
+});
+
+export default class QuickShareExtension extends Extension {
+    enable() {
+        // Stock symbolic that reads as the swap/loop motif and recolors cleanly
+        // in the panel/menu. Can be swapped for a custom fill-based symbolic later.
+        this.icon = new Gio.ThemedIcon({name: 'media-playlist-repeat-symbolic'});
+
+        this._indicator = new QuickShareIndicator(this);
+        Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
+
+        // Async proxy. Auto-tracks the app appearing/disappearing on the bus.
+        this._proxy = new QuickShareProxy(
+            Gio.DBus.session, BUS_NAME, OBJECT_PATH,
+            (proxy, error) => {
+                if (error) {
+                    logError(error, 'Quick Share: failed to create D-Bus proxy');
+                    return;
+                }
+                this._onProxyReady();
+            });
+    }
+
+    _onProxyReady() {
+        this._visSignal = this._proxy.connectSignal(
+            'VisibilityChanged', (p, s, [vis]) => this._syncVisibility(vis));
+        this._runSignal = this._proxy.connectSignal(
+            'RunningChanged', (p, s, [running]) => this._syncRunning(running));
+        // g-name-owner flips as the app starts/stops.
+        this._ownerId = this._proxy.connect(
+            'notify::g-name-owner', () => this._refresh());
+        this._refresh();
+    }
+
+    _refresh() {
+        const running = !!this._proxy?.g_name_owner;
+        this._syncRunning(running);
+        if (!running)
+            return;
+        // Pull current visibility.
+        this._proxy.GetVisibilityRemote((res, err) => {
+            if (err) {
+                logError(err, 'Quick Share: GetVisibility failed');
+                return;
+            }
+            const [vis] = res;
+            this._syncVisibility(vis);
+        });
+    }
+
+    _syncVisibility(vis) {
+        this._indicator?.toggle.syncVisibility(vis);
+        // Panel icon shows while advertising (not Hidden) and running.
+        this._indicator?.setPanelVisible(!!this._proxy?.g_name_owner && vis !== 2);
+    }
+
+    _syncRunning(running) {
+        this._indicator?.toggle.syncRunning(running);
+        if (!running)
+            this._indicator?.setPanelVisible(false);
+    }
+
+    setVisibility(mode) {
+        if (this._proxy?.g_name_owner) {
+            this._proxy.SetVisibilityRemote(mode, () => {});
+        } else {
+            // App not running: start it, then apply once it appears.
+            this._launchApp();
+            this._pendingVisibility = mode;
+        }
+    }
+
+    openWindow() {
+        if (this._proxy?.g_name_owner)
+            this._proxy.ShowRemote(() => {});
+        else
+            this._launchApp();
+    }
+
+    _launchApp() {
+        try {
+            Gio.Subprocess.new([APP_BINARY], Gio.SubprocessFlags.NONE);
+        } catch (e) {
+            logError(e, 'Quick Share: failed to launch app');
+        }
+    }
+
+    disable() {
+        if (this._proxy && this._visSignal)
+            this._proxy.disconnectSignal(this._visSignal);
+        if (this._proxy && this._runSignal)
+            this._proxy.disconnectSignal(this._runSignal);
+        if (this._proxy && this._ownerId)
+            this._proxy.disconnect(this._ownerId);
+        this._visSignal = this._runSignal = this._ownerId = null;
+        this._proxy = null;
+
+        this._indicator?.quickSettingsItems.forEach(i => i.destroy());
+        this._indicator?.destroy();
+        this._indicator = null;
+        this.icon = null;
+    }
+}
