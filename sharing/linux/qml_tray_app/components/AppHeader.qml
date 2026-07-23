@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Effects
 
 Item {
     Layout.fillWidth: true
@@ -8,9 +9,9 @@ Item {
 
     signal settingsRequested()
 
-    readonly property color textPrimary: "#111827"
-    readonly property color textMuted: "#6b7280"
-    readonly property color accent: "#16a34a"
+    readonly property color textPrimary: Theme.textPrimary
+    readonly property color textMuted: Theme.textMuted
+    readonly property color accent: Theme.accentColor
 
     RowLayout {
         anchors.fill: parent
@@ -40,18 +41,29 @@ Item {
             width: 40
             height: 40
             radius: 12
-            color: settingsBtn.containsMouse ? "#dcfce7" : "transparent"
-            border.color: settingsBtn.containsMouse ? "#86efac" : "transparent"
+            color: settingsBtn.containsMouse ? Theme.rowFill : "transparent"
+            border.color: settingsBtn.containsMouse ? Theme.accentColor : "transparent"
 
-            Image {
+            Item {
                 anchors.centerIn: parent
                 width: 22
                 height: 22
-                smooth: true
-                fillMode: Image.PreserveAspectFit
-                sourceSize.width: 44
-                sourceSize.height: 44
-                source: "qrc:/icons/gear.svg"
+                Image {
+                    id: gearGlyph
+                    anchors.fill: parent
+                    visible: false
+                    smooth: true
+                    fillMode: Image.PreserveAspectFit
+                    sourceSize.width: 44
+                    sourceSize.height: 44
+                    source: "qrc:/icons/gear.svg"
+                }
+                MultiEffect {
+                    source: gearGlyph
+                    anchors.fill: gearGlyph
+                    colorization: 1.0
+                    colorizationColor: textMuted
+                }
             }
 
             MouseArea {

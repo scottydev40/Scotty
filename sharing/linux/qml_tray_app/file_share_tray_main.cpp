@@ -8,6 +8,8 @@
 #include <QMenu>
 #include <QPainter>
 #include <QPalette>
+#include <QLocalServer>
+#include <QLocalSocket>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickWindow>
@@ -20,10 +22,28 @@
 
 #include "file_share_tray_controller.h"
 #include "notification_manager.h"
+#include "theme_controller.h"
 
 namespace {
 
 constexpr char kDefaultLogPath[] = "/tmp/nearby_qml_file_tray.log";
+// Per-user single-instance key (QLocalServer socket name).
+constexpr char kInstanceKey[] = "nearby_qml_file_tray_app.instance";
+
+// Returns true if another instance is already running (and was pinged to show
+// its window), meaning this process should exit immediately.
+bool AnotherInstanceRunning() {
+  QLocalSocket probe;
+  probe.connectToServer(QString::fromLatin1(kInstanceKey));
+  if (!probe.waitForConnected(200)) {
+    return false;
+  }
+  probe.write("SHOW");
+  probe.flush();
+  probe.waitForBytesWritten(200);
+  probe.disconnectFromServer();
+  return true;
+}
 
 bool EnsureLogDirectory(const QString& file_path) {
   const QFileInfo file_info(file_path);
@@ -83,7 +103,7 @@ QIcon BuildTintedSymbolicIcon(const QString& source, const QColor& color) {
   }
 
   QIcon tinted_icon;
-  for (int size : {16, 18, 20, 22, 24, 32}) {
+  for (int size : {16, 18, 20, 22, 24, 32, 40, 48, 64}) {
     QPixmap pixmap = source_icon.pixmap(size, size);
     if (pixmap.isNull()) {
       continue;
@@ -111,11 +131,27 @@ int main(int argc, char* argv[]) {
 
   QApplication app(argc, argv);
   app.setQuitOnLastWindowClosed(false);
+  app.setWindowIcon(QIcon(QStringLiteral(":/icons/app_icon.svg")));
+
+  // Single instance: if one is already running, ask it to surface and bail.
+  if (AnotherInstanceRunning()) {
+    return 0;
+  }
+  // Clear any stale socket left by a previous crash, then claim the name.
+  QLocalServer::removeServer(QString::fromLatin1(kInstanceKey));
+  QLocalServer instance_server;
+  instance_server.listen(QString::fromLatin1(kInstanceKey));
+  // Wayland/GNOME matches a window to its .desktop entry (and thus its taskbar
+  // icon) via the desktop file name / app_id, not setWindowIcon. Without this
+  // the shell falls back to a generic icon.
+  QGuiApplication::setDesktopFileName(QStringLiteral("nearby-file-share"));
 
   FileShareTrayController controller;
+  ThemeController theme;
 
   QQmlApplicationEngine engine;
   engine.rootContext()->setContextProperty("fileShareController", &controller);
+  engine.rootContext()->setContextProperty("Theme", &theme);
   engine.load(QUrl(QStringLiteral("qrc:/qml/FileShareTray.qml")));
   if (engine.rootObjects().isEmpty()) {
     return 1;
@@ -127,10 +163,23 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
+  // A second launch pings the socket → surface the existing window.
+  QObject::connect(&instance_server, &QLocalServer::newConnection, window,
+                   [&instance_server, window]() {
+                     QLocalSocket* conn = instance_server.nextPendingConnection();
+                     if (conn != nullptr) {
+                       QObject::connect(conn, &QLocalSocket::disconnected, conn,
+                                        &QLocalSocket::deleteLater);
+                     }
+                     window->show();
+                     window->raise();
+                     window->requestActivate();
+                   });
+
   const auto resolve_tray_icon = [&app]() {
     const QColor white = "white";
     QIcon tray_icon = BuildTintedSymbolicIcon(
-        QStringLiteral(":/icons/tray_icon-symbolic.svg"), white);
+        QStringLiteral(":/icons/app_swap.svg"), white);
     if (tray_icon.isNull()) {
       tray_icon = QIcon::fromTheme(QStringLiteral("network-wireless-symbolic"));
     }

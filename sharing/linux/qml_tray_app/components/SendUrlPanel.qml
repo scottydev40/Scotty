@@ -9,12 +9,14 @@ ColumnLayout {
     property var qrRows: fileShareController.qrCodeRows
     property int qrSize: fileShareController.qrCodeSize
     property string fileName: fileShareController.pendingSendFileName
-    readonly property color panelTint: "#ecfdf3"
-    readonly property color panelBorder: "#a7f3d0"
+    readonly property color panelTint: Theme.rowFill
+    readonly property color panelBorder: Theme.rowFillHover
+    // QR paper/ink stay high-contrast light regardless of theme so the code
+    // remains scannable in dark mode.
     readonly property color qrPaper: "#fffdf7"
     readonly property color qrInk: "#14532d"
-    readonly property color accentSoft: "#d1fae5"
-    readonly property color accentStrong: "#34d399"
+    readonly property color accentSoft: Theme.rowFill
+    readonly property color accentStrong: Theme.accentColor
     property real qrFrameSize: 360
     readonly property bool compact: qrFrameSize < 300
     readonly property real qrInnerSize: qrFrameSize - (compact ? 34 : 42)
@@ -27,7 +29,7 @@ ColumnLayout {
         text: "Scan to connect"
         font.pixelSize: compact ? 16 : 18
         font.weight: Font.DemiBold
-        color: "#111827"
+        color: Theme.textPrimary
     }
 
     Rectangle {
@@ -36,7 +38,7 @@ ColumnLayout {
         height: width
         radius: compact ? 24 : 32
         gradient: Gradient {
-            GradientStop { position: 0.0; color: "#f7fff9" }
+            GradientStop { position: 0.0; color: Theme.surface }
             GradientStop { position: 1.0; color: root.panelTint }
         }
         border.color: root.panelBorder
@@ -113,7 +115,7 @@ ColumnLayout {
                 visible: root.qrSize <= 0
                 text: "Preparing QR code..."
                 font.pixelSize: compact ? 12 : 13
-                color: "#6b7280"
+                color: Theme.textMuted
             }
         }
     }
@@ -131,7 +133,7 @@ ColumnLayout {
                          : "Sending: " + root.fileName
         }
         font.pixelSize: compact ? 12 : 13
-        color: "#6b7280"
+        color: Theme.textMuted
         visible: text.length > 0
     }
 
