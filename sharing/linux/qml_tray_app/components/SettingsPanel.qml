@@ -386,6 +386,31 @@ Popup {
                         }
                     }
                 }
+
+                // Quit — the only in-window way to fully exit when the tray icon
+                // is hidden (closing the window just hides it to the background).
+                Rectangle {
+                    width: settingsCol.width
+                    height: 44
+                    radius: 12
+                    color: quitArea.containsMouse ? Theme.dangerSoft : "transparent"
+                    border.color: Theme.danger
+                    border.width: 1
+                    Label {
+                        anchors.centerIn: parent
+                        text: "Quit Quick Share"
+                        font.pixelSize: 14
+                        font.weight: Font.Medium
+                        color: Theme.danger
+                    }
+                    MouseArea {
+                        id: quitArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: fileShareController.quitApplication()
+                    }
+                }
             }
         }
     }

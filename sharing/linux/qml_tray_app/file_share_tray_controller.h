@@ -77,6 +77,8 @@ class FileShareTrayController : public QObject {
 
   Q_INVOKABLE void start();
   Q_INVOKABLE void stop();
+  // Quit the whole application (ordered shutdown runs via aboutToQuit->stop()).
+  Q_INVOKABLE void quitApplication();
   Q_INVOKABLE void switchToReceiveMode();
   Q_INVOKABLE void switchToSendModeWithFile(const QString& file_path);
   Q_INVOKABLE void switchToSendModeWithFiles(const QStringList& file_paths);

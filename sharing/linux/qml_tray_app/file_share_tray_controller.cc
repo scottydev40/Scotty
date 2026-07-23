@@ -404,6 +404,11 @@ void FileShareTrayController::setRunAtStartup(bool enabled) {
   emit runAtStartupChanged();
 }
 
+void FileShareTrayController::quitApplication() {
+  // aboutToQuit is wired to stop() in main() for an ordered teardown.
+  QCoreApplication::quit();
+}
+
 void FileShareTrayController::setShowTrayIcon(bool enabled) {
   if (enabled == show_tray_icon_) {
     return;

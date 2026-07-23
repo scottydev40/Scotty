@@ -74,6 +74,10 @@ class QuickShareToggle extends QuickMenuToggle {
         openItem.connect('activate', () => this._ext.openWindow());
         this.menu.addMenuItem(openItem);
 
+        this._quitItem = new PopupMenu.PopupMenuItem('Quit Quick Share');
+        this._quitItem.connect('activate', () => this._ext.quitApp());
+        this.menu.addMenuItem(this._quitItem);
+
         // Toggling the tile itself: on → Everyone, off → Hidden.
         this.connect('clicked', () => {
             this._ext.setVisibility(this.checked ? 0 : 2);
@@ -189,6 +193,11 @@ export default class QuickShareExtension extends Extension {
             this._proxy.ShowRemote(() => {});
         else
             this._launchApp();
+    }
+
+    quitApp() {
+        if (this._proxy?.g_name_owner)
+            this._proxy.QuitRemote(() => {});
     }
 
     _launchApp() {
