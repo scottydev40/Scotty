@@ -8,10 +8,14 @@
 #include <QDebug>
 #include <QDir>
 #include <QFileInfo>
+#include <QCoreApplication>
+#include <QFile>
 #include <QGuiApplication>
 #include <QMetaObject>
 #include <QSettings>
+#include <QStandardPaths>
 #include <QSysInfo>
+#include <QTextStream>
 #include <QTimer>
 #include <QUrl>
 
@@ -361,6 +365,39 @@ void FileShareTrayController::setVisibility(int mode) {
   }
   saveSettings();
   emit visibilityChanged();
+}
+
+static QString AutostartFilePath() {
+  return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
+         QStringLiteral("/autostart/nearby-file-share.desktop");
+}
+
+bool FileShareTrayController::runAtStartup() const {
+  return QFileInfo::exists(AutostartFilePath());
+}
+
+void FileShareTrayController::setRunAtStartup(bool enabled) {
+  const QString path = AutostartFilePath();
+  if (enabled == QFileInfo::exists(path)) {
+    return;
+  }
+  if (enabled) {
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QFile file(path);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+      QTextStream out(&file);
+      out << "[Desktop Entry]\n"
+          << "Type=Application\n"
+          << "Name=Nearby File Share\n"
+          << "Exec=" << QCoreApplication::applicationFilePath() << "\n"
+          << "Icon=nearby-file-share\n"
+          << "Terminal=false\n"
+          << "X-GNOME-Autostart-enabled=true\n";
+    }
+  } else {
+    QFile::remove(path);
+  }
+  emit runAtStartupChanged();
 }
 
 void FileShareTrayController::setLogPath(const QString& path) {

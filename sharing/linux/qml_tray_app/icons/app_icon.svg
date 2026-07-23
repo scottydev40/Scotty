@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none"
-     stroke="currentColor" stroke-width="5"
+     stroke="#16a34a" stroke-width="5"
      stroke-linecap="round" stroke-linejoin="round">
   <!-- Fills the whole canvas edge-to-edge (art touches all four sides, only the
        round-cap radius as margin) so the glyph stays as large as possible at a

@@ -14,7 +14,7 @@ ApplicationWindow {
     visible: true
     title: "Quick Share"
 
-    background: Rectangle { color: "#f0fdf4" }
+    background: Rectangle { color: Theme.windowBg }
 
     onClosing: function(close) {
         close.accepted = false
@@ -47,7 +47,7 @@ ApplicationWindow {
                 id: mainContent
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                color: "#ffffff"
+                color: Theme.surface
                 topLeftRadius: 48
                 clip: true
 
@@ -111,7 +111,7 @@ ApplicationWindow {
                             text: "Nearby devices"
                             font.pixelSize: 20
                             font.weight: Font.Medium
-                            color: "#111827"
+                            color: Theme.textPrimary
                         }
 
                         Repeater {
@@ -131,7 +131,7 @@ ApplicationWindow {
                                      && fileShareController.discoveredTargets.length === 0
                             text: "Looking for nearby devices…"
                             font.pixelSize: 13
-                            color: "#6b7280"
+                            color: Theme.textMuted
                         }
 
                         // ── Receive: incoming transfers ──────────────────
@@ -140,7 +140,7 @@ ApplicationWindow {
                             text: "Incoming"
                             font.pixelSize: 20
                             font.weight: Font.Medium
-                            color: "#111827"
+                            color: Theme.textPrimary
                         }
 
                         Repeater {
@@ -188,7 +188,7 @@ ApplicationWindow {
                     Rectangle {
                         anchors.fill: parent
                         visible: dropArea.containsDrag
-                        color: "#16a34a"
+                        color: Theme.accentColor
                         opacity: 0.12
                         radius: mainContent.topLeftRadius
 
@@ -197,7 +197,7 @@ ApplicationWindow {
                             text: "Drop to send"
                             font.pixelSize: 22
                             font.weight: Font.DemiBold
-                            color: "#16a34a"
+                            color: Theme.accentColor
                         }
                     }
                 }

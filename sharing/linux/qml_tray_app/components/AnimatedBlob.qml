@@ -1,115 +1,38 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import QtQuick.Effects
+import QtQuick.Window
 
+// Idle centerpiece: a soft, gently-morphing accent blob shown when nothing is
+// being sent and there is no incoming transfer. Incoming/outgoing transfers are
+// rendered as rows (see FileShareTray.qml), so this component is purely idle art.
 Item {
+    id: blobRoot
     anchors.fill: parent
 
-    readonly property color textPrimary: "#111827"
-    readonly property color textMuted: "#6b7280"
-    readonly property color textSoft: "#4b5563"
-    readonly property color cardSurface: "#ffffff"
-    readonly property color cardBorder: "#d1fae5"
+    readonly property color textPrimary: Theme.textPrimary
+    readonly property color textMuted: Theme.textMuted
     readonly property bool isSendMode: fileShareController.pendingSendFilePath.length > 0
-    readonly property var incomingTransfer: findIncomingTransfer()
-    readonly property var incomingTarget: findTargetForTransfer(incomingTransfer)
-    readonly property bool hasIncomingTransfer: incomingTransfer !== null
-                                               && incomingTarget !== null
-    readonly property bool isReceivingActive: hasIncomingTransfer
-                                              && String(incomingTransfer.status || "") !== "Complete"
-    readonly property real receivingIntensity: {
-        if (!isReceivingActive)
-            return 0
-        var numeric = Number(incomingTransfer.progress)
-        if (!isFinite(numeric) || numeric < 0)
-            numeric = 0
-        return Math.max(0.35, Math.min(1.0, numeric))
-    }
-    property real blobChaos: receivingIntensity
-    property string dismissedTransferKey: ""
 
-    Behavior on blobChaos {
-        NumberAnimation {
-            duration: 220
-            easing.type: Easing.OutCubic
-        }
-    }
+    // Only animate when the blob is actually on a visible window. The three
+    // canvases repaint at ~60fps each; left running while hidden in the tray or
+    // during a send they burn CPU for nothing (sluggish cursor). Gate on it.
+    readonly property bool animating: blobRoot.visible
+                                      && Window.visibility !== Window.Hidden
+                                      && Window.visibility !== Window.Minimized
 
-    function isIncomingTransferActive(status) {
-        return status === "InProgress"
-                || status === "Queued"
-                || status === "Connecting"
-                || status === "AwaitingLocalConfirmation"
-                || status === "AwaitingRemoteAcceptance"
-                || status === "Complete"
-    }
+    // Calm idle animation (no receive-intensity ramp — the blob is never shown
+    // during an active transfer).
+    readonly property real blobChaos: 0
 
-    function transferKey(transfer) {
-        if (!transfer)
-            return ""
-        return String(transfer.targetId || "")
-                + "|" + String(transfer.status || "")
-                + "|" + String(transfer.filePath || "")
-                + "|" + String(transfer.fileName || "")
-    }
-
-    function findIncomingTransfer() {
-        var transfers = fileShareController.transfers
-        var latestCompleted = null
-        for (var i = transfers.length - 1; i >= 0; --i) {
-            var entry = transfers[i]
-            if (!entry)
-                continue
-            if (String(entry.direction || "") !== "incoming")
-                continue
-            var status = String(entry.status || "")
-            if (!isIncomingTransferActive(status))
-                continue
-            if (status === "Complete") {
-                if (latestCompleted === null)
-                    latestCompleted = entry
-                continue
-            }
-            return entry
-        }
-        return latestCompleted
-    }
-
-    function findTargetForTransfer(transfer) {
-        if (!transfer)
-            return null
-        var targets = fileShareController.discoveredTargets
-        for (var i = 0; i < targets.length; ++i) {
-            var entry = targets[i]
-            if (entry && entry.id === transfer.targetId)
-                return entry
-        }
-        return {
-            id: transfer.targetId,
-            name: String(transfer.targetName || "Incoming device"),
-            isIncoming: true
-        }
-    }
-
-    function incomingHeadline(status) {
-        if (status === "Complete")
-            return "Received"
-        if (status === "AwaitingLocalConfirmation")
-            return "Incoming transfer"
-        if (status === "AwaitingRemoteAcceptance")
-            return "Preparing transfer"
-        if (status === "Connecting")
-            return "Connecting"
-        return "Receiving"
-    }
-
-    // The card only becomes actionable once the file has landed on disk and we
-    // have a local path to open.
-    function incomingClickReady() {
-        return hasIncomingTransfer
-                && String(incomingTransfer.status || "") === "Complete"
-                && String(incomingTransfer.filePath || "").length > 0
+    // Blob fill derived from the accent: an accent tint over the panel surface,
+    // so the blob follows both the accent choice and light/dark mode. The three
+    // canvas layers stack lightest→deepest. Called from onPaint (which repaints
+    // every frame), so theme changes apply on the next tick with no extra wiring.
+    function blobHex(alpha) {
+        var acc = Theme.accentColor
+        var base = Theme.dark ? Theme.surface : Qt.rgba(1, 1, 1, 1)
+        return Qt.tint(base, Qt.rgba(acc.r, acc.g, acc.b, alpha)).toString()
     }
 
     Label {
@@ -123,6 +46,7 @@ Item {
         font.weight: Font.Medium
         color: textPrimary
     }
+
     Canvas {
         id: blobCanvas3
         width: 380; height: 380
@@ -134,7 +58,7 @@ Item {
 
         Timer {
             interval: 16
-            running: true
+            running: blobRoot.animating
             repeat: true
             onTriggered: {
                 var now = Date.now()
@@ -184,7 +108,7 @@ Item {
             ctx.closePath()
 
             var grad = ctx.createRadialGradient(cx - 40, cy - 40, 0, cx, cy, 150)
-            grad.addColorStop(0, "#e7faed")
+            grad.addColorStop(0, blobRoot.blobHex(Theme.dark ? 0.16 : 0.11))
             ctx.fillStyle = grad
             ctx.fill()
         }
@@ -201,7 +125,7 @@ Item {
 
         Timer {
             interval: 16
-            running: true
+            running: blobRoot.animating
             repeat: true
             onTriggered: {
                 var now = Date.now()
@@ -251,13 +175,11 @@ Item {
             ctx.closePath()
 
             var grad = ctx.createRadialGradient(cx - 40, cy - 40, 0, cx, cy, 150)
-            grad.addColorStop(0, "#caeada")
+            grad.addColorStop(0, blobRoot.blobHex(Theme.dark ? 0.24 : 0.19))
             ctx.fillStyle = grad
             ctx.fill()
         }
     }
-
-
 
     Canvas {
         id: blobCanvas
@@ -270,7 +192,7 @@ Item {
 
         Timer {
             interval: 16
-            running: true
+            running: blobRoot.animating
             repeat: true
             onTriggered: {
                 var now = Date.now()
@@ -320,90 +242,11 @@ Item {
             ctx.closePath()
 
             var grad = ctx.createRadialGradient(cx - 40, cy - 40, 0, cx, cy, 150)
-            grad.addColorStop(0, "#acdac4")
+            grad.addColorStop(0, blobRoot.blobHex(Theme.dark ? 0.34 : 0.30))
             ctx.fillStyle = grad
             ctx.fill()
         }
     }
-
-    Rectangle {
-        id: incomingTransferCard
-        anchors.centerIn: parent
-        visible: !isSendMode && hasIncomingTransfer
-                 && transferKey(incomingTransfer) !== dismissedTransferKey
-        width: 200
-        height: 210
-        radius: 34
-        color: cardSurface
-        border.color: cardBorder
-        border.width: 1
-        z: 10
-
-        Rectangle {
-            anchors.fill: parent
-            anchors.margins: 10
-            radius: parent.radius - 10
-            color: "#ffffff"
-            opacity: 0.84
-        }
-
-        Column {
-            anchors.fill: parent
-            anchors.margins: 24
-            spacing: 10
-
-            Label {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: incomingHeadline(incomingTransfer ? String(incomingTransfer.status || "") : "")
-                font.pixelSize: 12
-                font.weight: Font.DemiBold
-                color: "#059669"
-                horizontalAlignment: Text.AlignHCenter
-            }
-
-            DeviceCard {
-                anchors.horizontalCenter: parent.horizontalCenter
-                modelData: incomingTarget
-            }
-
-            Label {
-                width: parent.width
-                visible: incomingTransfer !== null && String(incomingTransfer.fileName || "").length > 0
-                text: incomingTransfer ? String(incomingTransfer.fileName || "") : ""
-                font.pixelSize: 13
-                font.weight: Font.StyleItalic
-                color: textPrimary
-                wrapMode: Text.Wrap
-                maximumLineCount: 2
-                elide: Text.ElideRight
-                horizontalAlignment: Text.AlignHCenter
-            }
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            enabled: incomingClickReady()
-            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-            onClicked: {
-                dismissedTransferKey = transferKey(incomingTransfer)
-                fileShareController.openFileLocation(String(incomingTransfer.filePath || ""))
-            }
-        }
-    }
-
-    onIncomingTransferChanged: {
-        if (!incomingTransfer) {
-            dismissedTransferKey = ""
-            return
-        }
-
-        if (transferKey(incomingTransfer) !== dismissedTransferKey)
-            return
-
-        if (String(incomingTransfer.status || "") !== "Complete")
-            dismissedTransferKey = ""
-    }
-
 
     Label {
         anchors.horizontalCenter: parent.horizontalCenter

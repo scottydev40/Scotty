@@ -31,6 +31,8 @@ class FileShareTrayController : public QObject {
   Q_PROPERTY(bool developerMode READ developerMode WRITE setDeveloperMode NOTIFY developerModeChanged)
   // Advertising visibility for receive mode: 0 = Everyone, 1 = Contacts, 2 = Hidden.
   Q_PROPERTY(int visibility READ visibility WRITE setVisibility NOTIFY visibilityChanged)
+  // Launch the app on login (managed via an XDG autostart .desktop entry).
+  Q_PROPERTY(bool runAtStartup READ runAtStartup WRITE setRunAtStartup NOTIFY runAtStartupChanged)
 
  public:
   explicit FileShareTrayController(QObject* parent = nullptr);
@@ -56,6 +58,7 @@ class FileShareTrayController : public QObject {
   QString savePath() const { return state_.savePath(); }
   bool developerMode() const { return state_.developerMode(); }
   int visibility() const { return visibility_; }
+  bool runAtStartup() const;
 
   // Public methods
   void setDeviceName(const QString& device_name);
@@ -65,6 +68,7 @@ class FileShareTrayController : public QObject {
   void setSavePath(const QString& path);
   void setDeveloperMode(bool enabled);
   void setVisibility(int mode);
+  void setRunAtStartup(bool enabled);
 
   Q_INVOKABLE void start();
   Q_INVOKABLE void stop();
@@ -101,6 +105,7 @@ class FileShareTrayController : public QObject {
   void savePathChanged();
   void developerModeChanged();
   void visibilityChanged();
+  void runAtStartupChanged();
 
   void requestTrayMessage(const QString& title, const QString& body);
   void requestCopyLinkTrayMessage(const QString& title, const QString& body,

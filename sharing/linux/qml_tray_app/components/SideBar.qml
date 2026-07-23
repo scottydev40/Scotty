@@ -7,10 +7,10 @@ Item {
     Layout.preferredWidth: 280
     Layout.fillHeight: true
 
-    readonly property color surface: "#ffffff"
-    readonly property color cardBorder: "#bbf7d0"
-    readonly property color textPrimary: "#111827"
-    readonly property color textMuted: "#6b7280"
+    readonly property color surface: Theme.surface
+    readonly property color cardBorder: Theme.rowFillHover
+    readonly property color textPrimary: Theme.textPrimary
+    readonly property color textMuted: Theme.textMuted
 
     // Visibility (0=Everyone, 1=Contacts, 2=Hidden) label + description.
     function visibilityLabel(v) {
@@ -69,7 +69,7 @@ Item {
                 Layout.rightMargin: 12
                 height: 52
                 radius: 12
-                color: visSelArea.containsMouse ? "#ddf7e8" : "#e8faf0"
+                color: visSelArea.containsMouse ? Theme.rowFillHover : Theme.rowFill
                 border.color: cardBorder
 
                 RowLayout {
@@ -109,7 +109,7 @@ Item {
 
                     background: Rectangle {
                         radius: 10
-                        color: "#ffffff"
+                        color: Theme.surface
                         border.color: cardBorder
                     }
 
@@ -120,11 +120,11 @@ Item {
                             leftPadding: 8
                             font.pixelSize: 14
                             verticalAlignment: Text.AlignVCenter
-                            color: "#111827"
+                            color: Theme.textPrimary
                         }
                         background: Rectangle {
                             radius: 8
-                            color: parent.highlighted ? "#dcfce7" : "transparent"
+                            color: parent.highlighted ? Theme.rowFill : "transparent"
                         }
                     }
 
@@ -154,20 +154,20 @@ Item {
                 height: 46
                 radius: 12
                 color: sendBtnArea.containsMouse
-                       ? (sendBtnArea.pressed ? "#047857" : "#059669") : "#10b981"
+                       ? (sendBtnArea.pressed ? Theme.accentDeep : Theme.accentStrong) : Theme.accentColor
 
                 Row {
                     anchors.centerIn: parent
                     spacing: 8
                     Label {
                         text: "+"
-                        color: "#ffffff"
+                        color: Theme.onAccent
                         font.pixelSize: 18
                         anchors.verticalCenter: parent.verticalCenter
                     }
                     Label {
                         text: "Send files"
-                        color: "#ffffff"
+                        color: Theme.onAccent
                         font.pixelSize: 15
                         font.weight: Font.Medium
                         anchors.verticalCenter: parent.verticalCenter
@@ -270,12 +270,12 @@ Item {
                     width: badge.implicitWidth + 12
                     height: 20
                     radius: 10
-                    color: "#10b981"
+                    color: Theme.accentColor
                     Label {
                         id: badge
                         anchors.centerIn: parent
                         text: "×" + fileShareController.pendingSendFileCount
-                        color: "#ffffff"
+                        color: Theme.onAccent
                         font.pixelSize: 11
                         font.weight: Font.Bold
                     }
@@ -365,7 +365,7 @@ Item {
                 visible: !sendActive
                 text: "Send more"
                 font.pixelSize: 16
-                color: sendMoreArea.containsMouse ? "#059669" : "#10b981"
+                color: sendMoreArea.containsMouse ? Theme.accentStrong : Theme.accentColor
                 font.weight: Font.Medium
                 MouseArea {
                     id: sendMoreArea

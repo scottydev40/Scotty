@@ -14,21 +14,21 @@ Popup {
     width: 560
     height: Math.min(cardHeightHint, (parent ? parent.height : 800) - 80)
 
-    readonly property color bg: "#ffffff"
-    readonly property color surface: "#ffffff"
-    readonly property color accent: "#38aa62"
-    readonly property color accentLight: "#dcfce7"
-    readonly property color borderColor: "#bbf7d0"
-    readonly property color textPrimary: "#111827"
-    readonly property color textMuted: "#6b7280"
+    readonly property color bg: Theme.surface
+    readonly property color surface: Theme.surface
+    readonly property color accent: Theme.accentColor
+    readonly property color accentLight: Theme.rowFill
+    readonly property color borderColor: Theme.border
+    readonly property color textPrimary: Theme.textPrimary
+    readonly property color textMuted: Theme.textMuted
 
     // Dimmed backdrop behind the card.
-    Overlay.modal: Rectangle { color: "#33000000" }
+    Overlay.modal: Rectangle { color: "#66000000" }
 
     background: Rectangle {
         color: root.bg
         radius: 20
-        border.color: "#e5e7eb"
+        border.color: Theme.border
     }
 
     // Card height driver: header (64) + content column + bottom padding.
@@ -78,7 +78,7 @@ Popup {
             id: flick
             Layout.fillWidth: true
             Layout.fillHeight: true
-            clip: false
+            clip: true
             contentWidth: width
             contentHeight: settingsCol.height + 32
             ScrollBar.vertical: ScrollBar {}
@@ -155,6 +155,30 @@ Popup {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 10
+                            ColumnLayout {
+                                spacing: 1
+                                Label {
+                                    color: root.textPrimary
+                                    font.pixelSize: 13
+                                    text: "Run at startup"
+                                }
+                                Label {
+                                    color: root.textMuted
+                                    font.pixelSize: 11
+                                    text: "Launch automatically when you log in."
+                                }
+                            }
+                            Item { Layout.fillWidth: true }
+                            ThemedToggle {
+                                Layout.alignment: Qt.AlignVCenter
+                                checked: fileShareController.runAtStartup
+                                onToggled: fileShareController.runAtStartup = checked
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
                             Label {
                                 Layout.fillWidth: true
                                 color: root.textPrimary
@@ -179,6 +203,70 @@ Popup {
                             ThemedToggle {
                                 checked: fileShareController.developerMode
                                 onToggled: fileShareController.developerMode = checked
+                            }
+                        }
+                    }
+                }
+
+                SectionLabel { text: "APPEARANCE" }
+                SectionCard {
+                    width: settingsCol.width
+
+                    ColumnLayout {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 12
+                        spacing: 12
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+                            Label {
+                                Layout.fillWidth: true
+                                color: root.textPrimary
+                                font.pixelSize: 13
+                                text: "Dark mode"
+                            }
+                            ThemedToggle {
+                                checked: Theme.dark
+                                onToggled: Theme.dark = checked
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+                            Label {
+                                Layout.fillWidth: true
+                                color: root.textPrimary
+                                font.pixelSize: 13
+                                text: "Accent color"
+                            }
+                            Row {
+                                spacing: 12
+                                Repeater {
+                                    // value maps to ThemeController::Accent (0/1/2).
+                                    model: [
+                                        { swatch: "#16a34a", value: 0 },
+                                        { swatch: "#2563eb", value: 1 },
+                                        { swatch: "#e95420", value: 2 }
+                                    ]
+                                    delegate: Rectangle {
+                                        required property var modelData
+                                        width: 28
+                                        height: 28
+                                        radius: 14
+                                        color: modelData.swatch
+                                        border.color: root.textPrimary
+                                        border.width: Theme.accent === modelData.value ? 3 : 0
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: Theme.accent = modelData.value
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -284,13 +372,13 @@ Popup {
         padding: 8
         background: Rectangle {
             radius: 8
-            color: parent.down ? "#047857"
-                   : parent.hovered ? "#059669" : "#10b981"
+            color: parent.down ? Theme.accentDeep
+                   : parent.hovered ? Theme.accentStrong : Theme.accentColor
         }
         contentItem: Label {
             text: parent.text
             font: parent.font
-            color: "#ffffff"
+            color: Theme.onAccent
         }
     }
 
@@ -320,7 +408,7 @@ Popup {
         color: root.textPrimary
         background: Rectangle {
             radius: 8
-            color: "#f9fafb"
+            color: Theme.surfaceAlt
             border.color: parent.activeFocus ? root.accent : root.borderColor
             border.width: parent.activeFocus ? 2 : 1
         }

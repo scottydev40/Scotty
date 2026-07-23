@@ -28,6 +28,8 @@ qt_add_executable(nearby_qml_file_tray_app
   file_share_tray_controller.h
   file_share_state.cc
   file_share_state.h
+  theme_controller.cc
+  theme_controller.h
   share_target_model.h
   transfer_model.h
   string_utils.cc

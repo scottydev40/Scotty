@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Effects
 
 // Full-width device / transfer row (RQuickShare-style). One component, state-driven.
 // Renders a discovered send target and/or its active transfer. Incoming transfers
@@ -17,13 +18,13 @@ Item {
     // (Layouts skip items with visible:false.)
     visible: canSend || hasTransfer
 
-    readonly property color rowFill: "#dcfce7"
-    readonly property color rowFillHover: "#c9f4d9"
-    readonly property color surface: "#ffffff"
-    readonly property color textPrimary: "#111827"
-    readonly property color textMuted: "#6b7280"
-    readonly property color accentGreen: "#16a34a"
-    readonly property color danger: "#ef4444"
+    readonly property color rowFill: Theme.rowFill
+    readonly property color rowFillHover: Theme.rowFillHover
+    readonly property color surface: Theme.surface
+    readonly property color textPrimary: Theme.textPrimary
+    readonly property color textMuted: Theme.textMuted
+    readonly property color accentGreen: Theme.accentColor
+    readonly property color danger: Theme.danger
 
     readonly property bool canSend: fileShareController.mode === "Send"
                                     && fileShareController.pendingSendFilePath.length > 0
@@ -114,16 +115,30 @@ Item {
                 border.color: root.isComplete ? root.accentGreen : "transparent"
                 border.width: root.isComplete ? 2 : 0
 
-                Image {
+                // Glyph tinted to a theme color so it stays visible in dark mode
+                // (the source SVGs have fixed dark/green fills).
+                Item {
                     anchors.centerIn: parent
                     width: 26
                     height: 26
-                    smooth: true
-                    fillMode: Image.PreserveAspectFit
-                    sourceSize.width: 52
-                    sourceSize.height: 52
-                    source: root.isComplete ? "qrc:/icons/check_double.svg"
-                                            : root.deviceIcon()
+                    Image {
+                        id: devGlyph
+                        anchors.fill: parent
+                        visible: false
+                        smooth: true
+                        fillMode: Image.PreserveAspectFit
+                        sourceSize.width: 52
+                        sourceSize.height: 52
+                        source: root.isComplete ? "qrc:/icons/check_double.svg"
+                                                : root.deviceIcon()
+                    }
+                    MultiEffect {
+                        source: devGlyph
+                        anchors.fill: devGlyph
+                        colorization: 1.0
+                        colorizationColor: root.isComplete ? root.accentGreen
+                                                           : root.textPrimary
+                    }
                 }
             }
 
