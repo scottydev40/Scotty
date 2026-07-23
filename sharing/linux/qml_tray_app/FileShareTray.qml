@@ -53,10 +53,22 @@ ApplicationWindow {
 
                 readonly property bool isSendMode: fileShareController.pendingSendFilePath.length > 0
 
+                // Count of incoming transfers. Receive-side rows are driven off the
+                // transfers list directly (not discoveredTargets): the sender never
+                // reliably lands in the discovery list, so keying receive display off
+                // discovery left received files invisible.
+                readonly property int incomingCount: {
+                    var n = 0
+                    var t = fileShareController.transfers
+                    for (var i = 0; i < t.length; ++i)
+                        if (t[i] && String(t[i].direction || "") === "incoming") n++
+                    return n
+                }
+
                 // ── Idle: animated blob (only when nothing is going on) ───
                 AnimatedBlob {
                     visible: !mainContent.isSendMode
-                             && fileShareController.transfers.length === 0
+                             && mainContent.incomingCount === 0
                 }
 
                 FileDialog {
@@ -74,13 +86,13 @@ ApplicationWindow {
                 // initiator lives in the sidebar; whole-window drag-drop (below)
                 // still starts a send.
 
-                // ── Send mode OR any transfer: full-width device rows ──────
+                // ── Send mode OR an incoming transfer: full-width device rows ──
                 Flickable {
                     id: mainFlickable
                     anchors.fill: parent
                     clip: true
                     visible: mainContent.isSendMode
-                             || fileShareController.transfers.length > 0
+                             || mainContent.incomingCount > 0
                     contentWidth: width
                     contentHeight: mainCol.implicitHeight + 96
                     ScrollBar.vertical: ScrollBar {}
@@ -93,7 +105,9 @@ ApplicationWindow {
                         width: mainFlickable.width - 96
                         spacing: 16
 
+                        // ── Send: discovered nearby devices ──────────────
                         Label {
+                            visible: mainContent.isSendMode
                             text: "Nearby devices"
                             font.pixelSize: 20
                             font.weight: Font.Medium
@@ -101,7 +115,10 @@ ApplicationWindow {
                         }
 
                         Repeater {
-                            model: fileShareController.discoveredTargets
+                            // Only in send mode; receive rows come from the
+                            // incoming Repeater below so senders never double-render.
+                            model: mainContent.isSendMode
+                                   ? fileShareController.discoveredTargets : []
                             delegate: DeviceRow {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 84
@@ -110,10 +127,45 @@ ApplicationWindow {
 
                         Label {
                             Layout.fillWidth: true
-                            visible: fileShareController.discoveredTargets.length === 0
+                            visible: mainContent.isSendMode
+                                     && fileShareController.discoveredTargets.length === 0
                             text: "Looking for nearby devices…"
                             font.pixelSize: 13
                             color: "#6b7280"
+                        }
+
+                        // ── Receive: incoming transfers ──────────────────
+                        Label {
+                            visible: mainContent.incomingCount > 0
+                            text: "Incoming"
+                            font.pixelSize: 20
+                            font.weight: Font.Medium
+                            color: "#111827"
+                        }
+
+                        Repeater {
+                            model: fileShareController.transfers
+                            delegate: Item {
+                                id: inWrap
+                                required property var modelData   // transfer entry
+                                readonly property bool isIncoming:
+                                    modelData && String(modelData.direction || "") === "incoming"
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: isIncoming ? 84 : 0
+                                visible: isIncoming
+
+                                // Adapt a transfer entry {targetId,targetName,…} to the
+                                // {id,name,deviceType} shape DeviceRow expects; DeviceRow
+                                // then matches the live transfer back by id.
+                                DeviceRow {
+                                    anchors.fill: parent
+                                    modelData: ({
+                                        id: inWrap.modelData ? inWrap.modelData.targetId : 0,
+                                        name: inWrap.modelData ? inWrap.modelData.targetName : "",
+                                        deviceType: 0
+                                    })
+                                }
+                            }
                         }
                     }
                 }
