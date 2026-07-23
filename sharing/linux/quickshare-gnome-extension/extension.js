@@ -133,6 +133,7 @@ export default class QuickShareExtension extends Extension {
         // Stock symbolic that reads as the swap/loop motif and recolors cleanly
         // in the panel/menu. Can be swapped for a custom fill-based symbolic later.
         this.icon = new Gio.ThemedIcon({name: 'media-playlist-repeat-symbolic'});
+        this._pendingVisibility = null;
 
         this._indicator = new QuickShareIndicator(this);
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
@@ -169,6 +170,23 @@ export default class QuickShareExtension extends Extension {
         // Done on every refresh, not just enable(), because the app may have
         // started after us.
         this._proxy.SetTileActiveRemote(true, () => {});
+
+        // A visibility picked while the app was down: apply it now that it is
+        // up. Without this the launch silently restores the app's persisted
+        // visibility and the choice that started it is discarded.
+        if (this._pendingVisibility !== null) {
+            const pending = this._pendingVisibility;
+            this._pendingVisibility = null;
+            this._proxy.SetVisibilityRemote(pending, (res, err) => {
+                if (err)
+                    logError(err, 'Quick Share: pending SetVisibility failed');
+                // Sync explicitly: if the app already sat on `pending` it emits
+                // no VisibilityChanged, and the tile would stay stale.
+                this._syncVisibility(pending);
+            });
+            return;
+        }
+
         // Pull current visibility.
         this._proxy.GetVisibilityRemote((res, err) => {
             if (err) {
@@ -196,9 +214,12 @@ export default class QuickShareExtension extends Extension {
         if (this._proxy?.g_name_owner) {
             this._proxy.SetVisibilityRemote(mode, () => {});
         } else {
-            // App not running: start it, then apply once it appears.
-            this._launchApp();
+            // App not running: start it, then apply once it appears on the bus
+            // (see _refresh). Launching is not instant, so say so.
             this._pendingVisibility = mode;
+            this._launchApp();
+            if (this._indicator)
+                this._indicator.toggle.subtitle = 'Starting…';
         }
     }
 
@@ -241,6 +262,7 @@ export default class QuickShareExtension extends Extension {
             this._proxy.disconnect(this._ownerId);
         this._visSignal = this._runSignal = this._ownerId = null;
         this._proxy = null;
+        this._pendingVisibility = null;
 
         this._indicator?.quickSettingsItems.forEach(i => i.destroy());
         this._indicator?.destroy();
