@@ -127,13 +127,13 @@ recolored by wrapping/ colorization where needed.
 
 | File | Source (rquickshare) | Use |
 |---|---|---|
-| `dev_laptop.svg` | ItemSide.vue Laptop path | device row (future per-type) |
-| `dev_phone.svg` | ItemSide.vue Phone path | device row (future per-type) |
-| `dev_tablet.svg` | ItemSide.vue Tablet path | device row (future per-type) |
-| `dev_generic.svg` | ItemSide.vue fallback path | **device row avatar (default)** |
-| `check_double.svg` | ItemSide.vue Finished path | completed transfer |
-| `pin_lock.svg` | ItemSide.vue pin path | PIN display |
-| `gear.svg` | Heading.vue settings path | header settings button |
+| `dev_laptop.svg` | ItemSide.vue Laptop path | device row — ShareTargetType 3 (wired) |
+| `dev_phone.svg` | ItemSide.vue Phone path | device row — type 1/5 (wired) |
+| `dev_tablet.svg` | ItemSide.vue Tablet path | device row — type 2 (wired) |
+| `dev_generic.svg` | ItemSide.vue fallback path | device row avatar — default (wired) |
+| `check_double.svg` | ItemSide.vue Finished path | completed transfer (wired) |
+| `pin_lock.svg` | ItemSide.vue pin path | reserved for PIN display (not yet placed) |
+| `gear.svg` | Heading.vue settings path | header settings button (wired) |
 
 Path data is captured verbatim from those Vue files (Apache/Material — attribution
 kept in the SVG comment).
@@ -203,9 +203,17 @@ SideBar has a real selector (Everyone/Contacts/Hidden menu) bound to it.
 `Cancel` already exist on `NearbySharingApi` — so those follow-ups are QML+controller
 wiring only, no new `.so` surface.
 
-**Remaining icon note:** `pin_lock.svg` and per-type `dev_laptop/phone/tablet.svg`
-are committed as assets but not yet placed in the UI (PIN display + per-type row
-icon are follow-ups; generic device icon is wired).
+**Icon status:** device glyphs (`dev_generic/laptop/phone/tablet.svg`) are wired into
+`DeviceRow` per `deviceType`; `check_double.svg` marks completed transfers; `gear.svg`
+is the header settings button. `pin_lock.svg` is committed but **not yet placed**
+(reserved for a future PIN display).
+
+**Not the same as the in-app icons — the app launcher/taskbar icon:** the desktop
+entry uses a **separate** asset (`Icon=nearby-file-share` → `~/.local/share/icons/
+hicolor/256x256/apps/nearby-file-share.png`) and the tray uses `tray_icon-symbolic.svg`
+/ `tray_icon.png`. Those are the old placeholders — **unchanged** by this overhaul.
+Swapping them for a Quick Share-style logo is a separate follow-up (replace the PNG +
+`gtk-update-icon-cache`; the symbolic tray SVG for the systray).
 
 ---
 
