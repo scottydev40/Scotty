@@ -4,7 +4,16 @@
 FileShareState::FileShareState() = default;
 
 void FileShareState::AddOrUpdateTarget(qlonglong id, const QString& name,
-                                       bool is_incoming) {
+                                       bool is_incoming, int device_type) {
+  // Preserve a previously-known device type when the caller passes -1.
+  auto resolveType = [&](int row_index) -> int {
+    if (device_type >= 0) return device_type;
+    if (row_index >= 0 && row_index < discovered_targets_.size())
+      return discovered_targets_[row_index].toMap()
+          .value(QStringLiteral("deviceType"), 0).toInt();
+    return 0;
+  };
+
   // Same id already known → update in place.
   if (discovered_row_by_target_.contains(id)) {
     target_names_[id] = name;
@@ -14,6 +23,7 @@ void FileShareState::AddOrUpdateTarget(qlonglong id, const QString& name,
       target[QStringLiteral("id")] = id;
       target[QStringLiteral("name")] = name;
       target[QStringLiteral("isIncoming")] = is_incoming;
+      target[QStringLiteral("deviceType")] = resolveType(row_index);
       discovered_targets_[row_index] = target;
     }
     return;
@@ -52,6 +62,7 @@ void FileShareState::AddOrUpdateTarget(qlonglong id, const QString& name,
       target[QStringLiteral("id")] = id;
       target[QStringLiteral("name")] = name;
       target[QStringLiteral("isIncoming")] = is_incoming;
+      target[QStringLiteral("deviceType")] = resolveType(row_index);
       discovered_targets_[row_index] = target;
     }
     return;
@@ -63,6 +74,7 @@ void FileShareState::AddOrUpdateTarget(qlonglong id, const QString& name,
   target[QStringLiteral("id")] = id;
   target[QStringLiteral("name")] = name;
   target[QStringLiteral("isIncoming")] = is_incoming;
+  target[QStringLiteral("deviceType")] = (device_type >= 0 ? device_type : 0);
   discovered_row_by_target_[id] = discovered_targets_.size();
   discovered_targets_.append(target);
 }

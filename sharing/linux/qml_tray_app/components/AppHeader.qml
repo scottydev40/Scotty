@@ -43,11 +43,15 @@ Item {
             color: settingsBtn.containsMouse ? "#dcfce7" : "transparent"
             border.color: settingsBtn.containsMouse ? "#86efac" : "transparent"
 
-            Label {
+            Image {
                 anchors.centerIn: parent
-                text: "⚙"
-                font.pixelSize: 18
-                color: settingsBtn.containsMouse ? accent : textMuted
+                width: 22
+                height: 22
+                smooth: true
+                fillMode: Image.PreserveAspectFit
+                sourceSize.width: 44
+                sourceSize.height: 44
+                source: "qrc:/icons/gear.svg"
             }
 
             MouseArea {

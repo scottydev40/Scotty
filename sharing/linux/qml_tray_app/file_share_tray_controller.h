@@ -29,6 +29,8 @@ class FileShareTrayController : public QObject {
   Q_PROPERTY(QString logPath READ logPath WRITE setLogPath NOTIFY logPathChanged)
   Q_PROPERTY(QString savePath READ savePath WRITE setSavePath NOTIFY savePathChanged)
   Q_PROPERTY(bool developerMode READ developerMode WRITE setDeveloperMode NOTIFY developerModeChanged)
+  // Advertising visibility for receive mode: 0 = Everyone, 1 = Contacts, 2 = Hidden.
+  Q_PROPERTY(int visibility READ visibility WRITE setVisibility NOTIFY visibilityChanged)
 
  public:
   explicit FileShareTrayController(QObject* parent = nullptr);
@@ -53,6 +55,7 @@ class FileShareTrayController : public QObject {
   QString logPath() const { return state_.logPath(); }
   QString savePath() const { return state_.savePath(); }
   bool developerMode() const { return state_.developerMode(); }
+  int visibility() const { return visibility_; }
 
   // Public methods
   void setDeviceName(const QString& device_name);
@@ -61,6 +64,7 @@ class FileShareTrayController : public QObject {
   void setLogPath(const QString& path);
   void setSavePath(const QString& path);
   void setDeveloperMode(bool enabled);
+  void setVisibility(int mode);
 
   Q_INVOKABLE void start();
   Q_INVOKABLE void stop();
@@ -72,6 +76,13 @@ class FileShareTrayController : public QObject {
   Q_INVOKABLE void openFileLocation(const QString& file_path);
   Q_INVOKABLE void clearTransfers();
   Q_INVOKABLE void hideToTray();
+  // Incoming-transfer decisions / cancel (used by DeviceRow when auto-accept is off
+  // or a transfer is in progress).
+  Q_INVOKABLE void acceptTransfer(qlonglong share_target_id);
+  Q_INVOKABLE void declineTransfer(qlonglong share_target_id);
+  Q_INVOKABLE void cancelTransfer(qlonglong share_target_id);
+  // Dismiss a single finished/failed transfer without wiping the whole list.
+  Q_INVOKABLE void clearTransfer(qlonglong share_target_id);
 
  signals:
   void modeChanged();
@@ -89,6 +100,7 @@ class FileShareTrayController : public QObject {
   void logPathChanged();
   void savePathChanged();
   void developerModeChanged();
+  void visibilityChanged();
 
   void requestTrayMessage(const QString& title, const QString& body);
   void requestCopyLinkTrayMessage(const QString& title, const QString& body,
@@ -123,6 +135,8 @@ class FileShareTrayController : public QObject {
 
   std::unique_ptr<NearbySharingApi> service_;
   FileShareState state_;
+  // Advertising visibility: 0 = Everyone, 1 = Contacts, 2 = Hidden.
+  int visibility_ = 0;
 };
 
 #endif  // SHARING_LINUX_QML_TRAY_APP_FILE_SHARE_TRAY_CONTROLLER_H_

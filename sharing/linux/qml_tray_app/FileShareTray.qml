@@ -53,8 +53,11 @@ ApplicationWindow {
 
                 readonly property bool isSendMode: fileShareController.pendingSendFilePath.length > 0
 
-                // ── Idle: animated blob ───────────────────────────────────
-                AnimatedBlob { visible: !mainContent.isSendMode }
+                // ── Idle: animated blob (only when nothing is going on) ───
+                AnimatedBlob {
+                    visible: !mainContent.isSendMode
+                             && fileShareController.transfers.length === 0
+                }
 
                 FileDialog {
                     id: sendFileDialog
@@ -67,94 +70,50 @@ ApplicationWindow {
                     }
                 }
 
-                ColumnLayout {
-                    visible: !mainContent.isSendMode
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    anchors.bottom: parent.bottom
-                    anchors.bottomMargin: 92
-                    spacing: 8
-                    z: 1
+                // Idle: the AnimatedBlob (above) is the centerpiece. The send-file
+                // initiator lives in the sidebar; whole-window drag-drop (below)
+                // still starts a send.
 
-                    Button {
-                        Layout.alignment: Qt.AlignHCenter
-                        text: "Select a file to send"
-                        font.pixelSize: 15
-                        padding: 14
-                        background: Rectangle {
-                            radius: 22
-                            color: parent.down ? "#047857" : parent.hovered ? "#059669" : "#10b981"
-                        }
-                        contentItem: Label {
-                            text: parent.text
-                            font: parent.font
-                            color: "#ffffff"
-                            horizontalAlignment: Text.AlignHCenter
-                        }
-                        onClicked: sendFileDialog.open()
-                    }
-
-                    Label {
-                        Layout.alignment: Qt.AlignHCenter
-                        text: "or drop a file anywhere in this window"
-                        font.pixelSize: 12
-                        color: "#6b7280"
-                    }
-                }
-
-                // ── Non-idle: scrollable device + transfer cards ──────────
+                // ── Send mode OR any transfer: full-width device rows ──────
                 Flickable {
                     id: mainFlickable
                     anchors.fill: parent
                     clip: true
                     visible: mainContent.isSendMode
+                             || fileShareController.transfers.length > 0
                     contentWidth: width
                     contentHeight: mainCol.implicitHeight + 96
                     ScrollBar.vertical: ScrollBar {}
                     z: 1
 
-                    RowLayout {
+                    ColumnLayout {
                         id: mainCol
                         x: 48
                         y: 48
                         width: mainFlickable.width - 96
-                        spacing: 32
+                        spacing: 16
 
-                        // ── Left: nearby devices (progress shown on each card) ──
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            Layout.alignment: Qt.AlignTop
-                            spacing: 16
+                        Label {
+                            text: "Nearby devices"
+                            font.pixelSize: 20
+                            font.weight: Font.Medium
+                            color: "#111827"
+                        }
 
-                            Label {
-                                text: "Nearby devices"
-                                font.pixelSize: 20
-                                font.weight: Font.Medium
-                                color: "#111827"
-                            }
-
-                            Item {
+                        Repeater {
+                            model: fileShareController.discoveredTargets
+                            delegate: DeviceRow {
                                 Layout.fillWidth: true
-                                implicitHeight: deviceFlow.childrenRect.height
-                                visible: fileShareController.discoveredTargets.length > 0
-
-                                Flow {
-                                    id: deviceFlow
-                                    width: parent.width
-                                    spacing: 20
-
-                                    Repeater {
-                                        model: fileShareController.discoveredTargets
-                                        delegate: DeviceCard {}
-                                    }
-                                }
+                                Layout.preferredHeight: 84
                             }
                         }
 
-                        // ── Right: compact QR, off to the side ──────────────
-                        SendUrlPanel {
-                            Layout.alignment: Qt.AlignTop
-                            Layout.preferredWidth: 240
-                            qrFrameSize: 230
+                        Label {
+                            Layout.fillWidth: true
+                            visible: fileShareController.discoveredTargets.length === 0
+                            text: "Looking for nearby devices…"
+                            font.pixelSize: 13
+                            color: "#6b7280"
                         }
                     }
                 }

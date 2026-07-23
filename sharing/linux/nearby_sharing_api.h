@@ -119,6 +119,12 @@ class __attribute__((visibility("default"))) NearbySharingApi {
   // Directory where received files are saved. Empty restores the default.
   void SetSavePath(const std::string& path);
 
+  // Advertising visibility for receive mode.
+  // mode: 0 = Everyone, 1 = Contacts, 2 = Hidden. Applied immediately if the
+  // service is already receiving, and used for subsequent StartReceiveMode calls.
+  void SetVisibility(int mode);
+  int GetVisibility() const;
+
   void Shutdown(std::function<void(StatusCode)> callback);
   std::string GetQrCodeUrl() const;
 

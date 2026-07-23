@@ -6,11 +6,19 @@
     <file>components/AnimatedBlob.qml</file>
     <file>components/SendUrlPanel.qml</file>
     <file>components/DeviceCard.qml</file>
+    <file>components/DeviceRow.qml</file>
     <file>components/TransferList.qml</file>
     <file>components/SettingsPanel.qml</file>
   </qresource>
   <qresource prefix="/icons">
     <file>tray_icon.png</file>
     <file alias="tray_icon-symbolic.svg">tray_icon-symbolic.svg</file>
+    <file alias="dev_generic.svg">icons/dev_generic.svg</file>
+    <file alias="dev_laptop.svg">icons/dev_laptop.svg</file>
+    <file alias="dev_phone.svg">icons/dev_phone.svg</file>
+    <file alias="dev_tablet.svg">icons/dev_tablet.svg</file>
+    <file alias="check_double.svg">icons/check_double.svg</file>
+    <file alias="pin_lock.svg">icons/pin_lock.svg</file>
+    <file alias="gear.svg">icons/gear.svg</file>
   </qresource>
 </RCC>

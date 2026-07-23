@@ -51,6 +51,7 @@ FileShareTrayController::~FileShareTrayController() {
 void FileShareTrayController::initializeService() {
   service_ = std::make_unique<NearbySharingApi>(state_.deviceName().toStdString());
   service_->Set5GhzHotspotEnabled(state_.enable5GhzHotspot());
+  service_->SetVisibility(visibility_);
   if (!state_.savePath().isEmpty()) {
     service_->SetSavePath(state_.savePath().toStdString());
   }
@@ -106,7 +107,7 @@ void FileShareTrayController::updateTargetFromInfo(
   const QString name = StringUtils::TrimmedOrFallback(
       StringUtils::FromStdString(info.device_name),
       QStringLiteral("Unknown device"));
-  state_.AddOrUpdateTarget(info.id, name, info.is_incoming);
+  state_.AddOrUpdateTarget(info.id, name, info.is_incoming, info.device_type);
   emit discoveredTargetsChanged();
 }
 
@@ -290,6 +291,12 @@ void FileShareTrayController::loadSettings() {
 
   state_.SetDeveloperMode(
       settings.value(QStringLiteral("developerMode"), false).toBool());
+
+  const int stored_visibility =
+      settings.value(QStringLiteral("visibility"), 0).toInt();
+  visibility_ = (stored_visibility >= 0 && stored_visibility <= 2)
+                    ? stored_visibility
+                    : 0;
 }
 
 void FileShareTrayController::saveSettings() const {
@@ -301,6 +308,7 @@ void FileShareTrayController::saveSettings() const {
   settings.setValue(QStringLiteral("logPath"), state_.logPath());
   settings.setValue(QStringLiteral("savePath"), state_.savePath());
   settings.setValue(QStringLiteral("developerMode"), state_.developerMode());
+  settings.setValue(QStringLiteral("visibility"), visibility_);
 }
 
 void FileShareTrayController::setDeviceName(const QString& device_name) {
@@ -339,6 +347,20 @@ void FileShareTrayController::setEnable5GhzHotspot(bool enabled) {
   }
   saveSettings();
   emit enable5GhzHotspotChanged();
+}
+
+void FileShareTrayController::setVisibility(int mode) {
+  if (mode < 0 || mode > 2 || mode == visibility_) {
+    return;
+  }
+  visibility_ = mode;
+  // Applies live if the service is receiving; otherwise takes effect on next
+  // StartReceiveMode (see NearbySharingApi::SetVisibility).
+  if (service_) {
+    service_->SetVisibility(mode);
+  }
+  saveSettings();
+  emit visibilityChanged();
 }
 
 void FileShareTrayController::setLogPath(const QString& path) {
@@ -690,6 +712,30 @@ void FileShareTrayController::clearTransfers() {
 
 void FileShareTrayController::hideToTray() {
   // This is handled by the main window, but can be extended here if needed
+}
+
+void FileShareTrayController::acceptTransfer(qlonglong share_target_id) {
+  if (service_) {
+    service_->Accept(share_target_id, [](NearbySharingApi::StatusCode) {});
+  }
+}
+
+void FileShareTrayController::declineTransfer(qlonglong share_target_id) {
+  if (service_) {
+    service_->Reject(share_target_id, [](NearbySharingApi::StatusCode) {});
+  }
+}
+
+void FileShareTrayController::cancelTransfer(qlonglong share_target_id) {
+  if (service_) {
+    service_->Cancel(share_target_id, [](NearbySharingApi::StatusCode) {});
+  }
+}
+
+void FileShareTrayController::clearTransfer(qlonglong share_target_id) {
+  state_.RemoveTransfer(share_target_id);
+  emit transfersChanged();
+  emit discoveredTargetsChanged();
 }
 
 void FileShareTrayController::setStatus(const QString& status) {
