@@ -31,6 +31,7 @@ FileShareTrayController::FileShareTrayController(QObject* parent)
   }
 
   loadSettings();
+  refreshAutostartFile();
   initializeService();
 }
 
@@ -372,6 +373,25 @@ static QString AutostartFilePath() {
          QStringLiteral("/autostart/nearby-file-share.desktop");
 }
 
+// There is no XDG key for "start minimized" (Hidden= means disabled), so the
+// autostart entry passes --hidden and the app skips showing its window.
+static void WriteAutostartFile() {
+  const QString path = AutostartFilePath();
+  QDir().mkpath(QFileInfo(path).absolutePath());
+  QFile file(path);
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    return;
+  }
+  QTextStream out(&file);
+  out << "[Desktop Entry]\n"
+      << "Type=Application\n"
+      << "Name=Nearby File Share\n"
+      << "Exec=\"" << QCoreApplication::applicationFilePath() << "\" --hidden\n"
+      << "Icon=nearby-file-share\n"
+      << "Terminal=false\n"
+      << "X-GNOME-Autostart-enabled=true\n";
+}
+
 bool FileShareTrayController::runAtStartup() const {
   return QFileInfo::exists(AutostartFilePath());
 }
@@ -382,22 +402,19 @@ void FileShareTrayController::setRunAtStartup(bool enabled) {
     return;
   }
   if (enabled) {
-    QDir().mkpath(QFileInfo(path).absolutePath());
-    QFile file(path);
-    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-      QTextStream out(&file);
-      out << "[Desktop Entry]\n"
-          << "Type=Application\n"
-          << "Name=Nearby File Share\n"
-          << "Exec=" << QCoreApplication::applicationFilePath() << "\n"
-          << "Icon=nearby-file-share\n"
-          << "Terminal=false\n"
-          << "X-GNOME-Autostart-enabled=true\n";
-    }
+    WriteAutostartFile();
   } else {
     QFile::remove(path);
   }
   emit runAtStartupChanged();
+}
+
+void FileShareTrayController::refreshAutostartFile() {
+  // Rewrite in place so entries written by an older build (no --hidden, and an
+  // unquoted Exec path) pick up the current format.
+  if (runAtStartup()) {
+    WriteAutostartFile();
+  }
 }
 
 void FileShareTrayController::quitApplication() {

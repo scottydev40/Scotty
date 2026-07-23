@@ -115,6 +115,8 @@ class FileShareTrayController : public QObject {
 
  private:
   void initializeService();
+  // Keeps an existing autostart entry in sync with the current format.
+  void refreshAutostartFile();
   void attachServiceListeners();
   void loadSettings();
   void saveSettings() const;

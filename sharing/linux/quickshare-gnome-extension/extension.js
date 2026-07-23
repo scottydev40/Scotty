@@ -228,7 +228,9 @@ export default class QuickShareExtension extends Extension {
             // App not running: start it, then apply once it appears on the bus
             // (see _refresh). Launching is not instant, so say so.
             this._pendingVisibility = mode;
-            this._launchApp();
+            // Hidden: setting visibility from the tile shouldn't throw a window
+            // in your face.
+            this._launchApp(true);
             if (this._indicator)
                 this._indicator.toggle.subtitle = 'Starting…';
         }
@@ -246,9 +248,10 @@ export default class QuickShareExtension extends Extension {
             this._proxy.QuitRemote(() => {});
     }
 
-    _launchApp() {
+    _launchApp(hidden = false) {
+        const argv = hidden ? [APP_BINARY, '--hidden'] : [APP_BINARY];
         try {
-            Gio.Subprocess.new([APP_BINARY], Gio.SubprocessFlags.NONE);
+            Gio.Subprocess.new(argv, Gio.SubprocessFlags.NONE);
         } catch (e) {
             logError(e, 'Quick Share: failed to launch app');
         }
