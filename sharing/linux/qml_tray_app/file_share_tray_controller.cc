@@ -301,6 +301,9 @@ void FileShareTrayController::loadSettings() {
   visibility_ = (stored_visibility >= 0 && stored_visibility <= 2)
                     ? stored_visibility
                     : 0;
+
+  show_tray_icon_ =
+      settings.value(QStringLiteral("showTrayIcon"), true).toBool();
 }
 
 void FileShareTrayController::saveSettings() const {
@@ -313,6 +316,7 @@ void FileShareTrayController::saveSettings() const {
   settings.setValue(QStringLiteral("savePath"), state_.savePath());
   settings.setValue(QStringLiteral("developerMode"), state_.developerMode());
   settings.setValue(QStringLiteral("visibility"), visibility_);
+  settings.setValue(QStringLiteral("showTrayIcon"), show_tray_icon_);
 }
 
 void FileShareTrayController::setDeviceName(const QString& device_name) {
@@ -398,6 +402,15 @@ void FileShareTrayController::setRunAtStartup(bool enabled) {
     QFile::remove(path);
   }
   emit runAtStartupChanged();
+}
+
+void FileShareTrayController::setShowTrayIcon(bool enabled) {
+  if (enabled == show_tray_icon_) {
+    return;
+  }
+  show_tray_icon_ = enabled;
+  saveSettings();
+  emit showTrayIconChanged();
 }
 
 void FileShareTrayController::setLogPath(const QString& path) {

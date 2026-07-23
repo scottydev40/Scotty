@@ -22,6 +22,7 @@
 
 #include "file_share_tray_controller.h"
 #include "notification_manager.h"
+#include "quick_share_dbus.h"
 #include "theme_controller.h"
 
 namespace {
@@ -163,6 +164,11 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
+  // Expose a session-bus service so an external UI (GNOME Quick Settings
+  // extension) can read/drive visibility and surface the window.
+  QuickShareDbus dbus_service(&controller, window);
+  dbus_service.registerOnBus();
+
   // A second launch pings the socket → surface the existing window.
   QObject::connect(&instance_server, &QLocalServer::newConnection, window,
                    [&instance_server, window]() {
@@ -279,7 +285,14 @@ int main(int argc, char* argv[]) {
 #endif
 
   tray.setContextMenu(&tray_menu);
-  tray.show();
+  // The tray icon is optional — users can drive the app from the GNOME Quick
+  // Settings tile instead. Honor the persisted "Show tray icon" setting and
+  // react to live changes.
+  tray.setVisible(controller.showTrayIcon());
+  QObject::connect(&controller, &FileShareTrayController::showTrayIconChanged,
+                   &tray, [&tray, &controller]() {
+                     tray.setVisible(controller.showTrayIcon());
+                   });
 
   controller.start();
   //controller.

@@ -33,6 +33,9 @@ class FileShareTrayController : public QObject {
   Q_PROPERTY(int visibility READ visibility WRITE setVisibility NOTIFY visibilityChanged)
   // Launch the app on login (managed via an XDG autostart .desktop entry).
   Q_PROPERTY(bool runAtStartup READ runAtStartup WRITE setRunAtStartup NOTIFY runAtStartupChanged)
+  // Whether to show the system-tray icon (an alternative to the GNOME Quick
+  // Settings tile; users can pick either or both).
+  Q_PROPERTY(bool showTrayIcon READ showTrayIcon WRITE setShowTrayIcon NOTIFY showTrayIconChanged)
 
  public:
   explicit FileShareTrayController(QObject* parent = nullptr);
@@ -59,6 +62,7 @@ class FileShareTrayController : public QObject {
   bool developerMode() const { return state_.developerMode(); }
   int visibility() const { return visibility_; }
   bool runAtStartup() const;
+  bool showTrayIcon() const { return show_tray_icon_; }
 
   // Public methods
   void setDeviceName(const QString& device_name);
@@ -69,6 +73,7 @@ class FileShareTrayController : public QObject {
   void setDeveloperMode(bool enabled);
   void setVisibility(int mode);
   void setRunAtStartup(bool enabled);
+  void setShowTrayIcon(bool enabled);
 
   Q_INVOKABLE void start();
   Q_INVOKABLE void stop();
@@ -106,6 +111,7 @@ class FileShareTrayController : public QObject {
   void developerModeChanged();
   void visibilityChanged();
   void runAtStartupChanged();
+  void showTrayIconChanged();
 
   void requestTrayMessage(const QString& title, const QString& body);
   void requestCopyLinkTrayMessage(const QString& title, const QString& body,
@@ -142,6 +148,7 @@ class FileShareTrayController : public QObject {
   FileShareState state_;
   // Advertising visibility: 0 = Everyone, 1 = Contacts, 2 = Hidden.
   int visibility_ = 0;
+  bool show_tray_icon_ = true;
 };
 
 #endif  // SHARING_LINUX_QML_TRAY_APP_FILE_SHARE_TRAY_CONTROLLER_H_

@@ -1,0 +1,8 @@
+{
+  "uuid": "quickshare@ashpika40.github.io",
+  "name": "Quick Share",
+  "description": "Quick Settings tile to control the Nearby/Quick Share Linux app: toggle visibility (Everyone / Contacts / Hidden) and open the window. Talks to the app over D-Bus (io.github.ashpika40.QuickShare).",
+  "shell-version": ["46", "47", "48", "49", "50"],
+  "url": "https://github.com/ashpika40/nearby",
+  "version": 1
+}
