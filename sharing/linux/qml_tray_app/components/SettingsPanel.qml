@@ -222,39 +222,42 @@ Popup {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 10
-                            Label {
-                                Layout.fillWidth: true
-                                color: root.textPrimary
-                                font.pixelSize: 13
-                                text: "Dark mode"
+                            ColumnLayout {
+                                spacing: 1
+                                Label {
+                                    color: root.textPrimary
+                                    font.pixelSize: 13
+                                    text: "Follow system theme"
+                                }
+                                Label {
+                                    color: root.textMuted
+                                    font.pixelSize: 11
+                                    text: Theme.systemAccentAvailable
+                                          ? "Match the desktop's light/dark mode and accent colour."
+                                          : "Match the desktop's light/dark mode."
+                                }
                             }
+                            Item { Layout.fillWidth: true }
                             ThemedToggle {
-                                checked: Theme.dark
-                                onToggled: Theme.dark = checked
+                                Layout.alignment: Qt.AlignVCenter
+                                checked: Theme.followSystem
+                                onToggled: Theme.followSystem = checked
                             }
                         }
 
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 10
-                            ColumnLayout {
-                                spacing: 1
-                                Label {
-                                    color: root.textPrimary
-                                    font.pixelSize: 13
-                                    text: "Show tray icon"
-                                }
-                                Label {
-                                    color: root.textMuted
-                                    font.pixelSize: 11
-                                    text: "Off if you drive it from the GNOME Quick Settings tile."
-                                }
+                            Label {
+                                Layout.fillWidth: true
+                                color: root.textPrimary
+                                font.pixelSize: 13
+                                text: "Dark mode"
+                                opacity: Theme.followSystem ? 0.5 : 1.0
                             }
-                            Item { Layout.fillWidth: true }
                             ThemedToggle {
-                                Layout.alignment: Qt.AlignVCenter
-                                checked: fileShareController.showTrayIcon
-                                onToggled: fileShareController.showTrayIcon = checked
+                                checked: Theme.dark
+                                onToggled: Theme.dark = checked
                             }
                         }
 
@@ -266,6 +269,8 @@ Popup {
                                 color: root.textPrimary
                                 font.pixelSize: 13
                                 text: "Accent color"
+                                opacity: Theme.followSystem
+                                         && Theme.systemAccentAvailable ? 0.5 : 1.0
                             }
                             Row {
                                 spacing: 12
@@ -283,7 +288,13 @@ Popup {
                                         radius: 14
                                         color: modelData.swatch
                                         border.color: root.textPrimary
-                                        border.width: Theme.accent === modelData.value ? 3 : 0
+                                        // No ring while the desktop's own
+                                        // accent is the one in use.
+                                        border.width:
+                                            Theme.accent === modelData.value
+                                            && !(Theme.followSystem
+                                                 && Theme.systemAccentAvailable)
+                                            ? 3 : 0
                                         MouseArea {
                                             anchors.fill: parent
                                             cursorShape: Qt.PointingHandCursor

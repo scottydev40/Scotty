@@ -35,8 +35,11 @@ const IFACE = `
     <method name="GetRunning"><arg type="b" direction="out"/></method>
     <method name="Show"/>
     <method name="Quit"/>
+    <method name="SetTileActive"><arg type="b" direction="in"/></method>
+    <method name="GetTileActive"><arg type="b" direction="out"/></method>
     <signal name="VisibilityChanged"><arg type="i"/></signal>
     <signal name="RunningChanged"><arg type="b"/></signal>
+    <signal name="TileActiveChanged"><arg type="b"/></signal>
   </interface>
 </node>`;
 
@@ -97,7 +100,14 @@ class QuickShareToggle extends QuickMenuToggle {
 
     syncRunning(running) {
         this.reactive = true;
-        this.subtitle = running ? (this.subtitle || VIS_LABEL[0]) : 'Not running';
+        if (running)
+            return;
+        // App gone: the tile must not keep showing the last live state.
+        this.checked = false;
+        this.subtitle = 'Not running';
+        this.menu.setHeader(this._ext.icon, 'Quick Share', 'Not running');
+        for (const item of Object.values(this._items))
+            item.setOrnament(PopupMenu.Ornament.NONE);
     }
 });
 
@@ -155,6 +165,10 @@ export default class QuickShareExtension extends Extension {
         this._syncRunning(running);
         if (!running)
             return;
+        // Tell the app this tile is live so it drops its redundant tray icon.
+        // Done on every refresh, not just enable(), because the app may have
+        // started after us.
+        this._proxy.SetTileActiveRemote(true, () => {});
         // Pull current visibility.
         this._proxy.GetVisibilityRemote((res, err) => {
             if (err) {
@@ -209,6 +223,16 @@ export default class QuickShareExtension extends Extension {
     }
 
     disable() {
+        // Hand control back before we go: the app restores its tray icon, so
+        // the user is never left without a way to open or quit it. Sync so it
+        // lands before the proxy is dropped.
+        try {
+            if (this._proxy?.g_name_owner)
+                this._proxy.SetTileActiveSync(false);
+        } catch (e) {
+            logError(e, 'Quick Share: SetTileActive(false) failed');
+        }
+
         if (this._proxy && this._visSignal)
             this._proxy.disconnectSignal(this._visSignal);
         if (this._proxy && this._runSignal)
