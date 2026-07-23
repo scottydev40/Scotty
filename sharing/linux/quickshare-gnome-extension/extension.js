@@ -45,9 +45,10 @@ const IFACE = `
 
 const QuickShareProxy = Gio.DBusProxy.makeProxyWrapper(IFACE);
 
+// Matches the wording Android uses in its own Quick Share tile.
 const VIS_LABEL = {
-    0: 'Visible to everyone',
-    1: 'Visible to contacts',
+    0: 'Everyone',
+    1: 'Contacts',
     2: 'Hidden',
 };
 
@@ -65,11 +66,12 @@ class QuickShareToggle extends QuickMenuToggle {
 
         // Visibility radio items.
         this._items = {};
-        for (const [val, label] of [[0, 'Everyone'], [1, 'Contacts'], [2, 'Hidden']]) {
+        for (const [val, label] of Object.entries(VIS_LABEL)) {
+            const mode = Number(val);
             const item = new PopupMenu.PopupMenuItem(label);
-            item.connect('activate', () => this._ext.setVisibility(val));
+            item.connect('activate', () => this._ext.setVisibility(mode));
             this.menu.addMenuItem(item);
-            this._items[val] = item;
+            this._items[mode] = item;
         }
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
