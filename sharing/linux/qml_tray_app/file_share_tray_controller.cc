@@ -600,16 +600,32 @@ static bool IsSendableFile(const QFileInfo& info) {
   return info.exists() && info.isFile() && info.size() > 0;
 }
 
+// Desktop cruft nobody means to share. Dotfiles and hidden directories are
+// already excluded by the iterator's filters; these are the ones that are not
+// hidden on Linux (Windows marks them hidden by attribute instead) plus editor
+// backups. Only applied when expanding a folder — explicitly selecting one of
+// these files still sends it.
+static bool IsJunkFile(const QString& name) {
+  static const QStringList kJunk = {
+      QStringLiteral("thumbs.db"),    QStringLiteral("ehthumbs.db"),
+      QStringLiteral("desktop.ini"),  QStringLiteral(".ds_store"),
+      QStringLiteral(".directory"),
+  };
+  return name.endsWith(QLatin1Char('~')) || kJunk.contains(name.toLower());
+}
+
 // Quick Share has no folder attachment type, so a selected folder contributes
 // the files inside it — the same thing Android does when you share a folder.
 // Directory structure is not preserved; the receiver gets a flat set.
 static void CollectSendableFiles(const QString& root, QStringList* out) {
-  // Not following symlinked directories: they can form cycles.
+  // No QDir::Hidden: dotfiles are skipped, and the iterator will not descend
+  // into hidden directories either, so .git/.cache never get walked.
+  // Symlinked directories are not followed — they can form cycles.
   QDirIterator it(root, QDir::Files | QDir::NoDotAndDotDot | QDir::Readable,
                   QDirIterator::Subdirectories);
   while (it.hasNext()) {
     it.next();
-    if (IsSendableFile(it.fileInfo())) {
+    if (IsSendableFile(it.fileInfo()) && !IsJunkFile(it.fileName())) {
       out->append(it.fileInfo().absoluteFilePath());
     }
   }
