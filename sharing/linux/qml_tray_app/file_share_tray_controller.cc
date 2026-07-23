@@ -374,7 +374,8 @@ static QString AutostartFilePath() {
 }
 
 // There is no XDG key for "start minimized" (Hidden= means disabled), so the
-// autostart entry passes --hidden and the app skips showing its window.
+// autostart entry passes --background and the app skips showing its window.
+// Advertising visibility is unaffected.
 static void WriteAutostartFile() {
   const QString path = AutostartFilePath();
   QDir().mkpath(QFileInfo(path).absolutePath());
@@ -386,7 +387,8 @@ static void WriteAutostartFile() {
   out << "[Desktop Entry]\n"
       << "Type=Application\n"
       << "Name=Nearby File Share\n"
-      << "Exec=\"" << QCoreApplication::applicationFilePath() << "\" --hidden\n"
+      << "Exec=\"" << QCoreApplication::applicationFilePath()
+      << "\" --background\n"
       << "Icon=nearby-file-share\n"
       << "Terminal=false\n"
       << "X-GNOME-Autostart-enabled=true\n";
@@ -410,8 +412,9 @@ void FileShareTrayController::setRunAtStartup(bool enabled) {
 }
 
 void FileShareTrayController::refreshAutostartFile() {
-  // Rewrite in place so entries written by an older build (no --hidden, and an
-  // unquoted Exec path) pick up the current format.
+  // Rewrite in place so entries written by an older build (no --background, or
+  // the earlier --hidden spelling, or an unquoted Exec path) pick up the
+  // current format.
   if (runAtStartup()) {
     WriteAutostartFile();
   }
