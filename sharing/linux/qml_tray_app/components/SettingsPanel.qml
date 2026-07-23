@@ -3,15 +3,18 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
 
-Drawer {
+Popup {
     id: root
-    edge: Qt.RightEdge
-    width: 380
-    height: parent ? parent.height : 0
-    implicitWidth: 380
-    implicitHeight: parent ? parent.height : 0
+    // Centered modal over the whole window (RQuickShare-style).
+    parent: Overlay.overlay
+    anchors.centerIn: parent
+    modal: true
+    dim: true
+    padding: 0
+    width: 560
+    height: Math.min(cardHeightHint, (parent ? parent.height : 800) - 80)
 
-    readonly property color bg: "#f0fdf4"
+    readonly property color bg: "#ffffff"
     readonly property color surface: "#ffffff"
     readonly property color accent: "#38aa62"
     readonly property color accentLight: "#dcfce7"
@@ -19,11 +22,19 @@ Drawer {
     readonly property color textPrimary: "#111827"
     readonly property color textMuted: "#6b7280"
 
-    background: Rectangle { color: root.bg }
+    // Dimmed backdrop behind the card.
+    Overlay.modal: Rectangle { color: "#33000000" }
 
-    ColumnLayout {
-        width: root.width
-        height: root.height
+    background: Rectangle {
+        color: root.bg
+        radius: 20
+        border.color: "#e5e7eb"
+    }
+
+    // Card height driver: header (64) + content column + bottom padding.
+    readonly property real cardHeightHint: 64 + settingsCol.height + 40
+
+    contentItem: ColumnLayout {
         spacing: 0
 
         // Header
@@ -46,22 +57,15 @@ Drawer {
 
                 Item { Layout.fillWidth: true }
 
-                Rectangle {
-                    width: 32
-                    height: 32
-                    radius: 8
-                    color: closeArea.containsMouse ? "#f3f4f6" : "transparent"
-
-                    Label {
-                        anchors.centerIn: parent
-                        text: "✕"
-                        font.pixelSize: 14
-                        color: root.textMuted
-                    }
+                Label {
+                    text: "Close"
+                    font.pixelSize: 15
+                    color: closeArea.containsMouse ? root.textPrimary : root.textMuted
 
                     MouseArea {
                         id: closeArea
                         anchors.fill: parent
+                        anchors.margins: -8
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: root.close()

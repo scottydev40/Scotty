@@ -328,6 +328,8 @@ class NearbySharingApi::Impl : public nearby::sharing::ShareTargetDiscoveredCall
   NativeService* service = nullptr;
   bool send_mode_started = false;
   bool receive_mode_started = false;
+  // App-facing advertising visibility: 0 = Everyone, 1 = Contacts, 2 = Hidden.
+  int visibility_mode = 0;
   std::string qr_code_url;
   std::mutex listener_mutex;
   NearbySharingApi::Listener listener;
@@ -410,6 +412,22 @@ void NearbySharingApi::StopSendMode(std::function<void(StatusCode)> callback) {
       });
 }
 
+// Maps the app-facing visibility mode (0=Everyone, 1=Contacts, 2=Hidden) to the
+// Nearby proto enum. Unknown values fall back to Everyone.
+static nearby::sharing::proto::DeviceVisibility ToProtoVisibility(int mode) {
+  switch (mode) {
+    case 1:
+      return nearby::sharing::proto::DeviceVisibility::
+          DEVICE_VISIBILITY_ALL_CONTACTS;
+    case 2:
+      return nearby::sharing::proto::DeviceVisibility::DEVICE_VISIBILITY_HIDDEN;
+    case 0:
+    default:
+      return nearby::sharing::proto::DeviceVisibility::
+          DEVICE_VISIBILITY_EVERYONE;
+  }
+}
+
 void NearbySharingApi::StartReceiveMode(std::function<void(StatusCode)> callback) {
   if (impl_->service == nullptr) {
     if (callback) {
@@ -424,7 +442,7 @@ void NearbySharingApi::StartReceiveMode(std::function<void(StatusCode)> callback
     return;
   }
   impl_->service->SetVisibility(
-      nearby::sharing::proto::DeviceVisibility::DEVICE_VISIBILITY_EVERYONE,
+      ToProtoVisibility(impl_->visibility_mode),
       absl::Minutes(10),
       [this, cb = std::move(callback)](
           nearby::sharing::NearbySharingService::StatusCodes status) mutable {
@@ -621,6 +639,24 @@ void NearbySharingApi::SetSavePath(const std::string& path) {
   }
   impl_->service->GetSettings()->SetCustomSavePathAsync(path, []() {});
 }
+
+void NearbySharingApi::SetVisibility(int mode) {
+  if (mode < 0 || mode > 2) {
+    return;
+  }
+  impl_->visibility_mode = mode;
+  // Re-apply live so a change takes effect without leaving receive mode.
+  if (impl_->service == nullptr || !impl_->receive_mode_started) {
+    return;
+  }
+  impl_->service->SetVisibility(
+      ToProtoVisibility(mode), absl::Minutes(10),
+      [](nearby::sharing::NearbySharingService::StatusCodes status) {
+        static_cast<void>(status);
+      });
+}
+
+int NearbySharingApi::GetVisibility() const { return impl_->visibility_mode; }
 
 void NearbySharingApi::Shutdown(std::function<void(StatusCode)> callback) {
   if (impl_->service == nullptr) {

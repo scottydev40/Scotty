@@ -98,7 +98,11 @@ class FileShareState {
   void SetDeveloperMode(bool enabled) { developer_mode_ = enabled; }
 
   // Target management
-  void AddOrUpdateTarget(qlonglong id, const QString& name, bool is_incoming);
+  // device_type: 0=unknown/other, and the Nearby ShareTargetType values (e.g.
+  // phone/tablet/laptop). Pass -1 to leave an existing target's type unchanged
+  // (used by transfer-update callers that don't carry a device type).
+  void AddOrUpdateTarget(qlonglong id, const QString& name, bool is_incoming,
+                         int device_type = -1);
   void RemoveTarget(qlonglong id);
   QString GetTargetName(qlonglong id) const;
   bool HasTarget(qlonglong id) const;
