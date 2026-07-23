@@ -132,9 +132,18 @@ class QuickShareIndicator extends SystemIndicator {
 
 export default class QuickShareExtension extends Extension {
     enable() {
-        // Stock symbolic that reads as the swap/loop motif and recolors cleanly
-        // in the panel/menu. Can be swapped for a custom fill-based symbolic later.
-        this.icon = new Gio.ThemedIcon({name: 'media-playlist-repeat-symbolic'});
+        // Two-arrow loop, matching the app's own swap mark, and stock so it
+        // recolors cleanly in the panel/menu. The first name is the closest
+        // match but ships with Yaru rather than Adwaita, so fall back for
+        // desktops that don't have it. (A custom fill-based symbolic could
+        // replace the lot later — stroke-based SVGs don't recolor.)
+        this.icon = new Gio.ThemedIcon({
+            names: [
+                'emblem-synchronizing-symbolic',
+                'media-playlist-repeat-symbolic',
+                'view-refresh-symbolic',
+            ],
+        });
         this._pendingVisibility = null;
 
         this._indicator = new QuickShareIndicator(this);
