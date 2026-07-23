@@ -2,18 +2,28 @@
 #define SHARING_LINUX_QML_TRAY_APP_THEME_CONTROLLER_H_
 
 #include <QColor>
+#include <QDBusVariant>
 #include <QObject>
+#include <QString>
 
 // Central color theme, exposed to QML as the `Theme` context property.
-// Every color token is derived from two persisted inputs: an accent choice
-// (green / blue / Ubuntu-orange) and light/dark mode. QML references these
-// tokens (Theme.accent, Theme.surface, …) instead of hardcoding hexes, so a
-// single setting recolors the whole app.
+// Every color token is derived from two inputs: an accent choice and
+// light/dark mode. QML references these tokens (Theme.accent, Theme.surface, …)
+// instead of hardcoding hexes, so a single setting recolors the whole app.
+//
+// By default both inputs follow the desktop (GNOME's accent colour and
+// light/dark preference) via the XDG desktop portal, live. Picking an accent
+// swatch or flipping the dark switch in Settings turns that off and pins the
+// manual choice, which is what gets persisted.
 class ThemeController : public QObject {
   Q_OBJECT
   // Inputs.
   Q_PROPERTY(int accent READ accent WRITE setAccent NOTIFY changed)
   Q_PROPERTY(bool dark READ dark WRITE setDark NOTIFY changed)
+  Q_PROPERTY(bool followSystem READ followSystem WRITE setFollowSystem NOTIFY changed)
+  // True when the desktop actually reports an accent colour (GNOME 47+).
+  // Lets the UI explain why "follow system" only affects light/dark.
+  Q_PROPERTY(bool systemAccentAvailable READ systemAccentAvailable NOTIFY changed)
 
   // Derived tokens (all recomputed on any input change → single NOTIFY).
   Q_PROPERTY(QColor accentColor READ accentColor NOTIFY changed)
@@ -38,7 +48,11 @@ class ThemeController : public QObject {
   explicit ThemeController(QObject* parent = nullptr);
 
   int accent() const { return accent_; }
-  bool dark() const { return dark_; }
+  // Effective light/dark: the desktop's preference while following it, the
+  // pinned choice otherwise.
+  bool dark() const { return follow_system_ ? system_dark_ : dark_; }
+  bool followSystem() const { return follow_system_; }
+  bool systemAccentAvailable() const { return system_accent_.isValid(); }
 
   QColor accentColor() const { return accent_color_; }
   QColor accentStrong() const { return accent_strong_; }
@@ -57,17 +71,33 @@ class ThemeController : public QObject {
 
   void setAccent(int accent);
   void setDark(bool dark);
+  void setFollowSystem(bool follow);
 
  signals:
   void changed();
 
+ private slots:
+  // org.freedesktop.portal.Settings.SettingChanged
+  void onPortalSettingChanged(const QString& name_space, const QString& key,
+                              const QDBusVariant& value);
+
  private:
   void load();
   void save() const;
-  void rebuild();  // recompute every derived token from accent_ + dark_
+  void rebuild();  // recompute every derived token from the active inputs
+
+  // Initial portal read + subscription to live changes.
+  void initSystemAppearance();
+  void applyPortalValue(const QString& key, const QVariant& value);
 
   int accent_ = kGreen;
   bool dark_ = false;
+  bool follow_system_ = true;
+
+  // Last values reported by the desktop. system_accent_ stays invalid on
+  // desktops that do not publish one.
+  QColor system_accent_;
+  bool system_dark_ = false;
 
   QColor accent_color_, accent_strong_, accent_deep_, on_accent_;
   QColor window_bg_, surface_, surface_alt_;

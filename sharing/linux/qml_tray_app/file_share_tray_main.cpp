@@ -285,14 +285,13 @@ int main(int argc, char* argv[]) {
 #endif
 
   tray.setContextMenu(&tray_menu);
-  // The tray icon is optional — users can drive the app from the GNOME Quick
-  // Settings tile instead. Honor the persisted "Show tray icon" setting and
-  // react to live changes.
-  tray.setVisible(controller.showTrayIcon());
-  QObject::connect(&controller, &FileShareTrayController::showTrayIconChanged,
-                   &tray, [&tray, &controller]() {
-                     tray.setVisible(controller.showTrayIcon());
-                   });
+  // No user setting for this: the tray icon is the fallback UI. It hides only
+  // while the GNOME Quick Settings tile announces itself over D-Bus, and comes
+  // straight back if that tile goes away — so there is always a way to open or
+  // quit the app.
+  tray.setVisible(!dbus_service.tileActive());
+  QObject::connect(&dbus_service, &QuickShareDbus::TileActiveChanged, &tray,
+                   [&tray](bool active) { tray.setVisible(!active); });
 
   controller.start();
   //controller.

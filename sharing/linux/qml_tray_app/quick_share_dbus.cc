@@ -2,6 +2,7 @@
 
 #include <QCoreApplication>
 #include <QDBusConnection>
+#include <QDBusServiceWatcher>
 #include <QQuickWindow>
 
 #include "file_share_tray_controller.h"
@@ -9,6 +10,8 @@
 namespace {
 constexpr char kServiceName[] = "io.github.ashpika40.QuickShare";
 constexpr char kObjectPath[] = "/io/github/ashpika40/QuickShare";
+// The only process that can host the Quick Settings tile.
+constexpr char kShellService[] = "org.gnome.Shell";
 }  // namespace
 
 QuickShareDbus::QuickShareDbus(FileShareTrayController* controller,
@@ -20,6 +23,15 @@ QuickShareDbus::QuickShareDbus(FileShareTrayController* controller,
           [this]() { emit VisibilityChanged(controller_->visibility()); });
   connect(controller_, &FileShareTrayController::runningChanged, this,
           [this]() { emit RunningChanged(controller_->running()); });
+
+  // If gnome-shell dies, its extension never gets to call SetTileActive(false),
+  // so clear the flag here — otherwise the tray icon would stay hidden with no
+  // tile left to replace it.
+  shell_watcher_ = new QDBusServiceWatcher(
+      QString::fromLatin1(kShellService), QDBusConnection::sessionBus(),
+      QDBusServiceWatcher::WatchForUnregistration, this);
+  connect(shell_watcher_, &QDBusServiceWatcher::serviceUnregistered, this,
+          [this]() { SetTileActive(false); });
 }
 
 bool QuickShareDbus::registerOnBus() {
@@ -56,3 +68,13 @@ void QuickShareDbus::Quit() {
   controller_->stop();
   QCoreApplication::quit();
 }
+
+void QuickShareDbus::SetTileActive(bool active) {
+  if (active == tile_active_) {
+    return;
+  }
+  tile_active_ = active;
+  emit TileActiveChanged(tile_active_);
+}
+
+bool QuickShareDbus::GetTileActive() const { return tile_active_; }
