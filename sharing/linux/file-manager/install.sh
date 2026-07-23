@@ -29,7 +29,18 @@ do
     echo "installed script: $dir/Send with Nearby"
 done
 
-if python3 -c "import gi; gi.require_version('Nautilus', '4.0')" >/dev/null 2>&1; then
+# 4.1 on GNOME 49+, 4.0 before it.
+if python3 - <<'PY' >/dev/null 2>&1
+import gi, sys
+for version in ("4.1", "4.0"):
+    try:
+        gi.require_version("Nautilus", version)
+        sys.exit(0)
+    except ValueError:
+        pass
+sys.exit(1)
+PY
+then
     ext="${XDG_DATA_HOME:-$HOME/.local/share}/nautilus-python/extensions"
     mkdir -p "$ext"
     install -m 644 "$here/nearby_send_nautilus.py" "$ext/"

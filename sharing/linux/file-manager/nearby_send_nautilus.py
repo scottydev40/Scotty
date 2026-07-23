@@ -10,7 +10,18 @@ Nautilus with `nautilus -q`.
 
 import subprocess
 
-from gi.repository import GObject, Nautilus
+import gi
+
+# The typelib version tracks the Nautilus release: 4.1 on GNOME 49+, 4.0
+# before that. Ask for whichever this system actually has.
+for _version in ("4.1", "4.0"):
+    try:
+        gi.require_version("Nautilus", _version)
+        break
+    except ValueError:
+        continue
+
+from gi.repository import GObject, Nautilus  # noqa: E402
 
 APP = "nearby_qml_file_tray_app"
 
