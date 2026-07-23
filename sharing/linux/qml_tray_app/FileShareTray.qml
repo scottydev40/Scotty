@@ -11,7 +11,8 @@ ApplicationWindow {
     height: 760
     minimumWidth: 820
     minimumHeight: 620
-    visible: true
+    // Bound rather than `true` so a --hidden launch never flashes a window.
+    visible: !startHidden
     title: "Quick Share"
 
     background: Rectangle { color: Theme.windowBg }

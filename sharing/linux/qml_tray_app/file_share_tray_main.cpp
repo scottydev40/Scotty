@@ -150,9 +150,16 @@ int main(int argc, char* argv[]) {
   FileShareTrayController controller;
   ThemeController theme;
 
+  // --hidden starts straight in the background: advertising, no window. Used by
+  // the autostart entry (there is no XDG key for it) and by the Quick Settings
+  // tile when it launches the app just to apply a visibility.
+  const bool start_hidden =
+      app.arguments().contains(QStringLiteral("--hidden"));
+
   QQmlApplicationEngine engine;
   engine.rootContext()->setContextProperty("fileShareController", &controller);
   engine.rootContext()->setContextProperty("Theme", &theme);
+  engine.rootContext()->setContextProperty("startHidden", start_hidden);
   engine.load(QUrl(QStringLiteral("qrc:/qml/FileShareTray.qml")));
   if (engine.rootObjects().isEmpty()) {
     return 1;
