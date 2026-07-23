@@ -16,6 +16,7 @@
 #include <QSettings>
 #include <QStyleHints>
 #include <QSystemTrayIcon>
+#include <QUrl>
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -31,19 +32,54 @@ constexpr char kDefaultLogPath[] = "/tmp/nearby_qml_file_tray.log";
 // Per-user single-instance key (QLocalServer socket name).
 constexpr char kInstanceKey[] = "nearby_qml_file_tray_app.instance";
 
-// Returns true if another instance is already running (and was pinged to show
-// its window), meaning this process should exit immediately.
-bool AnotherInstanceRunning() {
+// Wire format for the single-instance socket: a verb line, then one path per
+// line. "SHOW" alone just surfaces the window; "SEND" is followed by the paths
+// to share.
+//
+// Returns true if another instance took the message, meaning this process
+// should exit immediately.
+bool ForwardToRunningInstance(const QByteArray& payload) {
   QLocalSocket probe;
   probe.connectToServer(QString::fromLatin1(kInstanceKey));
   if (!probe.waitForConnected(200)) {
     return false;
   }
-  probe.write("SHOW");
+  probe.write(payload);
   probe.flush();
-  probe.waitForBytesWritten(200);
+  probe.waitForBytesWritten(500);
   probe.disconnectFromServer();
+  if (probe.state() != QLocalSocket::UnconnectedState) {
+    probe.waitForDisconnected(200);
+  }
   return true;
+}
+
+// File managers pass plain paths for %F, but accept file:// URIs too so the
+// entry also works with %U.
+QString NormalizePathArgument(const QString& argument) {
+  if (argument.startsWith(QStringLiteral("file://"))) {
+    return QUrl(argument).toLocalFile();
+  }
+  return argument;
+}
+
+// Everything following --send, up to the next flag.
+QStringList ParseSendPaths(const QStringList& arguments) {
+  QStringList paths;
+  const int flag = arguments.indexOf(QStringLiteral("--send"));
+  if (flag < 0) {
+    return paths;
+  }
+  for (int i = flag + 1; i < arguments.size(); ++i) {
+    if (arguments.at(i).startsWith(QStringLiteral("--"))) {
+      break;
+    }
+    const QString path = NormalizePathArgument(arguments.at(i));
+    if (!path.isEmpty()) {
+      paths.append(path);
+    }
+  }
+  return paths;
 }
 
 bool EnsureLogDirectory(const QString& file_path) {
@@ -134,8 +170,16 @@ int main(int argc, char* argv[]) {
   app.setQuitOnLastWindowClosed(false);
   app.setWindowIcon(QIcon(QStringLiteral(":/icons/app_icon.svg")));
 
-  // Single instance: if one is already running, ask it to surface and bail.
-  if (AnotherInstanceRunning()) {
+  // Single instance: hand any request to the running copy and bail. A --send
+  // launch from a file manager is the common case — the paths go across so the
+  // existing window switches to send mode instead of a second app starting.
+  const QStringList send_paths = ParseSendPaths(app.arguments());
+  const QByteArray instance_payload =
+      send_paths.isEmpty()
+          ? QByteArrayLiteral("SHOW\n")
+          : QByteArray("SEND\n") + send_paths.join(QLatin1Char('\n')).toUtf8() +
+                QByteArrayLiteral("\n");
+  if (ForwardToRunningInstance(instance_payload)) {
     return 0;
   }
   // Clear any stale socket left by a previous crash, then claim the name.
@@ -180,18 +224,38 @@ int main(int argc, char* argv[]) {
   QuickShareDbus dbus_service(&controller, window);
   dbus_service.registerOnBus();
 
-  // A second launch pings the socket → surface the existing window.
-  QObject::connect(&instance_server, &QLocalServer::newConnection, window,
-                   [&instance_server, window]() {
-                     QLocalSocket* conn = instance_server.nextPendingConnection();
-                     if (conn != nullptr) {
-                       QObject::connect(conn, &QLocalSocket::disconnected, conn,
-                                        &QLocalSocket::deleteLater);
-                     }
-                     window->show();
-                     window->raise();
-                     window->requestActivate();
-                   });
+  // A second launch pings the socket → surface the existing window, and switch
+  // to send mode if it handed us paths.
+  QObject::connect(
+      &instance_server, &QLocalServer::newConnection, window,
+      [&instance_server, &controller, window]() {
+        QLocalSocket* conn = instance_server.nextPendingConnection();
+        if (conn == nullptr) {
+          return;
+        }
+        // The payload is a few hundred bytes at most, so read it inline rather
+        // than tracking partial-read state per connection.
+        QByteArray data;
+        while (conn->waitForReadyRead(300)) {
+          data += conn->readAll();
+        }
+        data += conn->readAll();
+        conn->disconnectFromServer();
+        conn->deleteLater();
+
+        QStringList lines =
+            QString::fromUtf8(data).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+        if (!lines.isEmpty() && lines.constFirst() == QStringLiteral("SEND")) {
+          lines.removeFirst();
+          if (!lines.isEmpty()) {
+            controller.switchToSendModeWithFiles(lines);
+          }
+        }
+
+        window->show();
+        window->raise();
+        window->requestActivate();
+      });
 
   const auto resolve_tray_icon = [&app]() {
     const QColor white = "white";
@@ -305,8 +369,11 @@ int main(int argc, char* argv[]) {
                    [&tray](bool active) { tray.setVisible(!active); });
 
   controller.start();
-  //controller.
-  controller.switchToReceiveMode();
+  if (send_paths.isEmpty()) {
+    controller.switchToReceiveMode();
+  } else {
+    controller.switchToSendModeWithFiles(send_paths);
+  }
 
   return app.exec();
 }

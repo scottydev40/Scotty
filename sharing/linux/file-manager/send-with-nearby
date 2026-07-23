@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# File-manager script: right-click a selection → Scripts → Send with Nearby.
+#
+# Works in Nautilus, Nemo and Caja, which each export the selection under their
+# own variable name. Needs no extra packages, unlike the Nautilus extension in
+# this directory — but it lives under the "Scripts" submenu rather than at the
+# top level.
+#
+# Install: copy into ~/.local/share/nautilus/scripts/ and chmod +x.
+
+set -euo pipefail
+
+APP=nearby_qml_file_tray_app
+
+selection="${NAUTILUS_SCRIPT_SELECTED_FILE_PATHS:-${NEMO_SCRIPT_SELECTED_FILE_PATHS:-${CAJA_SCRIPT_SELECTED_FILE_PATHS:-}}}"
+
+paths=()
+while IFS= read -r line; do
+    [ -n "$line" ] && paths+=("$line")
+done <<< "$selection"
+
+# Nothing selected: nothing to send. Opening the app here would be surprising.
+if [ ${#paths[@]} -eq 0 ]; then
+    exit 0
+fi
+
+# Folders are expanded into the files they contain by the app itself.
+exec "$APP" --send "${paths[@]}"
