@@ -60,6 +60,17 @@ Scotty stands on a lot of other people's work — full list in
 - Scotty adds the Qt/QML app, the Wi-Fi hotspot coexistence + Boost, and the
   transport/UX work on top.
 
+## How this is built
+
+Human in the lead, AI in the loop. The direction, the real-hardware testing
+(phones, tablets, a laptop, a fussy Wi-Fi combo card), the "that explanation is
+hand-wavy — dig until there's a log that proves it" debugging, and every design
+call are human. An AI assistant does much of the actual typing — code, refactors,
+docs — under that direction; the git history shows it (`Co-Authored-By`
+trailers). Nothing here was shipped on a guess: bugs were root-caused against
+live logs and real devices before a fix landed. The history is open — read it
+and judge the work on its merits.
+
 ## License
 
 Apache License 2.0 — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE). Scotty is a
