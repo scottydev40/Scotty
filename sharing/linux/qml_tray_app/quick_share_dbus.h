@@ -11,14 +11,14 @@ class QQuickWindow;
 // Session-bus service that lets an external UI (e.g. a GNOME Shell Quick
 // Settings extension) read and drive the app: query/set advertising
 // visibility, surface the window, or quit. Registered on the session bus as
-// io.github.ashpika40.QuickShare at /io/github/ashpika40/QuickShare.
+// dev.scotty.Scotty at /dev/scotty/Scotty.
 //
 // Methods and signals are Q_SCRIPTABLE and exported via
 // ExportScriptableContents; state changes are pushed as signals so the
 // extension can stay in sync without polling.
 class QuickShareDbus : public QObject {
   Q_OBJECT
-  Q_CLASSINFO("D-Bus Interface", "io.github.ashpika40.QuickShare")
+  Q_CLASSINFO("D-Bus Interface", "dev.scotty.Scotty")
 
  public:
   QuickShareDbus(FileShareTrayController* controller, QQuickWindow* window,
