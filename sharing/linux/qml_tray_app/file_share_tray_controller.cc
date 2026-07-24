@@ -491,7 +491,7 @@ void FileShareTrayController::setVisibility(int mode) {
 
 static QString AutostartFilePath() {
   return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
-         QStringLiteral("/autostart/nearby-file-share.desktop");
+         QStringLiteral("/autostart/dev.scotty.Scotty.desktop");
 }
 
 // There is no XDG key for "start minimized" (Hidden= means disabled), so the
@@ -507,10 +507,10 @@ static void WriteAutostartFile() {
   QTextStream out(&file);
   out << "[Desktop Entry]\n"
       << "Type=Application\n"
-      << "Name=Nearby File Share\n"
+      << "Name=Scotty\n"
       << "Exec=\"" << QCoreApplication::applicationFilePath()
       << "\" --background\n"
-      << "Icon=nearby-file-share\n"
+      << "Icon=dev.scotty.Scotty\n"
       << "Terminal=false\n"
       << "X-GNOME-Autostart-enabled=true\n";
 }
