@@ -139,6 +139,7 @@ export default class QuickShareExtension extends Extension {
         // replace the lot later — stroke-based SVGs don't recolor.)
         this.icon = new Gio.ThemedIcon({
             names: [
+                'dev.scotty.Scotty-symbolic',
                 'emblem-synchronizing-symbolic',
                 'media-playlist-repeat-symbolic',
                 'view-refresh-symbolic',

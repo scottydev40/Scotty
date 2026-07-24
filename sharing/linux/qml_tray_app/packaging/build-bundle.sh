@@ -39,6 +39,8 @@ patchelf --set-rpath '$ORIGIN/../lib' "$STAGE/bin/scotty"
 install -m0644 "$SHARED_LIB" "$STAGE/lib/"
 install -m0644 "$SCRIPT_DIR/dev.scotty.Scotty.desktop" "$STAGE/share/applications/"
 install -m0644 "$ICON" "$STAGE/share/icons/dev.scotty.Scotty.png"
+install -m0644 "$APP_SRC/../quickshare-gnome-extension/dev.scotty.Scotty-symbolic.svg" \
+               "$STAGE/share/icons/dev.scotty.Scotty-symbolic.svg"
 install -m0644 "$APP_SRC/../quickshare-gnome-extension/extension.js" \
                "$APP_SRC/../quickshare-gnome-extension/metadata.json" \
                "$STAGE/gnome-extension/"
