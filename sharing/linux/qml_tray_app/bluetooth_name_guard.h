@@ -6,6 +6,8 @@
 #include <QStringList>
 #include <QVariantMap>
 
+class QTimer;
+
 // Puts the Bluetooth adapter name back after the Nearby stack borrows it.
 //
 // Bluetooth Classic discovery carries endpoint metadata in the adapter's name,
@@ -32,6 +34,11 @@ class BluetoothNameGuard : public QObject {
   void restore();
 
  private:
+  // Periodically puts a mangled alias back without waiting for quit — a
+  // BT-Classic fallback transfer can overwrite the name mid-session, and it
+  // should not stay gibberish until the app closes.
+  void heal();
+
   QStringList adapterPaths() const;
   QString readAlias(const QString& adapter_path) const;
   void writeAlias(const QString& adapter_path, const QString& alias) const;
@@ -41,6 +48,7 @@ class BluetoothNameGuard : public QObject {
 
   // Adapter object path -> the alias it had before we touched it.
   QVariantMap stash_;
+  QTimer* heal_timer_ = nullptr;
 };
 
 #endif  // SHARING_LINUX_QML_TRAY_APP_BLUETOOTH_NAME_GUARD_H_
