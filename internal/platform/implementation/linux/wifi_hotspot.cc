@@ -147,7 +147,12 @@ NetworkManagerWifiHotspotMedium::ListenForService(int port) {
     return nullptr;
   }
 
-  auto active_connection = wireless_device_->GetActiveConnection();
+  // Use the AP device's connection so the listen socket binds the hotspot IP
+  // (10.42.0.x) and the server socket reports that IP to the peer. The station
+  // device's connection is the network we are joined to, unreachable over the
+  // hotspot.
+  auto &host_device = ap_device_ ? ap_device_ : wireless_device_;
+  auto active_connection = host_device->GetActiveConnection();
   if (active_connection == nullptr) {
     return nullptr;
   }
@@ -183,7 +188,7 @@ NetworkManagerWifiHotspotMedium::ListenForService(int port) {
 
   LOG(INFO) << __func__ << ": Listening for services on "
                        << ip4addresses[0] << ":" << port << " on device "
-                       << wireless_device_->getProxy().getObjectPath();
+                       << host_device->getProxy().getObjectPath();
 
   ret = listen(sock, 0);
   if (ret < 0) {
@@ -417,6 +422,14 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
   // station's own connection must never be deactivated.
   hotspot_connection_path_ = active_conn->getProxy().getObjectPath();
 
+  // Remember the hosting device so WifiHotspotActive()/ListenForService() read
+  // the AP's mode and IP (10.42.0.x), not the station's. Null when we fell back
+  // to the station device, in which case those helpers use wireless_device_.
+  ap_device_ = using_ap_interface
+                   ? std::make_unique<NetworkManagerWifiMedium>(network_manager_,
+                                                                ap_device_path)
+                   : nullptr;
+
   LOG(INFO) << __func__ << ": Started a WiFi hotspot on device "
                     << ap_device_path << " at "
                     << active_conn->getProxy().getObjectPath();
@@ -434,6 +447,7 @@ bool NetworkManagerWifiHotspotMedium::StopWifiHotspot() {
   // for its active connection would return whatever the station is associated
   // with once the hotspot lives on its own interface — deactivating that would
   // drop the user off their Wi-Fi network.
+  ap_device_ = nullptr;
   if (!hotspot_connection_path_.empty()) {
     const sdbus::ObjectPath path = hotspot_connection_path_;
     hotspot_connection_path_ = {};
@@ -518,11 +532,15 @@ bool NetworkManagerWifiHotspotMedium::DisconnectWifiHotspot() {
 }
 
 bool NetworkManagerWifiHotspotMedium::WifiHotspotActive() {
+  // Query the device that actually hosts the AP. When the hotspot is on its own
+  // interface the station device stays in Infra mode, so checking it would
+  // wrongly report "no hotspot" and abort ListenForService.
+  auto &device = ap_device_ ? ap_device_ : wireless_device_;
   try {
-    auto mode = wireless_device_->Mode();
+    auto mode = device->Mode();
     return mode == networkmanager::constants::kNM80211ModeAP;
   } catch (const sdbus::Error &e) {
-    DBUS_LOG_PROPERTY_GET_ERROR(wireless_device_, "Mode", e);
+    DBUS_LOG_PROPERTY_GET_ERROR(device, "Mode", e);
     return false;
   }
 }

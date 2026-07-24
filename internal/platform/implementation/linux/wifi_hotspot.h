@@ -85,6 +85,11 @@ class NetworkManagerWifiHotspotMedium : public api::WifiHotspotMedium {
   // station's connection (they are separate devices once the AP has its own
   // interface). Empty when no hotspot was started by us.
   sdbus::ObjectPath hotspot_connection_path_;
+  // The device actually hosting the AP (nearby-ap0 when we have it). Null when
+  // no hotspot is up or it fell back to the station device. WifiHotspotActive()
+  // and ListenForService() must query this, not wireless_device_ — once the AP
+  // lives on its own interface the station stays in Infra mode on its own IP.
+  std::unique_ptr<NetworkManagerWifiMedium> ap_device_;
   std::shared_ptr<networkmanager::NetworkManager> network_manager_;
 };
 }  // namespace linux
