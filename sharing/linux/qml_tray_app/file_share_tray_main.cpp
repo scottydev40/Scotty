@@ -21,6 +21,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include "bluetooth_name_guard.h"
 #include "file_share_tray_controller.h"
 #include "notification_manager.h"
 #include "quick_share_dbus.h"
@@ -191,6 +192,11 @@ int main(int argc, char* argv[]) {
   // the shell falls back to a generic icon.
   QGuiApplication::setDesktopFileName(QStringLiteral("nearby-file-share"));
 
+  // Armed before anything touches the radio: cleans up after a previous run
+  // that was killed, and records the adapter name to put back on the way out.
+  BluetoothNameGuard bt_name_guard;
+  bt_name_guard.arm();
+
   FileShareTrayController controller;
   ThemeController theme;
 
@@ -352,6 +358,10 @@ int main(int argc, char* argv[]) {
 
   QObject::connect(&app, &QCoreApplication::aboutToQuit, &controller,
                    [&controller]() { controller.stop(); });
+  // Connected after the stop() above so the service has given up the radio
+  // before the adapter name goes back.
+  QObject::connect(&app, &QCoreApplication::aboutToQuit, &bt_name_guard,
+                   [&bt_name_guard]() { bt_name_guard.restore(); });
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
   QObject::connect(app.styleHints(), &QStyleHints::colorSchemeChanged, &tray,
                    [&tray, &resolve_tray_icon](Qt::ColorScheme) {
