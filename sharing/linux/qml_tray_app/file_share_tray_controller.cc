@@ -267,9 +267,27 @@ void FileShareTrayController::handleIncomingTransferComplete(
     const NearbySharingApi::TransferUpdateInfo& update, const QString& name,
     bool success) {
   if (!success) {
-    emit requestTrayMessage(
-        QStringLiteral("Receive failed"),
-        QStringLiteral("Transfer from %1 failed").arg(name));
+    // Distinguish an intentional cancel/decline/timeout from a genuine failure
+    // so the notification doesn't cry "failed" when nothing went wrong.
+    QString title = QStringLiteral("Receive failed");
+    QString body = QStringLiteral("Transfer from %1 failed").arg(name);
+    switch (update.status) {
+      case NearbySharingApi::TransferStatus::kCancelled:
+        title = QStringLiteral("Transfer cancelled");
+        body = QStringLiteral("Cancelled transfer from %1").arg(name);
+        break;
+      case NearbySharingApi::TransferStatus::kRejected:
+        title = QStringLiteral("Transfer declined");
+        body = QStringLiteral("Declined transfer from %1").arg(name);
+        break;
+      case NearbySharingApi::TransferStatus::kTimedOut:
+        title = QStringLiteral("Transfer timed out");
+        body = QStringLiteral("Transfer from %1 timed out").arg(name);
+        break;
+      default:
+        break;
+    }
+    emit requestTrayMessage(title, body);
     return;
   }
 
@@ -322,10 +340,30 @@ void FileShareTrayController::handleOutgoingTransferComplete(
   if (success) {
     emit requestTrayMessage(QStringLiteral("Send complete"),
                             QStringLiteral("%1 sent to %2").arg(file_name, name));
-  } else {
-    emit requestTrayMessage(QStringLiteral("Send failed"),
-                            QStringLiteral("%1 failed to send to %2").arg(file_name, name));
+    return;
   }
+
+  // As with receiving, name the cancel/decline/timeout cases instead of
+  // blaming a failure.
+  QString title = QStringLiteral("Send failed");
+  QString body = QStringLiteral("%1 failed to send to %2").arg(file_name, name);
+  switch (update.status) {
+    case NearbySharingApi::TransferStatus::kCancelled:
+      title = QStringLiteral("Send cancelled");
+      body = QStringLiteral("Cancelled sending %1 to %2").arg(file_name, name);
+      break;
+    case NearbySharingApi::TransferStatus::kRejected:
+      title = QStringLiteral("Send declined");
+      body = QStringLiteral("%1 declined %2").arg(name, file_name);
+      break;
+    case NearbySharingApi::TransferStatus::kTimedOut:
+      title = QStringLiteral("Send timed out");
+      body = QStringLiteral("Sending %1 to %2 timed out").arg(file_name, name);
+      break;
+    default:
+      break;
+  }
+  emit requestTrayMessage(title, body);
 }
 
 void FileShareTrayController::loadSettings() {
