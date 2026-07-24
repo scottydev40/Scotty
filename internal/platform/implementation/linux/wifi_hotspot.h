@@ -81,10 +81,6 @@ class NetworkManagerWifiHotspotMedium : public api::WifiHotspotMedium {
 
   std::shared_ptr<sdbus::IConnection> system_bus_;
   std::unique_ptr<NetworkManagerWifiMedium> wireless_device_;
-  // The hotspot's own active connection, so tearing it down never touches the
-  // station's connection (they are separate devices once the AP has its own
-  // interface). Empty when no hotspot was started by us.
-  sdbus::ObjectPath hotspot_connection_path_;
   std::shared_ptr<networkmanager::NetworkManager> network_manager_;
 };
 }  // namespace linux

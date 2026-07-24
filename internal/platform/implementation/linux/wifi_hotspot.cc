@@ -16,13 +16,9 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <cstdint>
-#include <cstdlib>
 #include <cstring>
-#include <filesystem>
 #include <memory>
-#include <optional>
 #include <random>
-#include <string>
 
 #include "internal/platform/implementation/linux/dbus.h"
 #include "internal/platform/implementation/linux/linux_flags.h"
@@ -63,39 +59,6 @@ int ChannelForFrequency(uint32_t frequency_mhz) {
 }
 
 bool Is24GhzChannel(int channel) { return channel >= 1 && channel <= 14; }
-
-// Centre frequency in MHz for a channel, or -1 when it isn't one we know.
-int FrequencyForChannel(int channel) {
-  if (channel == 14) return 2484;
-  if (channel >= 1 && channel <= 13) return 2407 + channel * 5;
-  if (channel >= 32 && channel <= 177) return 5000 + channel * 5;
-  return -1;
-}
-
-// Name of the AP-mode virtual interface the hotspot is hosted on. Must stay
-// within the 15 character limit for network interface names.
-constexpr char kApInterfaceName[] = "nearby-ap0";
-
-// Hosting the AP on its own virtual interface is what lets the machine stay on
-// its Wi-Fi network. NetworkManager allows one active connection per *device*,
-// so activating the AP on the station's device tears the station down; a second
-// AP-mode interface is a separate device and the two run side by side.
-//
-// The interface is not created here: that needs CAP_NET_ADMIN, which this
-// process does not have. Deployments create it once, out of band — a systemd
-// unit or udev rule running:
-//
-//     iw dev <wifi-interface> interface add nearby-ap0 type __ap
-//
-// (`__ap` is undocumented in `iw help` but is the AP-mode virtual interface
-// type.) An idle, downed interface costs nothing. When it is absent the hotspot
-// falls back to the station's device, which still works — it just disconnects
-// the current Wi-Fi network for the duration of the transfer.
-bool ApInterfaceAvailable() {
-  std::error_code ec;
-  return std::filesystem::exists(
-      std::string("/sys/class/net/") + kApInterfaceName, ec);
-}
 // NM_SETTING_WIRELESS_CHANNEL_WIDTH_* (nm-settings: 40mhz=40, 80mhz=80).
 constexpr int32_t k40MhzChannelWidth = 40;
 constexpr int32_t k80MhzChannelWidth = 80;
@@ -287,26 +250,6 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
   const int32_t fallback_channel_width =
       selected_band == "a" ? k80MhzChannelWidth : k40MhzChannelWidth;
 
-  // Host the AP on its own interface when we can, so the station connection
-  // survives (see EnsureApInterface). Falls back to the station's own device,
-  // which is what NetworkManager tears down.
-  sdbus::ObjectPath ap_device_path = wireless_device_->getProxy().getObjectPath();
-  if (ApInterfaceAvailable()) {
-    try {
-      ap_device_path = network_manager_->GetDeviceByIpIface(kApInterfaceName);
-      LOG(INFO) << __func__ << ": hosting the hotspot on " << kApInterfaceName
-                << ", so the current Wi-Fi connection stays up";
-    } catch (const sdbus::Error &e) {
-      LOG(WARNING) << __func__ << ": " << kApInterfaceName
-                   << " exists but NetworkManager has no device for it ("
-                   << e.getMessage() << "); using the station interface";
-    }
-  } else {
-    LOG(INFO) << __func__ << ": no " << kApInterfaceName
-              << " interface; hosting on the station device, which will drop "
-                 "the current Wi-Fi connection";
-  }
-
   std::unique_ptr<networkmanager::ActiveConnection> active_conn;
   for (bool include_channel_width : {true, false}) {
     std::map<std::string, std::map<std::string, sdbus::Variant>>
@@ -345,7 +288,7 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
       auto [path, active_path, result] =
           network_manager_->AddAndActivateConnection2(
               connection_settings,
-              ap_device_path,
+              wireless_device_->getProxy().getObjectPath(),
               sdbus::ObjectPath("/"),
               {{"persist", sdbus::Variant("volatile")},
                {"bind-activation", sdbus::Variant("dbus-client")}});
@@ -383,19 +326,26 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
     return false;
   }
 
-  // Report the channel we asked for rather than reading the device's active
-  // access point: when the AP is on its own interface, the station device's
-  // access point is the network we are *connected to*, not the hotspot.
-  hotspot_credentials->SetFrequency(FrequencyForChannel(selected_channel));
-  LOG(INFO) << __func__ << ": Hotspot frequency set to "
-            << FrequencyForChannel(selected_channel) << " MHz";
-
-  // Remembered so StopWifiHotspot tears down this connection specifically. The
-  // station's own connection must never be deactivated.
-  hotspot_connection_path_ = active_conn->getProxy().getObjectPath();
+  // Get the frequency of the active hotspot
+  try {
+    sdbus::ObjectPath active_ap_path = wireless_device_->ActiveAccessPoint();
+    if (!active_ap_path.empty()) {
+      auto access_point = NetworkManagerAccessPoint(*system_bus_, active_ap_path);
+      uint32_t frequency = access_point.Frequency();
+      hotspot_credentials->SetFrequency(static_cast<int>(frequency));
+      LOG(INFO) << __func__ << ": Hotspot frequency set to " << frequency
+                << " MHz";
+    } else {
+      LOG(WARNING) << __func__
+                   << ": Could not get active access point to retrieve frequency";
+    }
+  } catch (const sdbus::Error &e) {
+    LOG(WARNING) << __func__ << ": Could not retrieve hotspot frequency: "
+                 << e.what();
+  }
 
   LOG(INFO) << __func__ << ": Started a WiFi hotspot on device "
-                    << ap_device_path << " at "
+                    << wireless_device_->getProxy().getObjectPath() << " at "
                     << active_conn->getProxy().getObjectPath();
   return true;
 }
@@ -405,23 +355,6 @@ bool NetworkManagerWifiHotspotMedium::StopWifiHotspot() {
     LOG(ERROR)
         << __func__ << ": " << wireless_device_->getProxy().getObjectPath()
         << ": Cannot stop WiFi hotspot as a WiFi hotspot is not active";
-  }
-
-  // Tear down the connection we started, by path. Asking the wireless device
-  // for its active connection would return whatever the station is associated
-  // with once the hotspot lives on its own interface — deactivating that would
-  // drop the user off their Wi-Fi network.
-  if (!hotspot_connection_path_.empty()) {
-    const sdbus::ObjectPath path = hotspot_connection_path_;
-    hotspot_connection_path_ = {};
-    LOG(INFO) << __func__ << ": Deactivating hotspot connection " << path;
-    try {
-      network_manager_->DeactivateConnection(path);
-    } catch (const sdbus::Error &e) {
-      DBUS_LOG_METHOD_CALL_ERROR(network_manager_, "DeactivateConnection", e);
-      return false;
-    }
-    return true;
   }
 
   // Get the active connection object for the hotspot AP.
