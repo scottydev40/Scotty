@@ -157,6 +157,8 @@ class FileShareTrayController : public QObject {
   FileShareState state_;
   // Advertising visibility: 0 = Everyone, 1 = Contacts, 2 = Hidden.
   int visibility_ = 0;
+  // Whether the main window is on screen; kept in sync by setReceiveForeground.
+  bool window_visible_ = true;
 };
 
 #endif  // SHARING_LINUX_QML_TRAY_APP_FILE_SHARE_TRAY_CONTROLLER_H_

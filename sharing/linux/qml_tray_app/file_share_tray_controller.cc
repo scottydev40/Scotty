@@ -167,10 +167,10 @@ void FileShareTrayController::handleTransferUpdate(
     if (state_.autoAcceptIncoming()) {
       service_->Accept(update.share_target_id,
                        [](NearbySharingApi::StatusCode) {});
-    } else {
-      // The window may be hidden, in which case its Accept/Decline row is the
-      // only other way to answer and the sender would just time out. Ask on the
-      // desktop instead.
+    } else if (!window_visible_) {
+      // Only worth asking on the desktop when the window isn't up: if it is,
+      // its own Accept/Decline row is already on screen and a notification
+      // just duplicates it.
       emit requestIncomingDecision(update.share_target_id, name, file_name);
     }
   }
@@ -436,6 +436,9 @@ void FileShareTrayController::refreshAutostartFile() {
 }
 
 void FileShareTrayController::setReceiveForeground(bool foreground) {
+  // Tracks the window: also decides whether an incoming request needs a
+  // desktop prompt or is already answerable on screen.
+  window_visible_ = foreground;
   if (!service_) {
     return;
   }
