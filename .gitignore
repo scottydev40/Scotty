@@ -62,3 +62,8 @@ bazel-*
 # /.devcontainer/
 /connections/walkietalkie/
 /third_party/
+
+# packaging build output
+sharing/linux/dist/
+.appimage-tools/
+.appimage-tools/
