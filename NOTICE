@@ -1,0 +1,23 @@
+Scotty
+Copyright 2026 The Scotty Authors
+
+This product includes software developed by Google LLC as part of the Nearby
+project (https://github.com/google/nearby), licensed under the Apache License,
+Version 2.0. Portions of this software are:
+
+    Copyright Google LLC
+    Licensed under the Apache License, Version 2.0
+
+This is a derivative work. On top of Google's Nearby Connections and Nearby
+Sharing libraries it adds and modifies, among other things:
+
+  - a Qt/QML desktop application (sharing/linux/qml_tray_app),
+  - Linux platform implementations and transport changes under
+    internal/platform/implementation/linux and sharing/linux, including
+    Wi-Fi hotspot interface coexistence and an opt-in "Boost" mode.
+
+The Linux platform support this builds on was originally contributed to Google's
+Nearby project by proatgram and vibhavp (https://github.com/google/nearby/pull/2098),
+and further developed in https://github.com/kidfromjupiter/nearby.
+
+See CREDITS.md for full attribution and LICENSE for the license text.

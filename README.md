@@ -1,123 +1,66 @@
-# Google Nearby for Linux
-> ## 🚧 **Under Construction** 🚧  
-> This repo is actively being worked on. Things are buggy, builds may fail, documentation is non-existent, and we test in prod.
->
-> **You have been warned**
+# Scotty
 
----
+**Universal local file sharing for Linux.** Send and receive files with the
+phones, tablets, and PCs already around you — no cloud, no account, no cables.
 
-<img width="600" height="464" alt="image" src="https://github.com/user-attachments/assets/9533ea09-81d9-4162-b90f-e0bd8b714d1d" />
-
-
+Scotty speaks Google **Quick Share / Nearby Share**, so a stock Android phone or
+a Windows machine sees your Linux box as a normal device and transfers to it
+directly. It runs as a native Qt/QML app with a system-tray icon and a GNOME
+Quick-Settings tile.
 
 ## Demo
 
-
 https://github.com/user-attachments/assets/048afa1e-40a4-4351-a859-c81b642fc6e3
 
-## What
-This repo consists of the entirety of google's open source nearby library. Currently, it is seperated into 3 (now 2) sections. 
-- Sharing
-- Connections
-- ~Presence~ ( *Was removed by google from their repo. RIP :(*   )
+> ## 🚧 Early days
+> Works end-to-end and moves multi-GB files reliably, but it's actively
+> developed and rough in places. Discovery currently depends on a specific
+> kernel/Bluetooth combination — see [`sharing/linux/ROADMAP.md`](sharing/linux/ROADMAP.md).
 
-    
-Linux specific implementation and compatibility shims are provided for building **Sharing** and **Connections**. 
+## What works today
 
-## Why
-This repo could've been a PR on the official repo. All I've done is implement the platform abstraction layer google has provided for a linux specific environment.
-It's not like I haven't made a PR towards the official repo. I got tired of begging the official nearby maintainers for a PR review. So here we are. 
+- **Discovery + pairing** over Bluetooth LE, the same handshake real devices use.
+- **Transfers** over the fastest available path:
+  - **Wi-Fi LAN** when both devices share a network (~3.5 s for a photo).
+  - **Wi-Fi Hotspot** when the peer is off your network — Scotty hosts a SoftAP
+    on its own virtual interface so **your Wi-Fi and internet stay up** during
+    the transfer.
+  - **Bluetooth** as the always-available fallback.
+- **Boost mode** (opt-in): hands the whole radio to the hotspot for maximum
+  throughput (~2.5× faster in testing) at the cost of dropping Wi-Fi for the
+  transfer.
+- **Native app**: tray + Quick-Settings tile, light/dark theme following,
+  "Send with Scotty" from the file manager, live transfer speed and per-file
+  progress.
 
+## On the roadmap
 
-Moreover, all I've wanted was seamless file sharing between my android devices and my linux workstation + laptop. With this repo and the example application provided here,
-it accomplishes that goal perfectly. This repo wasn't created out of any altruistic goals or out of the goodness of my heart. I had a problem. I solved it. Simple as that. 
+A native **AWDL** transport so Scotty also interoperates with Apple **AirDrop** —
+one app that talks to Apple, Google, and Windows devices alike. Plus Google
+contacts / QR pairing, packaging, and wider hardware support. See
+[`sharing/linux/ROADMAP.md`](sharing/linux/ROADMAP.md).
 
+## Building
 
-## Documentation
-Docs is on the backburner for now
+The shared library is Bazel, the Qt app is CMake. Full build/deploy steps and
+architecture notes are in [`sharing/linux/STATUS.md`](sharing/linux/STATUS.md).
 
-If you want any clarification on anything, feel free to open an issue. I'll get back to you ASAP.
+## Credits & lineage
 
-As a consolation prize, I've indexed this project using [Deepwiki](https://deepwiki.com/kidfromjupiter/nearby). You might have strong feeling about AI use. But I feel like documenting very large codebases is a perfect usecase for such models. (They are called Large Language Models for a reason )
+Scotty stands on a lot of other people's work — full list in
+[`CREDITS.md`](CREDITS.md). The short version:
 
-### How to install
-This repo provides prebuilt binaries of the Quick Share application. The only officially supported distro is Fedora 43 for now. The newest ubuntu images *should* work fine
-although that needs to be tested. I want to support more distros so if you encounter issues installing on your distro, please let me know. 
+- The **Nearby Connections** and **Nearby Sharing** core is
+  [Google's open-source Nearby project](https://github.com/google/nearby)
+  (Apache License 2.0).
+- The **Linux platform support** was originally written by **proatgram** and
+  **vibhavp** ([google/nearby#2098](https://github.com/google/nearby/pull/2098)).
+- The **Linux fork** Scotty builds on is
+  [`kidfromjupiter/nearby`](https://github.com/kidfromjupiter/nearby).
+- Scotty adds the Qt/QML app, the Wi-Fi hotspot coexistence + Boost, and the
+  transport/UX work on top.
 
->**NOTE: Previosly, the quickshare binary required the `sdbus-cpp` v2 library installed on the system. This is no longer the case and it is bundled with the shared library. Hopefully this expands compatibility**
+## License
 
-#### Prerequisites
-
-- `systemd`
-- `NetworkManager`
-- `bluez >= 5.85`
-
-**To install the prerequisites, run this command**
-
-```bash
-sudo dnf install -y \
-  bluez bluez-libs bluez-libs-devel \
-  sdbus-cpp sdbus-cpp-devel
-```
----
-
-**To install the Quick Share application,**
-
-1. Go to [releases](https://github.com/kidfromjupiter/nearby/releases)
-2. Download the latest `nearby-file-share-linux-*.tar.gz`
-3. `mkdir -p nearby && tar -xf nearby-file-share-linux-*.tar.gz -C nearby`
-4. `cd nearby`
-5. `chmod +x install_nearby_file_share.sh`
-6. `./install_nearby_file_share.sh`
-
-**To install the actual library and headers,**
-
-Currently there are no prebuilt shared library or headers. You'll have to build them yourself
-
-### How to build
-
-Best place to consult would be the Github actions and workflows. 
-
-
-
-## TODO
-
-###  WIP
-
-- [ ] **Transition from QT to a TUI**
-
-    We're moving away from a GUI application to TUI application. On top of this, I've made a nearby sharing daemon with socket based IPC so that even if anyone wants to create a GUI application, it is trivial without them needing to link with nearby sharing libraries.
-
-    This change was done to decouple the UI from the library itself since the previous implementation was difficult to work with 
-      
-
----
-
-### BUGS
-- [ ] **Bluetooth classic bandwidth**
-  
-    File transfer on bluetooth classic is painfully slow. Bandwidth close to 20KB/s. ~May be a regression issue after bluetooth socket refactor~. May be an issue with sending back acknowledgements. Issue is present on pre-refactor versions. ~Look into Multiplexing maybe~ Multiplexing did not fix it : (?
-
-- [ ] **Investigate why Bluetooth connection requests pairing.**
-      
-  Both the L2CAP socket and Bluetooth profile should be unauthenticated.
-- [ ] **Handle existing files when receiving.**
-      
-  Currently, files are not overwritten if they already exist. Decide whether to overwrite, rename, or skip.
-
-- [ ] **Bluetooth Classic transfer progress issue.**
-      
-  When transferring Android → Linux, Android shows 100% transferred but still says `Sending...`, while Linux lags behind. Could be a bottleneck or Android-side issue.
-
----
-
-### New Features
-
-- [ ] Upstream has been slowly adding webrtc support. Should we support it?
-
-## Special thanks
-
-https://github.com/proatgram and https://github.com/vibhavp
-
-*they were the original authors of the linux platform support [PR](https://github.com/google/nearby/pull/2098) that I have based much of this codebase upon. I am standing on the shoulders
-of giants*
+Apache License 2.0 — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE). Scotty is a
+derivative work of Google's Nearby project and stays under the same license.
