@@ -6,6 +6,7 @@
 #include <QDBusObjectPath>
 #include <QDBusVariant>
 #include <QSettings>
+#include <QTimer>
 #include <QVariant>
 
 namespace {
@@ -132,17 +133,34 @@ void BluetoothNameGuard::arm() {
     restore();
     stash_ = originals;
     saveStash();
-    return;
+  } else {
+    // Clean start: whatever the adapters show now is what to put back.
+    const QStringList paths = adapterPaths();
+    for (const QString& path : paths) {
+      // An empty alias is BlueZ's "use the auto-generated name" state, and
+      // writing an empty string back restores exactly that — so it round-trips.
+      stash_.insert(path, readAlias(path));
+    }
+    saveStash();
   }
 
-  // Clean start: whatever the adapters show now is what to put back.
-  const QStringList paths = adapterPaths();
-  for (const QString& path : paths) {
-    // An empty alias is BlueZ's "use the auto-generated name" state, and
-    // writing an empty string back restores exactly that — so it round-trips.
-    stash_.insert(path, readAlias(path));
+  // Self-heal: a BT-Classic fallback transfer can overwrite the alias while the
+  // app is running; put it back periodically instead of only on quit.
+  if (heal_timer_ == nullptr) {
+    heal_timer_ = new QTimer(this);
+    heal_timer_->setInterval(45000);
+    connect(heal_timer_, &QTimer::timeout, this, [this] { heal(); });
   }
-  saveStash();
+  heal_timer_->start();
+}
+
+void BluetoothNameGuard::heal() {
+  for (auto it = stash_.constBegin(); it != stash_.constEnd(); ++it) {
+    const QString original = it.value().toString();
+    if (readAlias(it.key()) != original) {
+      writeAlias(it.key(), original);
+    }
+  }
 }
 
 void BluetoothNameGuard::restore() {
