@@ -378,6 +378,10 @@ int main(int argc, char* argv[]) {
   QObject::connect(&dbus_service, &QuickShareDbus::TileActiveChanged, &tray,
                    [&tray](bool active) { tray.setVisible(!active); });
 
+  // Set before the first registration: a --background launch has no window, so
+  // onVisibleChanged never fires to tell us.
+  controller.setReceiveForeground(!start_in_background);
+
   controller.start();
   if (send_paths.isEmpty()) {
     controller.switchToReceiveMode();
