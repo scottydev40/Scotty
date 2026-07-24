@@ -23,6 +23,8 @@ constexpr char kNotificationsService[] = "org.freedesktop.Notifications";
 constexpr char kNotificationsPath[] = "/org/freedesktop/Notifications";
 constexpr char kNotificationsInterface[] = "org.freedesktop.Notifications";
 constexpr char kCopyActionId[] = "copy_value";
+constexpr char kAcceptActionId[] = "accept_transfer";
+constexpr char kDeclineActionId[] = "decline_transfer";
 constexpr char kDesktopEntryId[] = "nearby-file-share";
 
 }  // namespace
@@ -53,16 +55,88 @@ NotificationManager::NotificationManager(QSystemTrayIcon* tray_icon,
   QDBusReply<QStringList> capabilities_reply =
       notification_interface.call(QStringLiteral("GetCapabilities"));
   if (capabilities_reply.isValid()) {
+    notifications_available_ = true;
     supports_actions_ =
         capabilities_reply.value().contains(QStringLiteral("actions"));
   }
 }
 
+uint NotificationManager::PostNotification(const QString& title,
+                                           const QString& body,
+                                           const QStringList& actions,
+                                           int timeout_ms, bool resident) {
+  if (!notifications_available_) {
+    return 0;
+  }
+
+  QDBusInterface notification_interface(
+      QString::fromLatin1(kNotificationsService),
+      QString::fromLatin1(kNotificationsPath),
+      QString::fromLatin1(kNotificationsInterface),
+      QDBusConnection::sessionBus());
+
+  const QString notification_icon = EnsureNotificationIconPath();
+  QVariantMap hints{
+      {QStringLiteral("desktop-entry"), QString::fromLatin1(kDesktopEntryId)}};
+  if (!notification_icon.isEmpty()) {
+    hints.insert(QStringLiteral("image-path"), notification_icon);
+  }
+  if (resident) {
+    // Keep it on screen until answered rather than fading out with the sender
+    // still waiting.
+    hints.insert(QStringLiteral("resident"), true);
+    hints.insert(QStringLiteral("urgency"), static_cast<uchar>(2));
+  }
+
+  QDBusReply<uint> reply = notification_interface.call(
+      QStringLiteral("Notify"), QCoreApplication::applicationName(),
+      static_cast<uint>(0),
+      notification_icon.isEmpty() ? QString::fromLatin1(kDesktopEntryId)
+                                  : notification_icon,
+      title, body, actions, hints, timeout_ms);
+  return reply.isValid() ? reply.value() : 0;
+}
+
 void NotificationManager::ShowNotification(const QString& title,
                                            const QString& body) {
+  // Prefer the desktop notification service: the tray balloon below only
+  // renders while the tray icon is visible, and it is hidden whenever the
+  // GNOME Quick Settings tile is driving the app.
+  if (PostNotification(title, body, QStringList{}, 4000, /*resident=*/false) !=
+      0) {
+    return;
+  }
   if (tray_icon_ != nullptr) {
     tray_icon_->showMessage(title, body, QSystemTrayIcon::Information, 4000);
   }
+}
+
+void NotificationManager::ShowIncomingRequest(qlonglong share_target_id,
+                                              const QString& device_name,
+                                              const QString& file_name) {
+  const QString title = QStringLiteral("Incoming file");
+  const QString body =
+      file_name.isEmpty()
+          ? QStringLiteral("%1 wants to send you a file.").arg(device_name)
+          : QStringLiteral("%1 wants to send %2.").arg(device_name, file_name);
+
+  if (supports_actions_) {
+    const uint id = PostNotification(
+        title, body,
+        QStringList{QString::fromLatin1(kAcceptActionId),
+                    QStringLiteral("Accept"),
+                    QString::fromLatin1(kDeclineActionId),
+                    QStringLiteral("Decline")},
+        /*timeout_ms=*/0, /*resident=*/true);
+    if (id != 0) {
+      pending_decisions_.insert(id, share_target_id);
+      return;
+    }
+  }
+
+  // No action support: at least say something, so the user knows to open the
+  // window and answer there.
+  ShowNotification(title, body);
 }
 
 void NotificationManager::ShowCopyableNotification(
@@ -110,6 +184,18 @@ void NotificationManager::ShowCopyableNotification(
 
 void NotificationManager::OnActionInvoked(uint notification_id,
                                           const QString& action_key) {
+  auto decision = pending_decisions_.find(notification_id);
+  if (decision != pending_decisions_.end()) {
+    const qlonglong share_target_id = decision.value();
+    pending_decisions_.erase(decision);
+    if (action_key == QString::fromLatin1(kAcceptActionId)) {
+      emit acceptRequested(share_target_id);
+    } else if (action_key == QString::fromLatin1(kDeclineActionId)) {
+      emit declineRequested(share_target_id);
+    }
+    return;
+  }
+
   if (action_key != QString::fromLatin1(kCopyActionId)) {
     return;
   }
@@ -128,6 +214,9 @@ void NotificationManager::OnNotificationClosed(uint notification_id,
                                                uint reason) {
   Q_UNUSED(reason);
   copy_actions_.remove(notification_id);
+  // Dismissing without choosing is not an answer: leave the transfer pending
+  // so it can still be handled from the window.
+  pending_decisions_.remove(notification_id);
 }
 
 void NotificationManager::CopyTextToClipboard(

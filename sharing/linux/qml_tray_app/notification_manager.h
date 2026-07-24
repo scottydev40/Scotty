@@ -19,6 +19,15 @@ class NotificationManager : public QObject {
   void ShowCopyableNotification(const QString& title, const QString& body,
                                 const QString& text_to_copy,
                                 const QString& action_label);
+  // Asks the user to accept or decline, with buttons on the notification
+  // itself, so it works with the window hidden and no tray icon.
+  void ShowIncomingRequest(qlonglong share_target_id,
+                           const QString& device_name,
+                           const QString& file_name);
+
+ signals:
+  void acceptRequested(qlonglong share_target_id);
+  void declineRequested(qlonglong share_target_id);
 
  private slots:
   void OnActionInvoked(uint notification_id, const QString& action_key);
@@ -38,8 +47,18 @@ class NotificationManager : public QObject {
                           const QString& text_to_copy,
                           const QString& action_label);
 
+  // Posts via org.freedesktop.Notifications. Returns 0 if that is unavailable,
+  // in which case the caller should fall back. Unlike the tray balloon this
+  // does not need a visible tray icon.
+  uint PostNotification(const QString& title, const QString& body,
+                        const QStringList& actions, int timeout_ms,
+                        bool resident);
+
   bool supports_actions_ = false;
+  bool notifications_available_ = false;
   QHash<uint, CopyActionState> copy_actions_;
+  // Notification id -> the transfer it is asking about.
+  QHash<uint, qlonglong> pending_decisions_;
   QString notification_icon_path_;
   QSystemTrayIcon* tray_icon_ = nullptr;
 };

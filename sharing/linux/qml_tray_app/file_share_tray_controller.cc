@@ -155,10 +155,17 @@ void FileShareTrayController::handleTransferUpdate(
 
   setStatus(QStringLiteral("%1 (%2)").arg(status, name));
 
-  // Auto-accept incoming transfers if enabled
-  if (update.status == NearbySharingApi::TransferStatus::kAwaitingLocalConfirmation &&
-      state_.autoAcceptIncoming()) {
-    service_->Accept(update.share_target_id, [](NearbySharingApi::StatusCode) {});
+  if (update.status ==
+      NearbySharingApi::TransferStatus::kAwaitingLocalConfirmation) {
+    if (state_.autoAcceptIncoming()) {
+      service_->Accept(update.share_target_id,
+                       [](NearbySharingApi::StatusCode) {});
+    } else {
+      // The window may be hidden, in which case its Accept/Decline row is the
+      // only other way to answer and the sender would just time out. Ask on the
+      // desktop instead.
+      emit requestIncomingDecision(update.share_target_id, name, file_name);
+    }
   }
 
   // Handle final transfer status
