@@ -2,9 +2,12 @@
 #define SHARING_LINUX_QML_TRAY_APP_FILE_SHARE_TRAY_CONTROLLER_H_
 
 #include <QObject>
+#include <QHash>
 #include <memory>
 
 #include "file_share_state.h"
+
+class QTimer;
 #include <sharing/linux/nearby_sharing_api.h>
 
 using NearbySharingApi = nearby::sharing::NearbySharingApi;
@@ -155,6 +158,17 @@ class FileShareTrayController : public QObject {
 
   std::unique_ptr<NearbySharingApi> service_;
   FileShareState state_;
+  // Per-target throughput tracking: last observed byte count + timestamp, and
+  // the smoothed rate we report. Keyed by share_target_id.
+  struct SpeedSample {
+    qulonglong bytes = 0;
+    qlonglong ms = 0;
+    double bps = 0.0;
+  };
+  QHash<qlonglong, SpeedSample> speed_samples_;
+  // Ticks while transfers exist, expiring finished rows a few seconds after
+  // they end so completed entries fade instead of piling up.
+  QTimer* transfer_sweep_timer_ = nullptr;
   // Advertising visibility: 0 = Everyone, 1 = Contacts, 2 = Hidden.
   int visibility_ = 0;
   // Whether the main window is on screen; kept in sync by setReceiveForeground.
