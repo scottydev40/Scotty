@@ -44,6 +44,10 @@ install -m0644 "$APP_SRC/../quickshare-gnome-extension/dev.scotty.Scotty-symboli
 install -m0644 "$APP_SRC/../quickshare-gnome-extension/extension.js" \
                "$APP_SRC/../quickshare-gnome-extension/metadata.json" \
                "$STAGE/gnome-extension/"
+# System bits for the on-demand hotspot interface (installed with sudo).
+mkdir -p "$STAGE/system"
+install -m0644 "$APP_SRC/../nearby-ap-interface.service" "$STAGE/system/"
+install -m0644 "$APP_SRC/../nearby-ap0.rules" "$STAGE/system/"
 install -m0755 "$SCRIPT_DIR/install.sh" "$STAGE/install.sh"
 
 # A short top-level README for whoever unpacks it.

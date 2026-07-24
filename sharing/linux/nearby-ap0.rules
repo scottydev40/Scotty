@@ -1,0 +1,12 @@
+// Scotty — allow the local, active user to start/stop the on-demand hotspot
+// interface unit (which creates/destroys nearby-ap0) without a password.
+// Scoped to exactly that one unit; grants nothing else.
+//
+// Install to /etc/polkit-1/rules.d/50-scotty-nearby-ap0.rules
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") == "nearby-ap-interface.service" &&
+        subject.local && subject.active) {
+        return polkit.Result.YES;
+    }
+});
