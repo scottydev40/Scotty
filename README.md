@@ -1,16 +1,16 @@
-# Scotty
+<p align="center">
+  <img src="sharing/linux/qml_tray_app/branding/scotty-wordmark-header.png" alt="Scotty" width="360">
+</p>
 
-**Universal local file sharing for Linux.** Send and receive files with the
-phones, tablets, and PCs already around you — no cloud, no account, no cables.
+<p align="center"><b>Universal local file sharing for Linux.</b></p>
+
+Send and receive files with the phones, tablets, and PCs already around you — no
+cloud, no account, no cables.
 
 Scotty speaks Google **Quick Share / Nearby Share**, so a stock Android phone or
 a Windows machine sees your Linux box as a normal device and transfers to it
 directly. It runs as a native Qt/QML app with a system-tray icon and a GNOME
 Quick-Settings tile.
-
-## Demo
-
-https://github.com/user-attachments/assets/048afa1e-40a4-4351-a859-c81b642fc6e3
 
 > ## 🚧 Early days
 > Works end-to-end and moves multi-GB files reliably, but it's actively
