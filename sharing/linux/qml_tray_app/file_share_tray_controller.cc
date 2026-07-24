@@ -36,9 +36,10 @@ FileShareTrayController::FileShareTrayController(QObject* parent)
   refreshAutostartFile();
   initializeService();
 
-  // Sweep finished transfer rows a few seconds after they end so the list
-  // settles instead of accumulating completed entries.
-  constexpr qlonglong kFinishedTtlMs = 6000;
+  // Sweep finished transfer rows a while after they end so the list settles
+  // instead of accumulating completed entries — long enough to read the result
+  // and open the received file.
+  constexpr qlonglong kFinishedTtlMs = 15000;
   transfer_sweep_timer_ = new QTimer(this);
   transfer_sweep_timer_->setInterval(1000);
   connect(transfer_sweep_timer_, &QTimer::timeout, this, [this] {
