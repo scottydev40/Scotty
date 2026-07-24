@@ -40,7 +40,6 @@
 #include "internal/platform/implementation/linux/preferences_manager.h"
 #include "internal/platform/implementation/linux/submittable_executor.h"
 #include "internal/platform/implementation/linux/timer.h"
-#include "internal/platform/implementation/linux/wifi_direct.h"
 // #include "internal/platform/implementation/linux/wifi_hotspot.h"
 #include "internal/platform/implementation/linux/wifi_lan.h"
 // #include "internal/platform/implementation/linux/wifi_medium.h"
@@ -56,7 +55,6 @@
 #include "internal/platform/implementation/wifi_lan.h"
 #include "internal/platform/payload_id.h"
 #include "scheduled_executor.h"
-#include "wifi_direct.h"
 #include "wifi_hotspot.h"
 
 namespace nearby {
@@ -358,17 +356,16 @@ ImplementationPlatform::CreateWifiHotspotMedium() {
 
 std::unique_ptr<api::WifiDirectMedium>
 ImplementationPlatform::CreateWifiDirectMedium() {
-  auto nm =
-      std::make_shared<linux::networkmanager::NetworkManager>(linux::getSystemBusConnection());
-  auto wifiMedium = createWifiMedium(nm);
-
-  if (wifiMedium == nullptr) {
-    LOG(ERROR) << __func__ << ": Could not create a WiFi medium";
-    return nullptr;
-  }
-
-  return std::make_unique<linux::NetworkManagerWifiDirectMedium>(
-      nm, std::move(wifiMedium));
+  // Unimplemented on Linux. The previous implementation was Wi-Fi Direct in
+  // name only — a NetworkManager SoftAP on the station interface, pinned to
+  // 2.4 GHz — so it dropped the machine off its network exactly like
+  // WIFI_HOTSPOT while being slower, and WIFI_DIRECT outranks WIFI_HOTSPOT in
+  // ChooseBestUpgradeMedium. A null medium leaves WifiDirect::IsValid() false,
+  // which keeps it out of the upgrade path entirely.
+  //
+  // A real implementation means driving wpa_supplicant's P2P D-Bus API, which
+  // gets its own p2p- interface and so would leave the station connection up.
+  return nullptr;
 }
 
 std::unique_ptr<api::Timer> ImplementationPlatform::CreateTimer() {
