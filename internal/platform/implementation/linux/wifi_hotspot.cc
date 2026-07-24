@@ -40,6 +40,25 @@ namespace {
 // domain for AP mode.
 constexpr int kPreferred24GhzChannel = 6;
 constexpr int kPreferred5GhzChannel = 36;
+
+// Wi-Fi channel for a centre frequency in MHz, or 0 if it isn't one we know.
+int ChannelForFrequency(uint32_t frequency_mhz) {
+  if (frequency_mhz == 2484) {
+    return 14;  // Japan; not on the regular 5 MHz spacing.
+  }
+  if (frequency_mhz >= 2412 && frequency_mhz <= 2472) {
+    return static_cast<int>((frequency_mhz - 2407) / 5);
+  }
+  if (frequency_mhz >= 5160 && frequency_mhz <= 5885) {
+    return static_cast<int>((frequency_mhz - 5000) / 5);
+  }
+  if (frequency_mhz >= 5955 && frequency_mhz <= 7115) {
+    return static_cast<int>((frequency_mhz - 5950) / 5);  // 6 GHz
+  }
+  return 0;
+}
+
+bool Is24GhzChannel(int channel) { return channel >= 1 && channel <= 14; }
 // NM_SETTING_WIRELESS_CHANNEL_WIDTH_* (nm-settings: 40mhz=40, 80mhz=80).
 constexpr int32_t k40MhzChannelWidth = 40;
 constexpr int32_t k80MhzChannelWidth = 80;
@@ -191,6 +210,41 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
                 << ": Device supports only 2.4 GHz, using 2.4 GHz band on "
                 << "channel " << selected_channel;
     }
+  }
+
+  // Most cards can only run an AP and a station at once if both sit on the
+  // same channel ("#channels <= 1" in `iw list` interface combinations).
+  // Hosting the hotspot on a fixed channel therefore knocks the machine off
+  // its current Wi-Fi network for the duration of the transfer. Reuse the
+  // channel we are already associated on so the two can coexist.
+  try {
+    const sdbus::ObjectPath station_ap_path =
+        wireless_device_->ActiveAccessPoint();
+    if (!station_ap_path.empty()) {
+      NetworkManagerAccessPoint station_ap(*system_bus_, station_ap_path);
+      const int station_channel = ChannelForFrequency(station_ap.Frequency());
+      // Only when it is in the band we were going to use anyway: moving bands
+      // would trade the disconnect for a slower or unreachable hotspot.
+      if (station_channel != 0 &&
+          Is24GhzChannel(station_channel) == (selected_band == "bg")) {
+        if (station_channel != selected_channel) {
+          LOG(INFO) << __func__ << ": Using channel " << station_channel
+                    << " to match the current Wi-Fi connection instead of "
+                    << selected_channel
+                    << ", so the station link survives the hotspot";
+        }
+        selected_channel = station_channel;
+      } else if (station_channel != 0) {
+        LOG(INFO) << __func__ << ": Current Wi-Fi is on channel "
+                  << station_channel
+                  << ", a different band to the hotspot; the station link will "
+                     "likely drop";
+      }
+    }
+  } catch (const sdbus::Error &e) {
+    LOG(WARNING) << __func__
+                 << ": Could not read the current Wi-Fi channel, using channel "
+                 << selected_channel << ": " << e.what();
   }
 
   const int32_t fallback_channel_width =
