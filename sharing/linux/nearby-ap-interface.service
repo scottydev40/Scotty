@@ -11,7 +11,7 @@
 #
 # Install:
 #   sudo cp nearby-ap-interface.service /etc/systemd/system/
-#   sudo systemctl enable --now nearby-ap-interface.service
+#   sudo systemctl daemon-reload   (Scotty starts it on demand; do NOT enable)
 #
 # Set WIFI_INTERFACE below if the device is not wlan0/wlp*.
 Description=AP-mode virtual interface for Nearby file sharing

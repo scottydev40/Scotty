@@ -78,6 +78,13 @@ class NetworkManagerWifiHotspotMedium : public api::WifiHotspotMedium {
  private:
   bool WifiHotspotActive();
   bool ConnectedToWifi();
+  // Brings the nearby-ap0 AP interface up (up=true) or down (up=false) on
+  // demand by starting/stopping its systemd unit over D-Bus. A polkit rule
+  // authorizes the local user for exactly that unit, so no password prompt.
+  // Keeps the interface out of existence — and out of the Settings UI — except
+  // while a hotspot transfer needs it. Best-effort: returns false if it could
+  // not bring the interface up, and the caller falls back to the station.
+  bool EnsureApInterface(bool up);
 
   std::shared_ptr<sdbus::IConnection> system_bus_;
   std::unique_ptr<NetworkManagerWifiMedium> wireless_device_;
@@ -90,6 +97,9 @@ class NetworkManagerWifiHotspotMedium : public api::WifiHotspotMedium {
   // and ListenForService() must query this, not wireless_device_ — once the AP
   // lives on its own interface the station stays in Infra mode on its own IP.
   std::unique_ptr<NetworkManagerWifiMedium> ap_device_;
+  // True when we started the nearby-ap0 unit for this transfer, so StopWifiHotspot
+  // knows to tear the interface back down.
+  bool ap_interface_started_by_us_ = false;
   std::shared_ptr<networkmanager::NetworkManager> network_manager_;
 };
 }  // namespace linux

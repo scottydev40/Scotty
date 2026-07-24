@@ -24,6 +24,8 @@
 #include <random>
 #include <string>
 
+#include <sdbus-c++/IProxy.h>
+
 #include "internal/platform/implementation/linux/dbus.h"
 #include "internal/platform/implementation/linux/linux_flags.h"
 #include "internal/platform/implementation/linux/network_manager.h"
@@ -201,6 +203,37 @@ NetworkManagerWifiHotspotMedium::ListenForService(int port) {
       sock, std::move(active_connection), network_manager_);
 }
 
+bool NetworkManagerWifiHotspotMedium::EnsureApInterface(bool up) {
+  static constexpr char kApUnit[] = "nearby-ap-interface.service";
+  const char *method = up ? "StartUnit" : "StopUnit";
+  try {
+    auto systemd = sdbus::createProxy(
+        *system_bus_, sdbus::ServiceName{"org.freedesktop.systemd1"},
+        sdbus::ObjectPath{"/org/freedesktop/systemd1"});
+    sdbus::ObjectPath job;
+    systemd->callMethod(method)
+        .onInterface("org.freedesktop.systemd1.Manager")
+        .withArguments(std::string(kApUnit), std::string("replace"))
+        .storeResultsTo(job);
+  } catch (const sdbus::Error &e) {
+    LOG(WARNING) << __func__ << ": systemd " << method << " " << kApUnit
+                 << " failed (" << e.what()
+                 << "); is the polkit rule installed? Falling back to the "
+                    "station interface.";
+    return false;
+  }
+  if (!up) return true;
+
+  // StartUnit is asynchronous; wait for the interface to actually appear.
+  for (int attempt = 0; attempt < 25; ++attempt) {  // up to ~2.5s
+    if (ApInterfaceAvailable()) return true;
+    absl::SleepFor(absl::Milliseconds(100));
+  }
+  LOG(WARNING) << __func__
+               << ": nearby-ap0 did not appear after starting " << kApUnit;
+  return false;
+}
+
 bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
     HotspotCredentials *hotspot_credentials) {
   return StartWifiHotspot(hotspot_credentials, false);
@@ -329,6 +362,14 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
   // Host the AP on its own interface when we can, so the station connection
   // survives (see EnsureApInterface). Falls back to the station's own device,
   // which is what NetworkManager tears down.
+  // On demand: bring nearby-ap0 up just for this transfer, unless boost (which
+  // hosts on the station device and needs no AP interface). Kept out of
+  // existence otherwise, so it never clutters the Settings UI or gets picked as
+  // the station device.
+  if (!boost && !ApInterfaceAvailable()) {
+    ap_interface_started_by_us_ = EnsureApInterface(true);
+  }
+
   sdbus::ObjectPath ap_device_path = wireless_device_->getProxy().getObjectPath();
   if (boost) {
     LOG(INFO) << __func__
@@ -514,13 +555,20 @@ bool NetworkManagerWifiHotspotMedium::StopWifiHotspot() {
     const sdbus::ObjectPath path = hotspot_connection_path_;
     hotspot_connection_path_ = {};
     LOG(INFO) << __func__ << ": Deactivating hotspot connection " << path;
+    bool ok = true;
     try {
       network_manager_->DeactivateConnection(path);
     } catch (const sdbus::Error &e) {
       DBUS_LOG_METHOD_CALL_ERROR(network_manager_, "DeactivateConnection", e);
-      return false;
+      ok = false;
     }
-    return true;
+    // On-demand teardown: remove nearby-ap0 again if we brought it up, so it
+    // doesn't linger in existence (or the Settings UI) between transfers.
+    if (ap_interface_started_by_us_) {
+      EnsureApInterface(false);
+      ap_interface_started_by_us_ = false;
+    }
+    return ok;
   }
 
   // Get the active connection object for the hotspot AP.

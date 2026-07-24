@@ -28,6 +28,13 @@ uninstall() {
         "$HOME/.config/autostart/dev.scotty.Scotty.desktop"
   rm -rf "$EXT_DIR"
   update-desktop-database "$APP_DIR" 2>/dev/null || true
+  if [[ -f /etc/systemd/system/nearby-ap-interface.service ]]; then
+    echo "Removing the on-demand hotspot interface (needs sudo once)…"
+    sudo systemctl stop nearby-ap-interface.service 2>/dev/null || true
+    sudo rm -f /etc/systemd/system/nearby-ap-interface.service \
+               /etc/polkit-1/rules.d/50-scotty-nearby-ap0.rules
+    sudo systemctl daemon-reload
+  fi
   echo "Done. Log out/in to remove the tile."
 }
 
@@ -53,6 +60,17 @@ cp -f "$HERE/gnome-extension/extension.js" "$HERE/gnome-extension/metadata.json"
 update-desktop-database "$APP_DIR" 2>/dev/null || true
 gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
 gnome-extensions enable "$EXT_UUID" 2>/dev/null || true
+
+# On-demand hotspot interface: a systemd unit creates/destroys nearby-ap0 only
+# while a hotspot transfer needs it, and a polkit rule lets Scotty start/stop
+# just that unit without a password. These are system files — one sudo step.
+if [[ -f "$HERE/system/nearby-ap-interface.service" ]]; then
+  echo "Installing the on-demand hotspot interface (needs sudo once)…"
+  sudo install -m0644 "$HERE/system/nearby-ap-interface.service" /etc/systemd/system/
+  sudo install -m0644 "$HERE/system/nearby-ap0.rules" /etc/polkit-1/rules.d/50-scotty-nearby-ap0.rules
+  sudo systemctl daemon-reload
+  # Deliberately NOT enabled — Scotty starts it on demand.
+fi
 
 cat <<'DONE'
 
