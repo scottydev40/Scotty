@@ -24,6 +24,7 @@ uninstall() {
         "$LIB_DIR/libnearby_sharing_api_shared.so" \
         "$APP_DIR/dev.scotty.Scotty.desktop" \
         "$ICON_DIR/dev.scotty.Scotty.png" \
+        "$HOME/.local/share/icons/hicolor/symbolic/apps/dev.scotty.Scotty-symbolic.svg" \
         "$HOME/.config/autostart/dev.scotty.Scotty.desktop"
   rm -rf "$EXT_DIR"
   update-desktop-database "$APP_DIR" 2>/dev/null || true
@@ -42,6 +43,8 @@ install -Dm0755 "$HERE/bin/scotty"                       "$BIN_DIR/scotty"
 install -Dm0644 "$HERE/lib/libnearby_sharing_api_shared.so" "$LIB_DIR/libnearby_sharing_api_shared.so"
 install -Dm0644 "$HERE/share/applications/dev.scotty.Scotty.desktop" "$APP_DIR/dev.scotty.Scotty.desktop"
 install -Dm0644 "$HERE/share/icons/dev.scotty.Scotty.png" "$ICON_DIR/dev.scotty.Scotty.png"
+install -Dm0644 "$HERE/share/icons/dev.scotty.Scotty-symbolic.svg" \
+  "$HOME/.local/share/icons/hicolor/symbolic/apps/dev.scotty.Scotty-symbolic.svg"
 
 echo "Installing the GNOME tile extension…"
 mkdir -p "$EXT_DIR"
