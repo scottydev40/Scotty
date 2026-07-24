@@ -117,6 +117,8 @@ class FileShareTrayController : public QObject {
   void requestIncomingDecision(qlonglong share_target_id,
                                const QString& device_name,
                                const QString& file_name);
+  // That request has been settled; drop any prompt still showing.
+  void dismissIncomingDecision(qlonglong share_target_id);
 
   void requestTrayMessage(const QString& title, const QString& body);
   void requestCopyLinkTrayMessage(const QString& title, const QString& body,

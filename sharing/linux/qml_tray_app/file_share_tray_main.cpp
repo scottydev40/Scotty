@@ -353,6 +353,10 @@ int main(int argc, char* argv[]) {
                    &FileShareTrayController::requestIncomingDecision,
                    &notification_manager,
                    &NotificationManager::ShowIncomingRequest);
+  QObject::connect(&controller,
+                   &FileShareTrayController::dismissIncomingDecision,
+                   &notification_manager,
+                   &NotificationManager::DismissIncomingRequest);
   QObject::connect(&notification_manager,
                    &NotificationManager::acceptRequested, &controller,
                    &FileShareTrayController::acceptTransfer);

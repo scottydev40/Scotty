@@ -24,6 +24,9 @@ class NotificationManager : public QObject {
   void ShowIncomingRequest(qlonglong share_target_id,
                            const QString& device_name,
                            const QString& file_name);
+  // Takes the request notification away once the transfer no longer needs an
+  // answer — accepted from the window, cancelled, or finished.
+  void DismissIncomingRequest(qlonglong share_target_id);
 
  signals:
   void acceptRequested(qlonglong share_target_id);
@@ -53,6 +56,9 @@ class NotificationManager : public QObject {
   uint PostNotification(const QString& title, const QString& body,
                         const QStringList& actions, int timeout_ms,
                         bool resident);
+  // Resident notifications survive their action being clicked, so they have to
+  // be closed explicitly or they sit there forever.
+  void CloseNotification(uint notification_id);
 
   bool supports_actions_ = false;
   bool notifications_available_ = false;

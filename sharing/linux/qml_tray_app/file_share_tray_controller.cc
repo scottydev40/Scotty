@@ -155,6 +155,13 @@ void FileShareTrayController::handleTransferUpdate(
 
   setStatus(QStringLiteral("%1 (%2)").arg(status, name));
 
+  if (update.status !=
+      NearbySharingApi::TransferStatus::kAwaitingLocalConfirmation) {
+    // Answered here, cancelled, or finished — nothing left to decide, so any
+    // desktop prompt still on screen is stale.
+    emit dismissIncomingDecision(update.share_target_id);
+  }
+
   if (update.status ==
       NearbySharingApi::TransferStatus::kAwaitingLocalConfirmation) {
     if (state_.autoAcceptIncoming()) {
