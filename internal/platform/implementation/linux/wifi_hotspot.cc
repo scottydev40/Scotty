@@ -307,6 +307,9 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
                  "the current Wi-Fi connection";
   }
 
+  const bool using_ap_interface =
+      ap_device_path != wireless_device_->getProxy().getObjectPath();
+
   std::unique_ptr<networkmanager::ActiveConnection> active_conn;
   for (bool include_channel_width : {true, false}) {
     std::map<std::string, std::map<std::string, sdbus::Variant>>
@@ -337,6 +340,13 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
                   sdbus::Variant(networkmanager::constants::setting::kIP6ConfigAddrGenModeStablePrivacy)},
                  {"method", sdbus::Variant("shared")},
              }}};
+    // On the AP interface the radio is shared with the station, which already
+    // fixes the channel and its width. Asking for a width as well makes the
+    // driver refuse to bring the AP up, and NetworkManager reports that as
+    // "Hotspot network creation took too long" 25s later.
+    if (include_channel_width && using_ap_interface) {
+      continue;  // the second pass, without a width, is the one that works
+    }
     if (include_channel_width) {
       connection_settings["802-11-wireless"]["channel-width"] =
           sdbus::Variant(fallback_channel_width);
@@ -379,6 +389,19 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
         << active_conn->getProxy().getObjectPath()
         << " to be activated, last NMActiveConnectionStateReason: "
         << reason->ToString();
+    DisconnectWifiHotspot();
+    return false;
+  }
+
+  // WaitForConnection only reports a reason when the activation *failed*;
+  // success is signalled by no reason at all. Treating "not timed out" as
+  // success meant a failed activation still marked the hotspot as started,
+  // after which ListenForService could never find one and the upgrade retried
+  // forever.
+  if (reason.has_value()) {
+    LOG(ERROR) << __func__ << ": connection "
+               << active_conn->getProxy().getObjectPath()
+               << " failed to activate: " << reason->ToString();
     DisconnectWifiHotspot();
     return false;
   }
