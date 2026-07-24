@@ -36,8 +36,10 @@ Projects studied while building this, and the basis for planned features:
   implementations; the groundwork for a planned native AWDL transport.
 - **[Martichou/rquickshare](https://github.com/Martichou/rquickshare)** —
   a Rust Quick Share client; useful reference for the protocol on Linux.
-- **[spieglt/FlyingCarpet](https://github.com/spieglt/FlyingCarpet)** —
-  reference for cross-platform Wi-Fi Direct file transfer.
+- **[morrownr/USB-WiFi](https://github.com/morrownr/USB-WiFi)** — the USB-WiFi
+  adapter/chipset catalog; helped work through the MediaTek `mt76` driver issues
+  and map chip capabilities (monitor mode, frame injection) for the AWDL Wi-Fi
+  card planning.
 
 ## License
 
