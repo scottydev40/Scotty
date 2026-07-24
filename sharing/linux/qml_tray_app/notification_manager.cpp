@@ -182,12 +182,38 @@ void NotificationManager::ShowCopyableNotification(
                      trimmed_action_label);
 }
 
+void NotificationManager::CloseNotification(uint notification_id) {
+  if (!notifications_available_ || notification_id == 0) {
+    return;
+  }
+  QDBusInterface notification_interface(
+      QString::fromLatin1(kNotificationsService),
+      QString::fromLatin1(kNotificationsPath),
+      QString::fromLatin1(kNotificationsInterface),
+      QDBusConnection::sessionBus());
+  notification_interface.call(QStringLiteral("CloseNotification"),
+                              notification_id);
+}
+
+void NotificationManager::DismissIncomingRequest(qlonglong share_target_id) {
+  for (auto it = pending_decisions_.begin(); it != pending_decisions_.end();) {
+    if (it.value() == share_target_id) {
+      CloseNotification(it.key());
+      it = pending_decisions_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
+
 void NotificationManager::OnActionInvoked(uint notification_id,
                                           const QString& action_key) {
   auto decision = pending_decisions_.find(notification_id);
   if (decision != pending_decisions_.end()) {
     const qlonglong share_target_id = decision.value();
     pending_decisions_.erase(decision);
+    // Posted resident, so clicking a button does not dismiss it for us.
+    CloseNotification(notification_id);
     if (action_key == QString::fromLatin1(kAcceptActionId)) {
       emit acceptRequested(share_target_id);
     } else if (action_key == QString::fromLatin1(kDeclineActionId)) {
