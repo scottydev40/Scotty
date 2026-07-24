@@ -8,7 +8,7 @@
 #include "file_share_tray_controller.h"
 
 namespace {
-constexpr char kServiceName[] = "io.github.ashpika40.QuickShare";
+constexpr char kServiceName[] = "dev.scotty.Scotty";
 constexpr char kObjectPath[] = "/io/github/ashpika40/QuickShare";
 // The only process that can host the Quick Settings tile.
 constexpr char kShellService[] = "org.gnome.Shell";

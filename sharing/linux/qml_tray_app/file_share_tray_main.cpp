@@ -168,6 +168,8 @@ int main(int argc, char* argv[]) {
   RedirectProcessLogsToConfiguredPath();
 
   QApplication app(argc, argv);
+  app.setApplicationName(QStringLiteral("Scotty"));
+  app.setApplicationDisplayName(QStringLiteral("Scotty"));
   app.setQuitOnLastWindowClosed(false);
   app.setWindowIcon(QIcon(QStringLiteral(":/icons/app_icon.svg")));
 

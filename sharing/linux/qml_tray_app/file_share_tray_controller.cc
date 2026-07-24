@@ -568,7 +568,7 @@ void FileShareTrayController::setLogPath(const QString& path) {
 }
 
 QString FileShareTrayController::defaultSavePath() {
-  return QDir::homePath() + QStringLiteral("/Downloads/QuickShare");
+  return QDir::homePath() + QStringLiteral("/Downloads/Scotty");
 }
 
 QString FileShareTrayController::resolveSavePath(const QString& raw) const {
