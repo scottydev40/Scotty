@@ -328,6 +328,31 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
   const bool using_ap_interface =
       ap_device_path != wireless_device_->getProxy().getObjectPath();
 
+  // Boost hosts the AP on the station's own device. If the station is still
+  // connected when we activate the AP, NetworkManager tears it down mid-
+  // activation and the new connection is reported as failed ("the device it
+  // was using was disconnected") — it only succeeds on a retry. Free the
+  // device first so the AP comes up cleanly on the first try.
+  if (boost && !using_ap_interface) {
+    try {
+      auto station_conn = wireless_device_->GetActiveConnection();
+      if (station_conn != nullptr) {
+        LOG(INFO) << __func__
+                  << ": Boost — deactivating the station connection first so "
+                     "the AP activates cleanly";
+        network_manager_->DeactivateConnection(
+            station_conn->getProxy().getObjectPath());
+        // Give NetworkManager a moment to release the device before we ask it
+        // to host the AP there.
+        absl::SleepFor(absl::Milliseconds(600));
+      }
+    } catch (const sdbus::Error &e) {
+      LOG(WARNING) << __func__
+                   << ": Boost — could not pre-deactivate the station ("
+                   << e.getMessage() << "); relying on activation retry";
+    }
+  }
+
   std::unique_ptr<networkmanager::ActiveConnection> active_conn;
   for (bool include_channel_width : {true, false}) {
     std::map<std::string, std::map<std::string, sdbus::Variant>>
