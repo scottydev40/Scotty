@@ -123,6 +123,9 @@ class __attribute__((visibility("default"))) NearbySharingApi {
   void Reject(int64_t share_target_id, std::function<void(StatusCode)> callback);
   void Cancel(int64_t share_target_id, std::function<void(StatusCode)> callback);
   void Set5GhzHotspotEnabled(bool enabled);
+  // Boost: host the hotspot at full bandwidth by dropping the current Wi-Fi
+  // connection for the transfer. Off by default.
+  void SetHotspotBoostEnabled(bool enabled);
   void SetDeviceName(const std::string& device_name);
   // Directory where received files are saved. Empty restores the default.
   void SetSavePath(const std::string& path);

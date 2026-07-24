@@ -20,11 +20,16 @@ namespace nearby::linux {
 namespace {
 
 std::atomic_bool kEnable5GhzHotspot = true;
+std::atomic_bool kHotspotBoost = false;
 
 }  // namespace
 
 bool Is5GhzHotspotEnabled() { return kEnable5GhzHotspot.load(); }
 
 void Set5GhzHotspotEnabled(bool enabled) { kEnable5GhzHotspot.store(enabled); }
+
+bool IsHotspotBoostEnabled() { return kHotspotBoost.load(); }
+
+void SetHotspotBoostEnabled(bool enabled) { kHotspotBoost.store(enabled); }
 
 }  // namespace nearby::linux

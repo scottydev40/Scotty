@@ -331,6 +331,33 @@ Popup {
                             text: "Experimental. Save folder for received files (blank = default). QR/WebRTC sharing is not supported on Linux."
                         }
 
+                        // Boost: full-bandwidth hotspot at the cost of Wi-Fi.
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 2
+                                Label {
+                                    Layout.fillWidth: true
+                                    color: root.textPrimary
+                                    font.pixelSize: 13
+                                    text: "Boost transfer speed"
+                                }
+                                Label {
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.WordWrap
+                                    font.pixelSize: 11
+                                    color: root.textMuted
+                                    text: "Gives the hotspot the full radio for faster transfers, but disconnects this device from Wi-Fi for the duration. Trades connectivity for speed."
+                                }
+                            }
+                            ThemedToggle {
+                                checked: fileShareController.hotspotBoost
+                                onToggled: fileShareController.hotspotBoost = checked
+                            }
+                        }
+
                         FolderDialog {
                             id: saveFolderDialog
                             title: "Choose save folder for received files"

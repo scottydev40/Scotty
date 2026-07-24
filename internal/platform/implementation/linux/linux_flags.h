@@ -20,6 +20,12 @@ namespace nearby::linux {
 bool Is5GhzHotspotEnabled();
 void Set5GhzHotspotEnabled(bool enabled);
 
+// "Boost": give the hotspot the whole radio for maximum throughput by hosting
+// on the station device (which drops the current Wi-Fi connection) on the best
+// channel at full width, instead of coexisting with the station on its channel.
+bool IsHotspotBoostEnabled();
+void SetHotspotBoostEnabled(bool enabled);
+
 }  // namespace nearby::linux
 
 #endif  // PLATFORM_IMPL_LINUX_LINUX_FLAGS_H_
