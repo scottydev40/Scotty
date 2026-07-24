@@ -56,13 +56,13 @@ const QuickShareToggle = GObject.registerClass(
 class QuickShareToggle extends QuickMenuToggle {
     _init(ext) {
         super._init({
-            title: 'Quick Share',
+            title: 'Scotty',
             gicon: ext.icon,
             toggleMode: true,
         });
         this._ext = ext;
 
-        this.menu.setHeader(ext.icon, 'Quick Share', VIS_LABEL[0]);
+        this.menu.setHeader(ext.icon, 'Scotty', VIS_LABEL[0]);
 
         // Visibility radio items.
         this._items = {};
@@ -75,11 +75,11 @@ class QuickShareToggle extends QuickMenuToggle {
         }
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        const openItem = new PopupMenu.PopupMenuItem('Open Quick Share');
+        const openItem = new PopupMenu.PopupMenuItem('Open Scotty');
         openItem.connect('activate', () => this._ext.openWindow());
         this.menu.addMenuItem(openItem);
 
-        this._quitItem = new PopupMenu.PopupMenuItem('Quit Quick Share');
+        this._quitItem = new PopupMenu.PopupMenuItem('Quit Scotty');
         this._quitItem.connect('activate', () => this._ext.quitApp());
         this.menu.addMenuItem(this._quitItem);
 
@@ -92,7 +92,7 @@ class QuickShareToggle extends QuickMenuToggle {
     syncVisibility(vis) {
         this.checked = vis !== 2;
         this.subtitle = VIS_LABEL[vis] ?? '';
-        this.menu.setHeader(this._ext.icon, 'Quick Share', VIS_LABEL[vis] ?? '');
+        this.menu.setHeader(this._ext.icon, 'Scotty', VIS_LABEL[vis] ?? '');
         for (const [val, item] of Object.entries(this._items)) {
             item.setOrnament(Number(val) === vis
                 ? PopupMenu.Ornament.DOT
@@ -107,7 +107,7 @@ class QuickShareToggle extends QuickMenuToggle {
         // App gone: the tile must not keep showing the last live state.
         this.checked = false;
         this.subtitle = 'Not running';
-        this.menu.setHeader(this._ext.icon, 'Quick Share', 'Not running');
+        this.menu.setHeader(this._ext.icon, 'Scotty', 'Not running');
         for (const item of Object.values(this._items))
             item.setOrnament(PopupMenu.Ornament.NONE);
     }
