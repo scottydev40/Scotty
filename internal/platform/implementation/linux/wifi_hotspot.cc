@@ -232,6 +232,15 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
   std::string selected_band;
   int selected_channel = kPreferred24GhzChannel;
   const bool enable_5ghz_hotspot = !force_24ghz && Is5GhzHotspotEnabled();
+  // Boost: give the AP the entire radio (best channel, full width, no station
+  // coexistence) for maximum throughput, at the cost of dropping the current
+  // Wi-Fi connection for the duration of the transfer.
+  const bool boost = IsHotspotBoostEnabled();
+  if (boost) {
+    LOG(INFO) << __func__
+              << ": Boost enabled — hosting on the station interface at full "
+                 "bandwidth; the current Wi-Fi connection will drop";
+  }
   if (enable_5ghz_hotspot &&
       (capability.supports_6_ghz || capability.supports_5_ghz)) {
     selected_band = "a";  // 5/6 GHz - NetworkManager uses "a" for both 5 GHz and 6 GHz
@@ -258,8 +267,9 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
   // same channel ("#channels <= 1" in `iw list` interface combinations).
   // Hosting the hotspot on a fixed channel therefore knocks the machine off
   // its current Wi-Fi network for the duration of the transfer. Reuse the
-  // channel we are already associated on so the two can coexist.
-  try {
+  // channel we are already associated on so the two can coexist. Boost skips
+  // this — it wants the best channel at full width, station be damned.
+  if (!boost) try {
     const sdbus::ObjectPath station_ap_path =
         wireless_device_->ActiveAccessPoint();
     if (!station_ap_path.empty()) {
@@ -296,7 +306,10 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
   // survives (see EnsureApInterface). Falls back to the station's own device,
   // which is what NetworkManager tears down.
   sdbus::ObjectPath ap_device_path = wireless_device_->getProxy().getObjectPath();
-  if (ApInterfaceAvailable()) {
+  if (boost) {
+    LOG(INFO) << __func__
+              << ": Boost — hosting on the station device for full bandwidth";
+  } else if (ApInterfaceAvailable()) {
     try {
       ap_device_path = network_manager_->GetDeviceByIpIface(kApInterfaceName);
       LOG(INFO) << __func__ << ": hosting the hotspot on " << kApInterfaceName

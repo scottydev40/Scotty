@@ -664,6 +664,10 @@ void NearbySharingApi::Set5GhzHotspotEnabled(bool enabled) {
   nearby::linux::Set5GhzHotspotEnabled(enabled);
 }
 
+void NearbySharingApi::SetHotspotBoostEnabled(bool enabled) {
+  nearby::linux::SetHotspotBoostEnabled(enabled);
+}
+
 void NearbySharingApi::SetDeviceName(const std::string& device_name) {
   if (impl_->service == nullptr || device_name.empty()) {
     return;
