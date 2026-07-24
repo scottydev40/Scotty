@@ -112,11 +112,16 @@ class FileShareState {
                            const QString& status, double progress,
                            qulonglong transferred_bytes,
                            const QString& direction, const QString& file_name,
-                           const QString& file_path);
+                           const QString& file_path, double speed_bytes_per_sec,
+                           int current_file, int total_files);
   void RemoveTransfer(qlonglong target_id);
   bool HasActiveTransferForTarget(qlonglong target_id) const;
   bool HasActiveTransfers() const;
   void ClearFinishedTransfers();
+  // Drops finished rows whose "endedAt" is older than ttl_ms. Returns true if
+  // anything was removed (so the caller can emit transfersChanged). Active and
+  // awaiting rows are always kept regardless of age.
+  bool SweepExpiredTransfers(qlonglong now_ms, qlonglong ttl_ms);
 
   // Pending target removal management
   void AddPendingTargetRemoval(qlonglong id);

@@ -1,6 +1,8 @@
 #include "file_share_state.h"
 #include "status_mapper.h"
 
+#include <QDateTime>
+
 FileShareState::FileShareState() = default;
 
 void FileShareState::AddOrUpdateTarget(qlonglong id, const QString& name,
@@ -118,7 +120,28 @@ bool FileShareState::HasTarget(qlonglong id) const {
 void FileShareState::AddOrUpdateTransfer(
     qlonglong target_id, const QString& target_name, const QString& status,
     double progress, qulonglong transferred_bytes, const QString& direction,
-    const QString& file_name, const QString& file_path) {
+    const QString& file_name, const QString& file_path,
+    double speed_bytes_per_sec, int current_file, int total_files) {
+  const bool now_active = StatusMapper::IsActiveTransferStatus(status);
+  const qlonglong now_ms = QDateTime::currentMSecsSinceEpoch();
+
+  // If a fresh session starts on a device whose previous row already finished,
+  // archive that finished row (drop its target mapping and flag it) so the new
+  // one stacks below it rather than overwriting the "done" state. The archived
+  // row keeps its endedAt and is swept once its TTL passes.
+  if (now_active && transfer_row_by_target_.contains(target_id)) {
+    const int prev_index = transfer_row_by_target_.value(target_id);
+    if (prev_index >= 0 && prev_index < transfers_.size()) {
+      QVariantMap prev = transfers_[prev_index].toMap();
+      if (!StatusMapper::IsActiveTransferStatus(
+              prev.value(QStringLiteral("status")).toString())) {
+        prev[QStringLiteral("archived")] = true;
+        transfers_[prev_index] = prev;
+        transfer_row_by_target_.remove(target_id);
+      }
+    }
+  }
+
   QVariantMap transfer{
       {QStringLiteral("targetId"), target_id},
       {QStringLiteral("targetName"), target_name},
@@ -128,11 +151,27 @@ void FileShareState::AddOrUpdateTransfer(
       {QStringLiteral("direction"), direction},
       {QStringLiteral("fileName"), file_name},
       {QStringLiteral("filePath"), file_path},
+      {QStringLiteral("speed"), speed_bytes_per_sec},
+      {QStringLiteral("currentFile"), current_file},
+      {QStringLiteral("totalFiles"), total_files},
+      {QStringLiteral("archived"), false},
+      // Stamped when the row is (or becomes) finished; 0 while active. Drives
+      // the expiry sweep so completed rows fade after a few seconds.
+      {QStringLiteral("endedAt"), now_active ? qlonglong(0) : now_ms},
   };
 
   if (transfer_row_by_target_.contains(target_id)) {
     const int row_index = transfer_row_by_target_.value(target_id);
     if (row_index >= 0 && row_index < transfers_.size()) {
+      // Preserve the original finish time across repeated terminal updates so
+      // the TTL is measured from when it first ended, not the latest refresh.
+      if (!now_active) {
+        const qlonglong prev_ended =
+            transfers_[row_index].toMap().value(QStringLiteral("endedAt"))
+                .toLongLong();
+        if (prev_ended > 0)
+          transfer[QStringLiteral("endedAt")] = prev_ended;
+      }
       transfers_[row_index] = transfer;
       return;
     }
@@ -140,6 +179,33 @@ void FileShareState::AddOrUpdateTransfer(
 
   transfer_row_by_target_.insert(target_id, transfers_.size());
   transfers_.append(transfer);
+}
+
+bool FileShareState::SweepExpiredTransfers(qlonglong now_ms, qlonglong ttl_ms) {
+  bool changed = false;
+  QVariantList kept;
+  QHash<qlonglong, int> new_map;
+  for (const QVariant& row_value : transfers_) {
+    const QVariantMap row = row_value.toMap();
+    const QString status = row.value(QStringLiteral("status")).toString();
+    const bool active = StatusMapper::IsActiveTransferStatus(status);
+    const qlonglong ended = row.value(QStringLiteral("endedAt")).toLongLong();
+    if (!active && ended > 0 && (now_ms - ended) >= ttl_ms) {
+      changed = true;  // expired — drop it
+      continue;
+    }
+    // Only a non-archived row owns its target's update slot.
+    if (!row.value(QStringLiteral("archived")).toBool()) {
+      new_map.insert(row.value(QStringLiteral("targetId")).toLongLong(),
+                     kept.size());
+    }
+    kept.append(row_value);
+  }
+  if (changed) {
+    transfers_ = kept;
+    transfer_row_by_target_ = new_map;
+  }
+  return changed;
 }
 
 void FileShareState::RemoveTransfer(qlonglong target_id) {

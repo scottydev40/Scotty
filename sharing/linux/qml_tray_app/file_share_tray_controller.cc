@@ -10,6 +10,7 @@
 #include <QDirIterator>
 #include <QFileInfo>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QFile>
 #include <QGuiApplication>
 #include <QMetaObject>
@@ -34,6 +35,21 @@ FileShareTrayController::FileShareTrayController(QObject* parent)
   loadSettings();
   refreshAutostartFile();
   initializeService();
+
+  // Sweep finished transfer rows a few seconds after they end so the list
+  // settles instead of accumulating completed entries.
+  constexpr qlonglong kFinishedTtlMs = 6000;
+  transfer_sweep_timer_ = new QTimer(this);
+  transfer_sweep_timer_->setInterval(1000);
+  connect(transfer_sweep_timer_, &QTimer::timeout, this, [this] {
+    const qlonglong now = QDateTime::currentMSecsSinceEpoch();
+    if (state_.SweepExpiredTransfers(now, kFinishedTtlMs)) {
+      emit transfersChanged();
+    }
+    if (!state_.HasActiveTransfers() && state_.transfers().isEmpty()) {
+      transfer_sweep_timer_->stop();
+    }
+  });
 }
 
 FileShareTrayController::~FileShareTrayController() {
@@ -148,9 +164,43 @@ void FileShareTrayController::handleTransferUpdate(
                     .arg(attachment_count - 1);
   }
 
+  // Throughput: bytes since the last update for this target over the elapsed
+  // wall-clock time, smoothed so the readout doesn't jitter. Reset once the
+  // transfer is no longer in flight.
+  const bool in_flight = status == QStringLiteral("InProgress");
+  double speed_bps = 0.0;
+  const qlonglong now_ms = QDateTime::currentMSecsSinceEpoch();
+  if (in_flight) {
+    auto& sample = speed_samples_[update.share_target_id];
+    if (sample.ms > 0 && now_ms > sample.ms &&
+        update.transferred_bytes >= sample.bytes) {
+      const double instant = static_cast<double>(update.transferred_bytes -
+                                                 sample.bytes) *
+                             1000.0 / static_cast<double>(now_ms - sample.ms);
+      // Exponential smoothing; seed on the first real sample.
+      sample.bps = sample.bps > 0.0 ? 0.6 * sample.bps + 0.4 * instant : instant;
+    }
+    sample.bytes = update.transferred_bytes;
+    sample.ms = now_ms;
+    speed_bps = sample.bps;
+  } else {
+    speed_samples_.remove(update.share_target_id);
+  }
+
+  // 1-based index of the file currently in flight, and the batch size.
+  const int total_files = update.total_attachments;
+  const int current_file =
+      total_files > 0
+          ? std::min(update.transferred_attachments + 1, total_files)
+          : 0;
+
   state_.AddOrUpdateTransfer(update.share_target_id, name, status, update.progress,
                              update.transferred_bytes, direction, file_name,
-                             StringUtils::FromStdString(update.first_file_path));
+                             StringUtils::FromStdString(update.first_file_path),
+                             speed_bps, current_file, total_files);
+  if (transfer_sweep_timer_ && !transfer_sweep_timer_->isActive()) {
+    transfer_sweep_timer_->start();
+  }
   emit transfersChanged();
 
   setStatus(QStringLiteral("%1 (%2)").arg(status, name));
@@ -764,7 +814,11 @@ void FileShareTrayController::sendPendingFileToTarget(qlonglong share_target_id)
             .arg(file_paths.size() - 1);
   state_.AddOrUpdateTransfer(share_target_id, target_name, QStringLiteral("Queued"), 0.0, 0,
                              QStringLiteral("outgoing"), row_name,
-                             state_.pendingSendFilePath());
+                             state_.pendingSendFilePath(), 0.0, 0,
+                             static_cast<int>(file_paths.size()));
+  if (transfer_sweep_timer_ && !transfer_sweep_timer_->isActive()) {
+    transfer_sweep_timer_->start();
+  }
   emit transfersChanged();
 
   service_->SendFiles(
@@ -788,7 +842,7 @@ void FileShareTrayController::sendPendingFileToTarget(qlonglong share_target_id)
                                          QStringLiteral("Failed"), 0.0, 0,
                                          QStringLiteral("outgoing"),
                                          state_.pendingSendFileName(),
-                                         state_.pendingSendFilePath());
+                                         state_.pendingSendFilePath(), 0.0, 0, 0);
               emit transfersChanged();
               state_.SetPendingSendFile("", "", 0);
             },

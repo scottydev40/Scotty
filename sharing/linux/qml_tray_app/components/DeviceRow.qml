@@ -44,6 +44,18 @@ Item {
     readonly property string filePath: transferData ? String(transferData.filePath || "") : ""
     readonly property string fileName: transferData ? String(transferData.fileName || "") : ""
 
+    readonly property real speedBps: transferData ? Number(transferData.speed || 0) : 0
+    readonly property int currentFile: transferData ? Number(transferData.currentFile || 0) : 0
+    readonly property int totalFiles: transferData ? Number(transferData.totalFiles || 0) : 0
+    readonly property bool isCancelled: transferStatus === "Cancelled"
+
+    function formatSpeed(bps) {
+        if (!isFinite(bps) || bps <= 0) return ""
+        if (bps >= 1048576) return (bps / 1048576).toFixed(1) + " MB/s"
+        if (bps >= 1024)    return Math.round(bps / 1024) + " KB/s"
+        return Math.round(bps) + " B/s"
+    }
+
     readonly property real progress: {
         if (!hasTransfer) return 0
         if (isComplete || isFailed) return 1
@@ -59,15 +71,30 @@ Item {
         case "AwaitingLocalConfirmation": return incoming ? "Wants to share…" : "Confirm on this device…"
         case "AwaitingRemoteAcceptance": return "Waiting for them to accept…"
         case "InProgress": {
+            var verb = incoming ? "Receiving" : "Sending"
+            // "Receiving file 2 of 5" when it's a multi-file batch.
+            var head = (totalFiles > 1 && currentFile > 0)
+                       ? verb + " file " + currentFile + " of " + totalFiles
+                       : verb + "…"
+            var parts = [head]
             var p = Math.round(progress * 100)
-            var v = incoming ? "Receiving" : "Sending"
-            return p > 0 ? v + "… " + p + "%" : v + "…"
+            if (p > 0) parts.push(p + "%")
+            var s = formatSpeed(speedBps)
+            if (s.length > 0) parts.push(s)
+            return parts.join(" · ")
         }
         case "Complete": return incoming ? "Received" : "Sent"
+        case "Cancelled": return "Cancelled"
+        case "Rejected": return incoming ? "Declined" : "They declined"
+        case "TimedOut": return "Timed out"
+        case "NotEnoughSpace": return "Not enough space"
+        case "MediaUnavailable": return "Media unavailable"
+        case "UnsupportedAttachmentType": return "Unsupported file type"
         default: return incoming ? "Unexpected disconnection" : "Couldn't send — tap to retry"
         }
     }
-    readonly property color statusColor: isFailed ? danger
+    readonly property color statusColor: isCancelled ? textMuted
+                                         : isFailed ? danger
                                          : isComplete ? accentGreen : textMuted
     readonly property bool rowClickable: canSend && (!hasTransfer || isFailed || isComplete)
     readonly property bool awaitingLocal: transferStatus === "AwaitingLocalConfirmation"
