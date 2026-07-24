@@ -113,6 +113,11 @@ class FileShareTrayController : public QObject {
   void visibilityChanged();
   void runAtStartupChanged();
 
+  // An incoming transfer needs an answer and auto-accept is off.
+  void requestIncomingDecision(qlonglong share_target_id,
+                               const QString& device_name,
+                               const QString& file_name);
+
   void requestTrayMessage(const QString& title, const QString& body);
   void requestCopyLinkTrayMessage(const QString& title, const QString& body,
                                    const QString& link);

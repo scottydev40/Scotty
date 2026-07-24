@@ -346,6 +346,19 @@ int main(int argc, char* argv[]) {
 
   QObject::connect(&controller, &FileShareTrayController::requestTrayMessage,
                    &notification_manager, &NotificationManager::ShowNotification);
+
+  // Accept/Decline straight from the notification, so an incoming transfer can
+  // be answered with the window hidden.
+  QObject::connect(&controller,
+                   &FileShareTrayController::requestIncomingDecision,
+                   &notification_manager,
+                   &NotificationManager::ShowIncomingRequest);
+  QObject::connect(&notification_manager,
+                   &NotificationManager::acceptRequested, &controller,
+                   &FileShareTrayController::acceptTransfer);
+  QObject::connect(&notification_manager,
+                   &NotificationManager::declineRequested, &controller,
+                   &FileShareTrayController::declineTransfer);
   QObject::connect(&controller,
                    &FileShareTrayController::requestCopyLinkTrayMessage,
                    &notification_manager,
