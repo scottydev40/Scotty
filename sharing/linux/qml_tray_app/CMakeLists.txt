@@ -30,6 +30,8 @@ qt_add_executable(nearby_qml_file_tray_app
   file_share_state.h
   theme_controller.cc
   theme_controller.h
+  bluetooth_name_guard.cc
+  bluetooth_name_guard.h
   quick_share_dbus.cc
   quick_share_dbus.h
   share_target_model.h
