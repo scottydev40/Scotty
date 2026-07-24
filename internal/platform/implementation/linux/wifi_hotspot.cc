@@ -269,10 +269,29 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
   // its current Wi-Fi network for the duration of the transfer. Reuse the
   // channel we are already associated on so the two can coexist. Boost skips
   // this — it wants the best channel at full width, station be damned.
-  if (!boost) try {
-    const sdbus::ObjectPath station_ap_path =
-        wireless_device_->ActiveAccessPoint();
-    if (!station_ap_path.empty()) {
+  if (!boost) {
+    // The station's channel comes from its active access point. That D-Bus
+    // property is momentarily "/" (NetworkManager's null path) around
+    // association/scan even while the station stays connected. If we give up
+    // then and host the AP on the default channel, it can differ from the
+    // station's — which breaks the single-channel radio rule and the AP
+    // activation fails ("device was disconnected"), dropping the transfer to
+    // Bluetooth. Retry the read while the station is associated so a transient
+    // miss does not force a channel conflict.
+    auto is_valid_path = [](const sdbus::ObjectPath &p) {
+      return !p.empty() && static_cast<std::string>(p) != "/";
+    };
+    sdbus::ObjectPath station_ap_path;
+    for (int attempt = 0; attempt < 10; ++attempt) {
+      try {
+        station_ap_path = wireless_device_->ActiveAccessPoint();
+      } catch (const sdbus::Error &e) {
+        station_ap_path = sdbus::ObjectPath{};
+      }
+      if (is_valid_path(station_ap_path) || !ConnectedToWifi()) break;
+      absl::SleepFor(absl::Milliseconds(200));
+    }
+    if (is_valid_path(station_ap_path)) try {
       NetworkManagerAccessPoint station_ap(*system_bus_, station_ap_path);
       const int station_channel = ChannelForFrequency(station_ap.Frequency());
       // Only when it is in the band we were going to use anyway: moving bands
@@ -292,11 +311,16 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
                   << ", a different band to the hotspot; the station link will "
                      "likely drop";
       }
+    } catch (const sdbus::Error &e) {
+      LOG(WARNING) << __func__
+                   << ": Could not read the current Wi-Fi channel, using channel "
+                   << selected_channel << ": " << e.what();
+    } else if (ConnectedToWifi()) {
+      LOG(WARNING) << __func__
+                   << ": Wi-Fi is associated but its channel could not be read; "
+                      "hosting on channel "
+                   << selected_channel << " may drop the station link";
     }
-  } catch (const sdbus::Error &e) {
-    LOG(WARNING) << __func__
-                 << ": Could not read the current Wi-Fi channel, using channel "
-                 << selected_channel << ": " << e.what();
   }
 
   const int32_t fallback_channel_width =
