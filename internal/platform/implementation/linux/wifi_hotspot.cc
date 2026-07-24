@@ -224,13 +224,23 @@ bool NetworkManagerWifiHotspotMedium::EnsureApInterface(bool up) {
   }
   if (!up) return true;
 
-  // StartUnit is asynchronous; wait for the interface to actually appear.
-  for (int attempt = 0; attempt < 25; ++attempt) {  // up to ~2.5s
-    if (ApInterfaceAvailable()) return true;
+  // StartUnit is asynchronous. Wait not just for the kernel interface to exist
+  // (/sys) but for NetworkManager to register it as a device — otherwise
+  // AddAndActivateConnection2 races and fails with "device is not available".
+  for (int attempt = 0; attempt < 40; ++attempt) {  // up to ~4s
+    if (ApInterfaceAvailable()) {
+      try {
+        auto dev = network_manager_->GetDeviceByIpIface(kApInterfaceName);
+        if (!dev.empty() && static_cast<std::string>(dev) != "/") return true;
+      } catch (const sdbus::Error &) {
+        // NetworkManager has not picked up the new interface yet.
+      }
+    }
     absl::SleepFor(absl::Milliseconds(100));
   }
   LOG(WARNING) << __func__
-               << ": nearby-ap0 did not appear after starting " << kApUnit;
+               << ": nearby-ap0 did not become available after starting "
+               << kApUnit;
   return false;
 }
 
