@@ -306,17 +306,52 @@ static std::unique_ptr<linux::NetworkManagerWifiMedium> createWifiMedium(
     return nullptr;
   }
 
+  // Our own AP-mode virtual interface (see wifi_hotspot.cc) is also a wireless
+  // device, but it is never the station and reads an empty ActiveAccessPoint —
+  // picking it makes the hotspot unable to match the real Wi-Fi channel. Skip
+  // it, and prefer a device that is actually associated to a network.
+  constexpr char kApInterfaceName[] = "nearby-ap0";
+  const sdbus::InterfaceName kWirelessIface(
+      org::freedesktop::NetworkManager::Device::Wireless_proxy::INTERFACE_NAME);
+  const sdbus::InterfaceName kDeviceIface(
+      "org.freedesktop.NetworkManager.Device");
+
+  sdbus::ObjectPath fallback_path;  // first non-AP wireless device
   for (auto &device_path : device_paths) {
-    if (objects.count(device_path) == 1) {
-      auto device = objects[device_path];
-      if (device.count(sdbus::InterfaceName(org::freedesktop::NetworkManager::Device::
-                           Wireless_proxy::INTERFACE_NAME)) == 1) {
-        LOG(INFO) << __func__
-                          << ": Found a wireless device at :" << device_path;
+    if (objects.count(device_path) != 1) continue;
+    auto &device = objects[device_path];
+    auto wireless = device.find(kWirelessIface);
+    if (wireless == device.end()) continue;
+
+    std::string ifname;
+    auto dev_iface = device.find(kDeviceIface);
+    if (dev_iface != device.end()) {
+      auto prop = dev_iface->second.find(sdbus::PropertyName("Interface"));
+      if (prop != dev_iface->second.end()) {
+        try { ifname = prop->second.get<std::string>(); } catch (...) {}
+      }
+    }
+    if (ifname == kApInterfaceName) continue;  // never the station
+
+    if (fallback_path.empty()) fallback_path = device_path;
+
+    // Prefer the associated station: a non-"/" ActiveAccessPoint.
+    auto ap = wireless->second.find(sdbus::PropertyName("ActiveAccessPoint"));
+    if (ap != wireless->second.end()) {
+      std::string ap_path;
+      try { ap_path = ap->second.get<sdbus::ObjectPath>(); } catch (...) {}
+      if (!ap_path.empty() && ap_path != "/") {
+        LOG(INFO) << __func__ << ": using associated wireless device "
+                  << ifname << " at " << device_path;
         return std::make_unique<linux::NetworkManagerWifiMedium>(nm,
                                                                  device_path);
       }
     }
+  }
+
+  if (!fallback_path.empty()) {
+    LOG(INFO) << __func__ << ": Found a wireless device at :" << fallback_path;
+    return std::make_unique<linux::NetworkManagerWifiMedium>(nm, fallback_path);
   }
 
   LOG(ERROR) << __func__
