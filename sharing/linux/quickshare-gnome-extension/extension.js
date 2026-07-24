@@ -3,7 +3,7 @@
 // Adds a tile (and an optional panel indicator icon) that controls the Nearby /
 // Quick Share Linux app over D-Bus. The app exposes:
 //
-//   io.github.ashpika40.QuickShare  at  /io/github/ashpika40/QuickShare
+//   dev.scotty.Scotty  at  /dev/scotty/Scotty
 //     GetVisibility() -> i          (0 Everyone, 1 Contacts, 2 Hidden)
 //     SetVisibility(i)
 //     GetRunning() -> b
@@ -23,13 +23,13 @@ import {
     SystemIndicator,
 } from 'resource:///org/gnome/shell/ui/quickSettings.js';
 
-const BUS_NAME = 'io.github.ashpika40.QuickShare';
-const OBJECT_PATH = '/io/github/ashpika40/QuickShare';
-const APP_BINARY = 'nearby_qml_file_tray_app';
+const BUS_NAME = 'dev.scotty.Scotty';
+const OBJECT_PATH = '/dev/scotty/Scotty';
+const APP_BINARY = 'scotty';
 
 const IFACE = `
 <node>
-  <interface name="io.github.ashpika40.QuickShare">
+  <interface name="dev.scotty.Scotty">
     <method name="GetVisibility"><arg type="i" direction="out"/></method>
     <method name="SetVisibility"><arg type="i" direction="in"/></method>
     <method name="GetRunning"><arg type="b" direction="out"/></method>
