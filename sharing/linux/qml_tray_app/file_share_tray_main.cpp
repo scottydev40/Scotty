@@ -192,7 +192,7 @@ int main(int argc, char* argv[]) {
   // Wayland/GNOME matches a window to its .desktop entry (and thus its taskbar
   // icon) via the desktop file name / app_id, not setWindowIcon. Without this
   // the shell falls back to a generic icon.
-  QGuiApplication::setDesktopFileName(QStringLiteral("nearby-file-share"));
+  QGuiApplication::setDesktopFileName(QStringLiteral("dev.scotty.Scotty"));
 
   // Armed before anything touches the radio: cleans up after a previous run
   // that was killed, and records the adapter name to put back on the way out.

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.scotty.Scotty</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <name>Scotty</name>
+  <summary>Universal local file sharing for Linux</summary>
+  <description>
+    <p>
+      Scotty sends and receives files with the phones, tablets, and PCs
+      around you — no cloud, no account, no cables. It speaks Google
+      Quick Share / Nearby Share, so stock Android phones and Windows
+      machines see your Linux box as a normal device.
+    </p>
+    <p>
+      Transfers take the fastest available path: the local network when
+      both devices share Wi-Fi, or a self-hosted Wi-Fi hotspot otherwise,
+      with an optional Boost mode for maximum throughput.
+    </p>
+  </description>
+  <url type="homepage">https://github.com/ashpika40/scotty</url>
+  <url type="bugtracker">https://github.com/ashpika40/scotty/issues</url>
+  <launchable type="desktop-id">dev.scotty.Scotty.desktop</launchable>
+  <provides>
+    <binary>scotty</binary>
+  </provides>
+</component>

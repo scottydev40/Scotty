@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -e
+
+HERE="$(cd -- "$(dirname -- "$(readlink -f -- "$0")")" && pwd)"
+
+export LD_LIBRARY_PATH="$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export QT_PLUGIN_PATH="$HERE/usr/plugins"
+export QT_QPA_PLATFORM_PLUGIN_PATH="$HERE/usr/plugins/platforms"
+export QML2_IMPORT_PATH="$HERE/usr/qml"
+export QML_IMPORT_PATH="$HERE/usr/qml"
+# Prefer Wayland, fall back to X11.
+export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland;xcb}"
+
+exec "$HERE/usr/bin/scotty" "$@"

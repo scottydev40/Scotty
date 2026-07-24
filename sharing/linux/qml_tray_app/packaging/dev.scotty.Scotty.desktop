@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Scotty
+GenericName=File Sharing
+Comment=Send and receive files with nearby devices — Quick Share for Linux
+Exec=scotty %U
+Icon=dev.scotty.Scotty
+Terminal=false
+Categories=Network;FileTransfer;Utility;
+Keywords=share;transfer;nearby;quick share;airdrop;send;files;
+StartupNotify=true
+StartupWMClass=dev.scotty.Scotty
