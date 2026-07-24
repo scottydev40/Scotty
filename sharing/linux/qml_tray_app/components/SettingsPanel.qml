@@ -436,7 +436,7 @@ Popup {
                     border.width: 1
                     Label {
                         anchors.centerIn: parent
-                        text: "Quit Quick Share"
+                        text: "Quit Scotty"
                         font.pixelSize: 14
                         font.weight: Font.Medium
                         color: Theme.danger

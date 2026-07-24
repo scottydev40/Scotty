@@ -13,7 +13,7 @@ ApplicationWindow {
     minimumHeight: 620
     // Bound rather than `true` so a --background launch never flashes a window.
     visible: !startInBackground
-    title: "Quick Share"
+    title: "Scotty"
 
     // Sitting in the tray shouldn't hold the Bluetooth adapter's name hostage:
     // drop to low-power (BLE/Wi-Fi) advertising while hidden. Still receivable.
