@@ -25,7 +25,7 @@ constexpr char kNotificationsInterface[] = "org.freedesktop.Notifications";
 constexpr char kCopyActionId[] = "copy_value";
 constexpr char kAcceptActionId[] = "accept_transfer";
 constexpr char kDeclineActionId[] = "decline_transfer";
-constexpr char kDesktopEntryId[] = "nearby-file-share";
+constexpr char kDesktopEntryId[] = "dev.scotty.Scotty";
 
 }  // namespace
 
