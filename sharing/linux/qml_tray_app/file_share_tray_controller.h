@@ -82,6 +82,10 @@ class FileShareTrayController : public QObject {
   Q_INVOKABLE void openFileLocation(const QString& file_path);
   Q_INVOKABLE void clearTransfers();
   Q_INVOKABLE void hideToTray();
+  // Follows the window: a visible window advertises at high power (which drags
+  // in Bluetooth Classic and renames the adapter), hidden drops to BLE/Wi-Fi
+  // only. Still discoverable either way — visibility governs that.
+  Q_INVOKABLE void setReceiveForeground(bool foreground);
   // Incoming-transfer decisions / cancel (used by DeviceRow when auto-accept is off
   // or a transfer is in progress).
   Q_INVOKABLE void acceptTransfer(qlonglong share_target_id);

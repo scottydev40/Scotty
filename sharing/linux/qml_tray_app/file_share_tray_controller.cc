@@ -421,6 +421,14 @@ void FileShareTrayController::refreshAutostartFile() {
   }
 }
 
+void FileShareTrayController::setReceiveForeground(bool foreground) {
+  if (!service_) {
+    return;
+  }
+  service_->SetReceiveForeground(foreground,
+                                 [](NearbySharingApi::StatusCode) {});
+}
+
 void FileShareTrayController::quitApplication() {
   // aboutToQuit is wired to stop() in main() for an ordered teardown.
   QCoreApplication::quit();

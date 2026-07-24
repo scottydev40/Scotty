@@ -328,6 +328,9 @@ class NearbySharingApi::Impl : public nearby::sharing::ShareTargetDiscoveredCall
   NativeService* service = nullptr;
   bool send_mode_started = false;
   bool receive_mode_started = false;
+  // Which receive surface state to register with. Foreground raises the power
+  // level, which adds Bluetooth Classic and therefore renames the adapter.
+  bool receive_foreground = true;
   // App-facing advertising visibility: 0 = Everyone, 1 = Contacts, 2 = Hidden.
   int visibility_mode = 0;
   std::string qr_code_url;
@@ -454,8 +457,11 @@ void NearbySharingApi::StartReceiveMode(std::function<void(StatusCode)> callback
         }
         impl_->service->RegisterReceiveSurface(
             impl_.get(),
-            nearby::sharing::NearbySharingService::ReceiveSurfaceState::
-                kForeground,
+            impl_->receive_foreground
+                ? nearby::sharing::NearbySharingService::ReceiveSurfaceState::
+                      kForeground
+                : nearby::sharing::NearbySharingService::ReceiveSurfaceState::
+                      kBackground,
             nearby::sharing::Advertisement::BlockedVendorId::kNone,
             [this, cb = std::move(cb)](
                 nearby::sharing::NearbySharingService::StatusCodes status)
@@ -468,6 +474,41 @@ void NearbySharingApi::StartReceiveMode(std::function<void(StatusCode)> callback
                 cb(ToFacadeStatus(status));
               }
             });
+      });
+}
+
+void NearbySharingApi::SetReceiveForeground(
+    bool foreground, std::function<void(StatusCode)> callback) {
+  if (foreground == impl_->receive_foreground) {
+    if (callback) {
+      callback(StatusCode::kOk);
+    }
+    return;
+  }
+  impl_->receive_foreground = foreground;
+
+  if (impl_->service == nullptr || !impl_->receive_mode_started) {
+    // Nothing registered yet; StartReceiveMode will pick up the new state.
+    if (callback) {
+      callback(StatusCode::kOk);
+    }
+    return;
+  }
+
+  // The surface state is fixed at registration time, so swap the registration.
+  // Advertising restarts at the new power level; visibility is untouched.
+  impl_->service->UnregisterReceiveSurface(
+      impl_.get(),
+      [this, cb = std::move(callback)](
+          nearby::sharing::NearbySharingService::StatusCodes status) mutable {
+        if (status != nearby::sharing::NearbySharingService::StatusCodes::kOk) {
+          if (cb) {
+            cb(ToFacadeStatus(status));
+          }
+          return;
+        }
+        impl_->receive_mode_started = false;
+        StartReceiveMode(std::move(cb));
       });
 }
 

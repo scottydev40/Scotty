@@ -105,6 +105,14 @@ class __attribute__((visibility("default"))) NearbySharingApi {
 
   void StartReceiveMode(std::function<void(StatusCode)> callback);
   void StopReceiveMode(std::function<void(StatusCode)> callback);
+  // Chooses the receive surface state. Foreground advertises at high power,
+  // which enables Bluetooth Classic — and BT Classic discovery encodes endpoint
+  // data in the adapter name, so the user's Bluetooth name gets overwritten for
+  // as long as it is advertising. Background advertises over BLE/Wi-Fi only and
+  // leaves the name alone. Discoverability is governed by SetVisibility, not by
+  // this, so a background surface still advertises to everyone if configured to.
+  void SetReceiveForeground(bool foreground,
+                            std::function<void(StatusCode)> callback);
 
   void SendFile(int64_t share_target_id, const std::string& file_path,
                 std::function<void(StatusCode)> callback);

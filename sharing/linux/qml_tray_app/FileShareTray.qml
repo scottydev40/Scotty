@@ -15,6 +15,10 @@ ApplicationWindow {
     visible: !startInBackground
     title: "Quick Share"
 
+    // Sitting in the tray shouldn't hold the Bluetooth adapter's name hostage:
+    // drop to low-power (BLE/Wi-Fi) advertising while hidden. Still receivable.
+    onVisibleChanged: fileShareController.setReceiveForeground(visible)
+
     background: Rectangle { color: Theme.windowBg }
 
     onClosing: function(close) {
