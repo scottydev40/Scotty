@@ -92,12 +92,10 @@ name-only `NetworkManagerWifiDirectMedium` was removed in `ce706620`.
 2. **`BANDWIDTH_UPGRADE_RETRY` unhandled.** Proto enum 12 has no handler in this
    tree *or* upstream; `endpoint_manager.cc` logs "Unhandled message" and drops
    it. The peer sends it during every upgrade. Non-blocking.
-3. **Transfer state on the panel indicator** — needs a `TransferActiveChanged`
-   signal on the D-Bus service; the `SystemIndicator` slot is already wired.
-4. **Google contacts / working QR.** Both blocked on Google-issued credentials,
+3. **Google contacts / working QR.** Both blocked on Google-issued credentials,
    not code: `LinuxAccountManager` and the RPC clients are stubs, and
    `GenerateQrCodeUrl()` throws away the private key it generates.
-5. **Verify the AppImage build** (`build-appimage.sh`) end-to-end.
+4. **Verify the AppImage build** (`build-appimage.sh`) end-to-end.
 
 ## Gotchas worth remembering
 

@@ -45,8 +45,10 @@ transfers. Below is what's left.
       superseded the need. Low priority.
 
 ## C. Polish / UX
-- [ ] **Transfer state on the panel indicator.** Wire a `TransferActiveChanged`
-      D-Bus signal; the `SystemIndicator` slot is already there.
+- [x] **Transfer state on the panel indicator.** Controller emits an
+      edge-triggered `transferActiveChanged`; the D-Bus service re-broadcasts it
+      as `TransferActiveChanged(b)` + `GetTransferActive()`; the extension keeps
+      the panel icon visible and tinted during a transfer, even in Hidden.
 - [ ] **PIN display** for the awaiting-confirmation state (reserved in the UI).
 - [ ] **Boost `600ms` settle is a fixed sleep** before hosting on the station
       device. Could wait on the device reaching `disconnected` instead. Minor.
@@ -55,8 +57,9 @@ transfers. Below is what's left.
 - [ ] **`BANDWIDTH_UPGRADE_RETRY` (enum 12) unhandled** anywhere in this tree or
       upstream — `endpoint_manager.cc` logs "Unhandled message" and drops it. The
       peer sends it during every upgrade. Non-blocking but noisy.
-- [ ] **`nearby_fast_init_manager.cc:57`** — hardcoded value `45` instead of the
-      real adapter value (TODO in code).
+- [x] **`nearby_fast_init_manager.cc`** — the fast-init beacon now advertises the
+      real TX power from BlueZ's per-level dBm table, bound to the level the
+      advertisement registers at, instead of the hardcoded `45`.
 
 ## E. Testing
 - [ ] **Second Wi-Fi card.** Validated only on the MT7925. Test on an `ath9k`
