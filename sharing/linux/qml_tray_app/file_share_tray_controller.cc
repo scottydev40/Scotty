@@ -51,6 +51,17 @@ FileShareTrayController::FileShareTrayController(QObject* parent)
       transfer_sweep_timer_->stop();
     }
   });
+
+  // Collapse the stream of row updates into a single edge whenever a transfer
+  // starts or the last active one ends. One place catches every transfersChanged
+  // emit site, so callers never have to remember to fire this too.
+  connect(this, &FileShareTrayController::transfersChanged, this, [this]() {
+    const bool active = state_.HasActiveTransfers();
+    if (active != last_transfer_active_) {
+      last_transfer_active_ = active;
+      emit transferActiveChanged();
+    }
+  });
 }
 
 FileShareTrayController::~FileShareTrayController() {

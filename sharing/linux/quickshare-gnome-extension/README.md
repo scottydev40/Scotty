@@ -5,7 +5,8 @@ the Nearby / Quick Share Linux tray app without needing the system-tray icon.
 
 - Toggle the tile: on → visible to **Everyone**, off → **Hidden**.
 - Submenu: **Everyone / Contacts / Hidden** (radio) + **Open Quick Share**.
-- The panel indicator icon shows only while the app is running and advertising.
+- The panel indicator icon shows while the app is running and advertising, and
+  stays visible (tinted, via `stylesheet.css`) during a transfer even in Hidden.
 
 ## How it talks to the app
 
@@ -17,10 +18,12 @@ object:    /io/github/ashpika40/QuickShare
 methods:   GetVisibility() -> i   (0 Everyone, 1 Contacts, 2 Hidden)
            SetVisibility(i)
            GetRunning() -> b
+           GetTransferActive() -> b
            Show()
            Quit()
 signals:   VisibilityChanged(i)
            RunningChanged(b)
+           TransferActiveChanged(b)
 ```
 
 If the app isn't running, the tile launches it (`nearby_qml_file_tray_app`, must

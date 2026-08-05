@@ -23,6 +23,8 @@ QuickShareDbus::QuickShareDbus(FileShareTrayController* controller,
           [this]() { emit VisibilityChanged(controller_->visibility()); });
   connect(controller_, &FileShareTrayController::runningChanged, this,
           [this]() { emit RunningChanged(controller_->running()); });
+  connect(controller_, &FileShareTrayController::transferActiveChanged, this,
+          [this]() { emit TransferActiveChanged(controller_->transferActive()); });
 
   // If gnome-shell dies, its extension never gets to call SetTileActive(false),
   // so clear the flag here — otherwise the tray icon would stay hidden with no
@@ -50,6 +52,10 @@ void QuickShareDbus::SetVisibility(int mode) {
 }
 
 bool QuickShareDbus::GetRunning() const { return controller_->running(); }
+
+bool QuickShareDbus::GetTransferActive() const {
+  return controller_->transferActive();
+}
 
 QString QuickShareDbus::GetDeviceName() const {
   return controller_->deviceName();

@@ -24,6 +24,7 @@ class FileShareTrayController : public QObject {
   Q_PROPERTY(int pendingSendFileCount READ pendingSendFileCount NOTIFY pendingSendFilePathChanged)
   Q_PROPERTY(QVariantList discoveredTargets READ discoveredTargets NOTIFY discoveredTargetsChanged)
   Q_PROPERTY(QVariantList transfers READ transfers NOTIFY transfersChanged)
+  Q_PROPERTY(bool transferActive READ transferActive NOTIFY transferActiveChanged)
   Q_PROPERTY(bool autoAcceptIncoming READ autoAcceptIncoming WRITE setAutoAcceptIncoming NOTIFY autoAcceptIncomingChanged)
   Q_PROPERTY(bool enable5GhzHotspot READ enable5GhzHotspot WRITE setEnable5GhzHotspot NOTIFY enable5GhzHotspotChanged)
   Q_PROPERTY(bool hotspotBoost READ hotspotBoost WRITE setHotspotBoost NOTIFY hotspotBoostChanged)
@@ -53,6 +54,8 @@ class FileShareTrayController : public QObject {
   int pendingSendFileCount() const { return state_.pendingSendFileCount(); }
   QVariantList discoveredTargets() const { return state_.discoveredTargets(); }
   QVariantList transfers() const { return state_.transfers(); }
+  // True while any row is in a non-terminal (in-progress) state.
+  bool transferActive() const { return state_.HasActiveTransfers(); }
   bool autoAcceptIncoming() const { return state_.autoAcceptIncoming(); }
   bool enable5GhzHotspot() const { return state_.enable5GhzHotspot(); }
   bool hotspotBoost() const { return state_.hotspotBoost(); }
@@ -109,6 +112,9 @@ class FileShareTrayController : public QObject {
   void pendingSendFilePathChanged();
   void discoveredTargetsChanged();
   void transfersChanged();
+  // Edge-triggered: fires only when transferActive() flips, not on every row
+  // update. Feeds the D-Bus TransferActiveChanged signal / panel indicator.
+  void transferActiveChanged();
   void autoAcceptIncomingChanged();
   void enable5GhzHotspotChanged();
   void hotspotBoostChanged();
@@ -177,6 +183,9 @@ class FileShareTrayController : public QObject {
   int visibility_ = 0;
   // Whether the main window is on screen; kept in sync by setReceiveForeground.
   bool window_visible_ = true;
+  // Last emitted value of transferActive(), so transferActiveChanged only fires
+  // on a real edge rather than on every transfersChanged.
+  bool last_transfer_active_ = false;
 };
 
 #endif  // SHARING_LINUX_QML_TRAY_APP_FILE_SHARE_TRAY_CONTROLLER_H_

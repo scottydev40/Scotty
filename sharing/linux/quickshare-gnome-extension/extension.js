@@ -7,10 +7,12 @@
 //     GetVisibility() -> i          (0 Everyone, 1 Contacts, 2 Hidden)
 //     SetVisibility(i)
 //     GetRunning() -> b
+//     GetTransferActive() -> b
 //     Show()
 //     Quit()
 //     signal VisibilityChanged(i)
 //     signal RunningChanged(b)
+//     signal TransferActiveChanged(b)
 
 import GObject from 'gi://GObject';
 import Gio from 'gi://Gio';
@@ -33,12 +35,14 @@ const IFACE = `
     <method name="GetVisibility"><arg type="i" direction="out"/></method>
     <method name="SetVisibility"><arg type="i" direction="in"/></method>
     <method name="GetRunning"><arg type="b" direction="out"/></method>
+    <method name="GetTransferActive"><arg type="b" direction="out"/></method>
     <method name="Show"/>
     <method name="Quit"/>
     <method name="SetTileActive"><arg type="b" direction="in"/></method>
     <method name="GetTileActive"><arg type="b" direction="out"/></method>
     <signal name="VisibilityChanged"><arg type="i"/></signal>
     <signal name="RunningChanged"><arg type="b"/></signal>
+    <signal name="TransferActiveChanged"><arg type="b"/></signal>
     <signal name="TileActiveChanged"><arg type="b"/></signal>
   </interface>
 </node>`;
@@ -125,8 +129,15 @@ class QuickShareIndicator extends SystemIndicator {
         this.quickSettingsItems.push(this.toggle);
     }
 
-    setPanelVisible(visible) {
+    // active = a transfer is in progress: keep the icon on screen and tint it
+    // (see stylesheet.css) so the panel reflects transfer state, not just
+    // advertising.
+    setPanelState(visible, active) {
         this._panelIcon.visible = visible;
+        if (active)
+            this._panelIcon.add_style_class_name('quickshare-transfer-active');
+        else
+            this._panelIcon.remove_style_class_name('quickshare-transfer-active');
     }
 });
 
@@ -146,6 +157,9 @@ export default class QuickShareExtension extends Extension {
             ],
         });
         this._pendingVisibility = null;
+        // Cached panel inputs; _updatePanel() combines them.
+        this._visibility = 0;
+        this._transferActive = false;
 
         this._indicator = new QuickShareIndicator(this);
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
@@ -167,6 +181,9 @@ export default class QuickShareExtension extends Extension {
             'VisibilityChanged', (p, s, [vis]) => this._syncVisibility(vis));
         this._runSignal = this._proxy.connectSignal(
             'RunningChanged', (p, s, [running]) => this._syncRunning(running));
+        this._xferSignal = this._proxy.connectSignal(
+            'TransferActiveChanged',
+            (p, s, [active]) => this._syncTransferActive(active));
         // g-name-owner flips as the app starts/stops.
         this._ownerId = this._proxy.connect(
             'notify::g-name-owner', () => this._refresh());
@@ -182,6 +199,17 @@ export default class QuickShareExtension extends Extension {
         // Done on every refresh, not just enable(), because the app may have
         // started after us.
         this._proxy.SetTileActiveRemote(true, () => {});
+
+        // Seed transfer state: the app only emits TransferActiveChanged on a
+        // transition, so a tile that connects mid-transfer would otherwise miss it.
+        this._proxy.GetTransferActiveRemote((res, err) => {
+            if (err) {
+                logError(err, 'Quick Share: GetTransferActive failed');
+                return;
+            }
+            const [active] = res;
+            this._syncTransferActive(active);
+        });
 
         // A visibility picked while the app was down: apply it now that it is
         // up. Without this the launch silently restores the app's persisted
@@ -211,15 +239,31 @@ export default class QuickShareExtension extends Extension {
     }
 
     _syncVisibility(vis) {
+        this._visibility = vis;
         this._indicator?.toggle.syncVisibility(vis);
-        // Panel icon shows while advertising (not Hidden) and running.
-        this._indicator?.setPanelVisible(!!this._proxy?.g_name_owner && vis !== 2);
+        this._updatePanel();
     }
 
     _syncRunning(running) {
         this._indicator?.toggle.syncRunning(running);
+        // App gone: no transfer can be live either.
         if (!running)
-            this._indicator?.setPanelVisible(false);
+            this._transferActive = false;
+        this._updatePanel();
+    }
+
+    _syncTransferActive(active) {
+        this._transferActive = active;
+        this._updatePanel();
+    }
+
+    // Panel icon shows while running and either advertising (not Hidden) or a
+    // transfer is in flight — so an incoming transfer is visible even in Hidden.
+    _updatePanel() {
+        const running = !!this._proxy?.g_name_owner;
+        const advertising = this._visibility !== 2;
+        const visible = running && (advertising || this._transferActive);
+        this._indicator?.setPanelState(visible, running && this._transferActive);
     }
 
     setVisibility(mode) {
@@ -273,9 +317,11 @@ export default class QuickShareExtension extends Extension {
             this._proxy.disconnectSignal(this._visSignal);
         if (this._proxy && this._runSignal)
             this._proxy.disconnectSignal(this._runSignal);
+        if (this._proxy && this._xferSignal)
+            this._proxy.disconnectSignal(this._xferSignal);
         if (this._proxy && this._ownerId)
             this._proxy.disconnect(this._ownerId);
-        this._visSignal = this._runSignal = this._ownerId = null;
+        this._visSignal = this._runSignal = this._xferSignal = this._ownerId = null;
         this._proxy = null;
         this._pendingVisibility = null;
 
