@@ -10,7 +10,7 @@
 
 set -euo pipefail
 
-APP=nearby_qml_file_tray_app
+APP=scotty
 
 selection="${NAUTILUS_SCRIPT_SELECTED_FILE_PATHS:-${NEMO_SCRIPT_SELECTED_FILE_PATHS:-${CAJA_SCRIPT_SELECTED_FILE_PATHS:-}}}"
 

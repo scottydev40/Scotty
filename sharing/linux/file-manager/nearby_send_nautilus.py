@@ -23,7 +23,7 @@ for _version in ("4.1", "4.0"):
 
 from gi.repository import GObject, Nautilus  # noqa: E402
 
-APP = "nearby_qml_file_tray_app"
+APP = "scotty"
 
 
 class SendWithNearbyExtension(GObject.GObject, Nautilus.MenuProvider):
