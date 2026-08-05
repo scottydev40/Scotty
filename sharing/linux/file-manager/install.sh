@@ -9,8 +9,8 @@ set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if ! command -v nearby_qml_file_tray_app >/dev/null 2>&1; then
-    echo "warning: nearby_qml_file_tray_app is not on PATH; the menu entry will"
+if ! command -v scotty >/dev/null 2>&1; then
+    echo "warning: scotty is not on PATH; the menu entry will"
     echo "         do nothing until it is (usually ~/.local/bin)."
 fi
 
