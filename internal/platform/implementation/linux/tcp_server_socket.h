@@ -17,10 +17,14 @@
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
 #include <atomic>
 #include <functional>
 
 #include <sdbus-c++/Types.h>
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 
 #include "internal/platform/exception.h"
 #include "internal/platform/implementation/linux/stream.h"
@@ -35,29 +39,54 @@ class TCPSocket {
 
   static std::optional<TCPSocket> Connect(const std::string& ip_address,
                                           int port) {
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
-      LOG(ERROR) << __func__
-                         << ": Error opening socket: " << std::strerror(errno);
-      return std::nullopt;
-    }
-
-    LOG(INFO) << __func__ << ": Connecting to " << ip_address << ":"
-                         << port;
     struct sockaddr_in addr;
     addr.sin_addr.s_addr = inet_addr(ip_address.c_str());
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
 
-    auto ret =
-        connect(sock, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr));
-    if (ret < 0) {
-      LOG(ERROR) << __func__ << ": Error connecting to socket: "
-                         << std::strerror(errno);
-      return std::nullopt;
-    }
+    LOG(INFO) << __func__ << ": Connecting to " << ip_address << ":"
+                         << port;
 
-    return TCPSocket(sdbus::UnixFd(sock));
+    // A peer that is on wifi power-save often fails to answer ARP for the
+    // first attempt, and the kernel reports that as EHOSTUNREACH after a
+    // couple of seconds. Retry those a few times rather than failing the
+    // whole transfer on one missed frame. A refused connection gets the same
+    // treatment: the peer advertised over mDNS, so its listener is usually
+    // just not up yet.
+    constexpr int kConnectAttempts = 3;
+    constexpr absl::Duration kRetryDelay = absl::Milliseconds(500);
+
+    for (int attempt = 1;; attempt++) {
+      int sock = socket(AF_INET, SOCK_STREAM, 0);
+      if (sock < 0) {
+        LOG(ERROR) << __func__
+                           << ": Error opening socket: " << std::strerror(errno);
+        return std::nullopt;
+      }
+
+      auto ret = connect(sock, reinterpret_cast<struct sockaddr*>(&addr),
+                         sizeof(addr));
+      if (ret == 0) return TCPSocket(sdbus::UnixFd(sock));
+
+      auto connect_errno = errno;
+      // The socket is unusable once connect() has failed on it, retry or not.
+      close(sock);
+
+      bool transient = connect_errno == EHOSTUNREACH ||
+                       connect_errno == ENETUNREACH ||
+                       connect_errno == ETIMEDOUT ||
+                       connect_errno == ECONNREFUSED;
+      if (!transient || attempt >= kConnectAttempts) {
+        LOG(ERROR) << __func__ << ": Error connecting to socket: "
+                           << std::strerror(connect_errno);
+        return std::nullopt;
+      }
+
+      LOG(WARNING) << __func__ << ": Error connecting to socket: "
+                           << std::strerror(connect_errno) << ", retrying ("
+                           << attempt << "/" << kConnectAttempts << ")";
+      absl::SleepFor(kRetryDelay);
+    }
   }
 
   InputStream& GetInputStream() { return input_stream_; }
