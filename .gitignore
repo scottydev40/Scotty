@@ -67,3 +67,8 @@ bazel-*
 sharing/linux/dist/
 .appimage-tools/
 .appimage-tools/
+
+# local working notes / agent tooling (not for commit)
+/PROJECT.md
+/.agents/
+/skills-lock.json
