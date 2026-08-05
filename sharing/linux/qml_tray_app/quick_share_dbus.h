@@ -39,6 +39,8 @@ class QuickShareDbus : public QObject {
   Q_SCRIPTABLE int GetVisibility() const;
   Q_SCRIPTABLE void SetVisibility(int mode);
   Q_SCRIPTABLE bool GetRunning() const;
+  // True while a transfer is in progress; lets the tile surface it on the panel.
+  Q_SCRIPTABLE bool GetTransferActive() const;
   Q_SCRIPTABLE QString GetDeviceName() const;
   // Surface (show + raise + focus) the main window.
   Q_SCRIPTABLE void Show();
@@ -53,6 +55,7 @@ class QuickShareDbus : public QObject {
  signals:
   Q_SCRIPTABLE void VisibilityChanged(int mode);
   Q_SCRIPTABLE void RunningChanged(bool running);
+  Q_SCRIPTABLE void TransferActiveChanged(bool active);
   Q_SCRIPTABLE void TileActiveChanged(bool active);
 
  private:

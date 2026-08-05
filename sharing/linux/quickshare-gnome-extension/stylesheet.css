@@ -1,0 +1,5 @@
+/* Panel indicator while a transfer is in progress. The icon is a symbolic, so
+ * `color` recolors the glyph; the app's accent green marks it as active. */
+.quickshare-transfer-active {
+    color: #10b981;
+}
