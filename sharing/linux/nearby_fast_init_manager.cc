@@ -49,12 +49,19 @@ void LinuxFastInitiationManager::StartAdvertising(
     return;
   }
 
+  // The power level the advertisement below is registered at; the beacon's
+  // adjusted TX power must describe the same transmission the peer receives.
+  constexpr auto kAdvertiseTxPowerLevel = nearby::api::ble::TxPowerLevel::kHigh;
+
   beacon_.SetVersion(nearby::api::FastInitBleBeacon::FastInitVersion::kV1);
   beacon_.SetType(type);
   beacon_.SetUwbSupported(false);
   beacon_.SetSenderCertSupported(false);
-  beacon_.SetAdjustedTxPower(
-      45);  // TODO: make this set the real value from adapter
+  // Report the dBm we actually transmit at, from BlueZ's per-level table,
+  // instead of a fixed placeholder — the receiver combines it with RSSI for
+  // proximity. A dBm value fits an int8_t comfortably.
+  beacon_.SetAdjustedTxPower(static_cast<int8_t>(
+      ::nearby::linux::bluez::TxPowerLevelDbm(kAdvertiseTxPowerLevel)));
   beacon_.SetUwbMetadata({});
   beacon_.SetUwbAddress({});
 
@@ -73,7 +80,7 @@ void LinuxFastInitiationManager::StartAdvertising(
                          ad_data.size() - 2)});
 
   nearby::api::ble::AdvertiseParameters advertising_parameters{
-      .tx_power_level = nearby::api::ble::TxPowerLevel::kHigh,
+      .tx_power_level = kAdvertiseTxPowerLevel,
       .is_connectable = false,
   };
   advertisement_ =
