@@ -371,16 +371,16 @@ void NearbySharingApi::StartSendMode(std::function<void(StatusCode)> callback) {
     // Already marked started, but the service may have torn down discovery
     // internally after a completed/stalled transfer (the flag doesn't track
     // that). A no-op here would leave the UI "looking" while nothing scans, so
-    // force a fresh cycle: unregister, then re-register to restart discovery.
+    // force a fresh cycle: drop the stale surface, then re-register to restart
+    // discovery. Reset the flag NOW and fire the unregister best-effort — the
+    // service runs these on one API thread in order, so the RegisterSendSurface
+    // below still lands after the unregister. Do NOT nest the re-register in the
+    // unregister callback: when there is no surface to drop, that callback never
+    // fires and the flag would stay stuck true, unregistering forever.
+    impl_->send_mode_started = false;
     impl_->service->UnregisterSendSurface(
         impl_.get(),
-        [this, cb = std::move(callback)](
-            nearby::sharing::NearbySharingService::StatusCodes /*status*/)
-            mutable {
-          impl_->send_mode_started = false;
-          StartSendMode(std::move(cb));
-        });
-    return;
+        [](nearby::sharing::NearbySharingService::StatusCodes /*status*/) {});
   }
   impl_->service->RegisterSendSurface(
       impl_.get(), impl_.get(),
