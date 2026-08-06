@@ -16,6 +16,12 @@
 #define PLATFORM_IMPL_LINUX_BLUETOOTH_ADAPTER_H_
 #include <sdbus-c++/IConnection.h>
 #include <sdbus-c++/ProxyInterfaces.h>
+#include <sdbus-c++/StandardInterfaces.h>
+#include <sdbus-c++/Types.h>
+
+#include <atomic>
+#include <map>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "internal/platform/implementation/bluetooth_adapter.h"
@@ -25,15 +31,54 @@
 
 namespace nearby {
 namespace linux {
-class BluezAdapter : public sdbus::ProxyInterfaces<org::bluez::Adapter1_proxy> {
+class BluezAdapter
+    : public sdbus::ProxyInterfaces<org::bluez::Adapter1_proxy,
+                                    sdbus::Properties_proxy> {
  public:
   BluezAdapter(sdbus::IConnection &system_bus,
                const sdbus::ObjectPath &adapter_object_path)
       : ProxyInterfaces(system_bus, sdbus::ServiceName(bluez::SERVICE_DEST),
                         adapter_object_path) {
     registerProxy();
+    // Seed the cache with a single synchronous read at construction. No
+    // transfer is in flight yet, so this one call can't contend with the send
+    // path; thereafter PropertiesChanged keeps it fresh and PoweredCached()
+    // never makes a blocking D-Bus call again.
+    try {
+      powered_.store(Powered(), std::memory_order_relaxed);
+    } catch (const sdbus::Error &e) {
+      DBUS_LOG_PROPERTY_GET_ERROR(this, "Powered", e);
+    }
   }
   ~BluezAdapter() { unregisterProxy(); }
+
+  // The adapter's "Powered" state, cached from PropertiesChanged. Reading it
+  // does no D-Bus round-trip, so it is safe to call from the Nearby service
+  // thread: a synchronous Powered() read there deadlocks against the sdbus
+  // event-loop thread that delivers BLE scan callbacks (both contend on the
+  // connection mutex + the BLE medium mutex). See BluetoothAdapter::IsEnabled.
+  bool PoweredCached() const {
+    return powered_.load(std::memory_order_relaxed);
+  }
+
+ protected:
+  void onPropertiesChanged(
+      const sdbus::InterfaceName &interfaceName,
+      const std::map<sdbus::PropertyName, sdbus::Variant> &changedProperties,
+      const std::vector<sdbus::PropertyName> & /*invalidatedProperties*/)
+      override {
+    if (interfaceName != bluez::ADAPTER_INTERFACE) {
+      return;
+    }
+    for (const auto &[name, value] : changedProperties) {
+      if (name == "Powered") {
+        powered_.store(value.get<bool>(), std::memory_order_relaxed);
+      }
+    }
+  }
+
+ private:
+  std::atomic<bool> powered_{false};
 };
 
 class BluetoothAdapter : public api::BluetoothAdapter {
