@@ -119,3 +119,10 @@ name-only `NetworkManagerWifiDirectMedium` was removed in `ce706620`.
 - Discovery depends on a working kernel/BlueZ BLE-advertising combo. Kernel
   7.0.0-28's `btmtk`/`btusb` regressed advertising on MT7925 (`Invalid
   Parameters 0x0d`); pinned to 7.0.0-27 until fixed upstream.
+- Never do a *synchronous* bluez property read on the Nearby service thread.
+  `BluetoothAdapter::IsEnabled()` used to read `Adapter1.Powered` over D-Bus
+  inline, and the send path calls it (`IsBluetoothPowered`) — under BLE
+  discovery load it deadlocked AB-BA against the sdbus event loop delivering
+  `DeviceFound` (which holds the connection mutex while taking the BLE medium
+  mutex). Fixed by caching `Powered` from `PropertiesChanged`; keep bluez reads
+  on the service thread cached/async, not blocking.
