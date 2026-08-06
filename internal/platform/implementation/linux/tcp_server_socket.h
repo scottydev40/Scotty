@@ -53,8 +53,14 @@ class TCPSocket {
     // whole transfer on one missed frame. A refused connection gets the same
     // treatment: the peer advertised over mDNS, so its listener is usually
     // just not up yet.
-    constexpr int kConnectAttempts = 3;
+    // Bound the retrying by wall-clock, not a fixed count: a refused peer that
+    // just hasn't opened its listener yet fails fast, so a count would burn
+    // through in ~1s (observed too short — the peer's Wi-Fi LAN listener can
+    // take a few seconds to come up), whereas a slow ETIMEDOUT already blocks
+    // for a while per attempt and must not stack into minutes.
     constexpr absl::Duration kRetryDelay = absl::Milliseconds(500);
+    constexpr absl::Duration kConnectDeadline = absl::Seconds(5);
+    const absl::Time give_up_at = absl::Now() + kConnectDeadline;
 
     for (int attempt = 1;; attempt++) {
       int sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -76,15 +82,16 @@ class TCPSocket {
                        connect_errno == ENETUNREACH ||
                        connect_errno == ETIMEDOUT ||
                        connect_errno == ECONNREFUSED;
-      if (!transient || attempt >= kConnectAttempts) {
+      if (!transient || absl::Now() >= give_up_at) {
         LOG(ERROR) << __func__ << ": Error connecting to socket: "
-                           << std::strerror(connect_errno);
+                           << std::strerror(connect_errno) << " (gave up after "
+                           << attempt << " attempt(s))";
         return std::nullopt;
       }
 
       LOG(WARNING) << __func__ << ": Error connecting to socket: "
-                           << std::strerror(connect_errno) << ", retrying ("
-                           << attempt << "/" << kConnectAttempts << ")";
+                           << std::strerror(connect_errno) << ", retrying (attempt "
+                           << attempt << ")";
       absl::SleepFor(kRetryDelay);
     }
   }
