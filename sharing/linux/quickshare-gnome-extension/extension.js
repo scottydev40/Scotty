@@ -16,6 +16,7 @@
 
 import GObject from 'gi://GObject';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -28,6 +29,10 @@ import {
 const BUS_NAME = 'dev.scotty.Scotty';
 const OBJECT_PATH = '/dev/scotty/Scotty';
 const APP_BINARY = 'scotty';
+
+// Keep the panel indicator lit this long after a transfer ends, so a fast
+// (e.g. Wi-Fi LAN photo) transfer registers as more than a blip.
+const TRANSFER_HOLD_MS = 3000;
 
 const IFACE = `
 <node>
@@ -160,6 +165,8 @@ export default class QuickShareExtension extends Extension {
         // Cached panel inputs; _updatePanel() combines them.
         this._visibility = 0;
         this._transferActive = false;
+        // GLib source id for the post-transfer tint hold; 0 = none pending.
+        this._transferHoldId = 0;
 
         this._indicator = new QuickShareIndicator(this);
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
@@ -246,15 +253,40 @@ export default class QuickShareExtension extends Extension {
 
     _syncRunning(running) {
         this._indicator?.toggle.syncRunning(running);
-        // App gone: no transfer can be live either.
-        if (!running)
+        // App gone: no transfer can be live either; drop it now, no hold.
+        if (!running) {
+            this._cancelTransferHold();
             this._transferActive = false;
+        }
         this._updatePanel();
     }
 
     _syncTransferActive(active) {
-        this._transferActive = active;
-        this._updatePanel();
+        if (active) {
+            // Transfer running: light it immediately, cancel any pending clear.
+            this._cancelTransferHold();
+            this._transferActive = true;
+            this._updatePanel();
+            return;
+        }
+        // Transfer ended: don't drop the tint right away — hold it briefly so a
+        // fast transfer stays visible. A later active=true cancels the hold.
+        if (this._transferActive && this._transferHoldId === 0) {
+            this._transferHoldId = GLib.timeout_add(
+                GLib.PRIORITY_DEFAULT, TRANSFER_HOLD_MS, () => {
+                    this._transferHoldId = 0;
+                    this._transferActive = false;
+                    this._updatePanel();
+                    return GLib.SOURCE_REMOVE;
+                });
+        }
+    }
+
+    _cancelTransferHold() {
+        if (this._transferHoldId) {
+            GLib.Source.remove(this._transferHoldId);
+            this._transferHoldId = 0;
+        }
     }
 
     // Panel icon shows while running and either advertising (not Hidden) or a
@@ -303,6 +335,8 @@ export default class QuickShareExtension extends Extension {
     }
 
     disable() {
+        this._cancelTransferHold();
+
         // Hand control back before we go: the app restores its tray icon, so
         // the user is never left without a way to open or quit it. Sync so it
         // lands before the proxy is dropped.
