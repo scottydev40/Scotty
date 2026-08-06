@@ -87,6 +87,9 @@ class FileShareTrayController : public QObject {
   Q_INVOKABLE void switchToSendModeWithFile(const QString& file_path);
   Q_INVOKABLE void switchToSendModeWithFiles(const QStringList& file_paths);
   Q_INVOKABLE void sendPendingFileToTarget(qlonglong share_target_id);
+  // Force a fresh discovery cycle in send mode (re-registers the send surface)
+  // when a target went stale and the list stopped updating.
+  Q_INVOKABLE void rescanDevices();
   Q_INVOKABLE void copyTextToClipboard(const QString& text);
   Q_INVOKABLE void openFileLocation(const QString& file_path);
   Q_INVOKABLE void clearTransfers();
@@ -179,6 +182,14 @@ class FileShareTrayController : public QObject {
   // Ticks while transfers exist, expiring finished rows a few seconds after
   // they end so completed entries fade instead of piling up.
   QTimer* transfer_sweep_timer_ = nullptr;
+  // Self-heals send-mode discovery: while looking for a device (send mode, no
+  // active transfer), re-cycles the send surface every ~10 s so the list
+  // reflects current availability and recovers if the service quietly dropped
+  // discovery. Runs only in send mode; never fires during a transfer.
+  QTimer* discovery_watchdog_timer_ = nullptr;
+  void startDiscoveryWatchdog();
+  void stopDiscoveryWatchdog();
+  void onDiscoveryWatchdogTick();
   // Advertising visibility: 0 = Everyone, 1 = Contacts, 2 = Hidden.
   int visibility_ = 0;
   // Whether the main window is on screen; kept in sync by setReceiveForeground.

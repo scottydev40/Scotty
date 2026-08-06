@@ -52,6 +52,14 @@ FileShareTrayController::FileShareTrayController(QObject* parent)
     }
   });
 
+  // Discovery self-heal. 10 s cadence: long enough not to thrash a device that
+  // takes an extra second to broadcast, or a peer flipping Contacts→Everyone,
+  // short enough to feel live. The tick itself decides whether to act.
+  discovery_watchdog_timer_ = new QTimer(this);
+  discovery_watchdog_timer_->setInterval(10000);
+  connect(discovery_watchdog_timer_, &QTimer::timeout, this,
+          [this] { onDiscoveryWatchdogTick(); });
+
   // Collapse the stream of row updates into a single edge whenever a transfer
   // starts or the last active one ends. One place catches every transfersChanged
   // emit site, so callers never have to remember to fire this too.
@@ -668,24 +676,71 @@ void FileShareTrayController::stop() {
 }
 
 void FileShareTrayController::startSendMode() {
-  service_->StopReceiveMode([this](NearbySharingApi::StatusCode status) {
-    if (status == NearbySharingApi::StatusCode::kOk ||
-        status == NearbySharingApi::StatusCode::kStatusAlreadyStopped) {
-      service_->StartSendMode([this](NearbySharingApi::StatusCode status) {
-        QMetaObject::invokeMethod(
-            this,
-            [this, status]() {
-              setStatus(QStringLiteral("StartSendMode: %1")
-                            .arg(StatusMapper::ApiStatusToString(status)));
-              if (status != NearbySharingApi::StatusCode::kOk) {
-                state_.SetRunning(false);
-                emit runningChanged();
-              }
-            },
-            Qt::QueuedConnection);
-      });
-    }
+  // StopReceiveMode is best-effort: whatever surface state the service is in,
+  // we still want to (re)start send discovery. Gating StartSendMode on the stop
+  // status left the service idle (and the UI stuck "looking") whenever the stop
+  // returned an unexpected code, so always proceed to StartSendMode.
+  service_->StopReceiveMode([this](NearbySharingApi::StatusCode /*status*/) {
+    service_->StartSendMode([this](NearbySharingApi::StatusCode status) {
+      QMetaObject::invokeMethod(
+          this,
+          [this, status]() {
+            setStatus(QStringLiteral("StartSendMode: %1")
+                          .arg(StatusMapper::ApiStatusToString(status)));
+            if (status != NearbySharingApi::StatusCode::kOk) {
+              state_.SetRunning(false);
+              emit runningChanged();
+            }
+          },
+          Qt::QueuedConnection);
+    });
   });
+}
+
+void FileShareTrayController::rescanDevices() {
+  // Force a fresh discovery cycle without changing the staged files. Only makes
+  // sense in send mode; StartSendMode now unregisters+re-registers the send
+  // surface, so this reliably restarts scanning when a target went stale.
+  if (!state_.running() || state_.mode() != QStringLiteral("Send")) {
+    return;
+  }
+  if (state_.HasActiveTransfers()) {
+    return;  // never disturb an in-flight transfer
+  }
+  startSendMode();
+}
+
+void FileShareTrayController::startDiscoveryWatchdog() {
+  if (discovery_watchdog_timer_ && !discovery_watchdog_timer_->isActive()) {
+    discovery_watchdog_timer_->start();
+  }
+}
+
+void FileShareTrayController::stopDiscoveryWatchdog() {
+  if (discovery_watchdog_timer_) {
+    discovery_watchdog_timer_->stop();
+  }
+}
+
+void FileShareTrayController::onDiscoveryWatchdogTick() {
+  // Self-heal only while actively looking for a device.
+  if (!state_.running() || state_.mode() != QStringLiteral("Send")) {
+    stopDiscoveryWatchdog();
+    return;
+  }
+  if (state_.HasActiveTransfers()) {
+    return;  // a transfer is running/starting — leave it alone, retry next tick
+  }
+  if (!state_.discoveredTargets().isEmpty()) {
+    // Devices are already listed — discovery is healthy and the service's
+    // found/lost events keep availability current. Don't re-cycle (it would
+    // make the list flicker). Only self-heal the empty "still looking" case.
+    return;
+  }
+  // Nothing found yet: re-cycle discovery to recover if the service quietly
+  // dropped it, and to pick up a peer that just started advertising or flipped
+  // Contacts→Everyone.
+  rescanDevices();
 }
 
 void FileShareTrayController::startReceiveMode() {
@@ -723,6 +778,7 @@ void FileShareTrayController::switchToReceiveMode() {
   emit pendingSendFilePathChanged();
   emit pendingSendFileNameChanged();
 
+  stopDiscoveryWatchdog();
   if (state_.running())
   {
     startReceiveMode();
@@ -836,6 +892,7 @@ void FileShareTrayController::switchToSendModeWithFiles(
     startSendMode();
     state_.SetMode(QStringLiteral("Send"));
     emit modeChanged();
+    startDiscoveryWatchdog();
   }
 
   const QString summary = paths.size() == 1

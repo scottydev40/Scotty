@@ -368,9 +368,18 @@ void NearbySharingApi::StartSendMode(std::function<void(StatusCode)> callback) {
     return;
   }
   if (impl_->send_mode_started) {
-    if (callback) {
-      callback(StatusCode::kOk);
-    }
+    // Already marked started, but the service may have torn down discovery
+    // internally after a completed/stalled transfer (the flag doesn't track
+    // that). A no-op here would leave the UI "looking" while nothing scans, so
+    // force a fresh cycle: unregister, then re-register to restart discovery.
+    impl_->service->UnregisterSendSurface(
+        impl_.get(),
+        [this, cb = std::move(callback)](
+            nearby::sharing::NearbySharingService::StatusCodes /*status*/)
+            mutable {
+          impl_->send_mode_started = false;
+          StartSendMode(std::move(cb));
+        });
     return;
   }
   impl_->service->RegisterSendSurface(
