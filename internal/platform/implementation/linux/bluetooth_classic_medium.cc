@@ -19,6 +19,8 @@
 #include <sdbus-c++/Types.h>
 
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "internal/base/observer_list.h"
 #include "internal/platform/implementation/bluetooth_classic.h"
 #include "internal/platform/implementation/linux/bluetooth_adapter.h"
@@ -37,6 +39,15 @@ namespace linux {
 namespace {
 
 constexpr char kBluezAgentPath[] = "/com/google/nearby/bluetooth/agent";
+
+// BlueZ ConnectProfile can fail transiently with 'br-connection-create-socket'
+// when the peer's SDP record for the service UUID hasn't propagated yet — common
+// right after a peer rotates its BLE endpoint or has just started serving over
+// BR/EDR. Retry a few times with a short backoff before giving up, matching the
+// TCP connect retry. A peer that is genuinely not serving classic BT still fails
+// fast enough (3 * 700 ms) for the higher layer to fall through to other media.
+constexpr int kConnectProfileMaxAttempts = 3;
+constexpr absl::Duration kConnectProfileRetryBackoff = absl::Milliseconds(700);
 
 }  // namespace
 
@@ -132,16 +143,34 @@ std::unique_ptr<api::BluetoothSocket> BluetoothClassicMedium::ConnectToService(
                        << " is no longer known";
     return nullptr;
   }
-  if (!device -> Bonded())
-  {
-
-    LOG(ERROR) << __func__ << ": Device " << address.ToString()
-                       << " is not Bonded";
+  if (!device->Bonded()) {
+    // Expected: the Nearby RFCOMM profile is registered insecure
+    // (RequireAuthentication/Authorization=false), so an outgoing connect does
+    // not need a prior bond. Not an error — just note it.
+    VLOG(1) << __func__ << ": Device " << address.ToString()
+            << " is not bonded (insecure profile, continuing)";
   }
   // Mark as pending BEFORE calling ConnectToProfile to win the race
   profile_manager_->MarkPendingOutgoing(service_uuid, address);
 
-  if (!device->ConnectToProfile(service_uuid)) {
+  bool connected = false;
+  for (int attempt = 0; attempt < kConnectProfileMaxAttempts; ++attempt) {
+    if (cancellation_flag != nullptr && cancellation_flag->Cancelled()) {
+      break;
+    }
+    if (device->ConnectToProfile(service_uuid)) {
+      connected = true;
+      break;
+    }
+    if (attempt + 1 < kConnectProfileMaxAttempts) {
+      LOG(INFO) << __func__ << ": ConnectProfile to " << address.ToString()
+                << " for " << service_uuid << " failed (attempt " << attempt + 1
+                << "/" << kConnectProfileMaxAttempts << "), retrying in "
+                << kConnectProfileRetryBackoff;
+      absl::SleepFor(kConnectProfileRetryBackoff);
+    }
+  }
+  if (!connected) {
     profile_manager_->ClearPendingOutgoing(service_uuid, address);
     return nullptr;
   }
