@@ -17,6 +17,7 @@
 
 #include <cstdint>
 
+#include <deque>
 #include <string>
 #include <utility>
 #include <vector>
@@ -66,13 +67,17 @@ class PerVisibilitySharedCredentials {
     shared_credentials_.emplace_back();
     return &shared_credentials_.back();
   }
-  const std::vector<SharedCredential>& shared_credentials() const {
+  const std::deque<SharedCredential>& shared_credentials() const {
     return shared_credentials_;
   }
 
  private:
   Visibility visibility_ = VISIBILITY_UNKNOWN;
-  std::vector<SharedCredential> shared_credentials_;
+  // std::deque, not std::vector: add_shared_credentials() hands out pointers to
+  // elements that the caller keeps using while adding more (mirroring protobuf
+  // submessage semantics). deque keeps element addresses stable across growth;
+  // vector reallocation would dangle those pointers.
+  std::deque<SharedCredential> shared_credentials_;
 };
 
 class Device {
@@ -95,7 +100,7 @@ class Device {
     per_visibility_shared_credentials_.emplace_back();
     return &per_visibility_shared_credentials_.back();
   }
-  const std::vector<PerVisibilitySharedCredentials>&
+  const std::deque<PerVisibilitySharedCredentials>&
   per_visibility_shared_credentials() const {
     return per_visibility_shared_credentials_;
   }
@@ -104,7 +109,10 @@ class Device {
   std::string name_;
   std::string display_name_;
   Contact contact_ = CONTACT_UNKNOWN;
-  std::vector<PerVisibilitySharedCredentials> per_visibility_shared_credentials_;
+  // std::deque: add_per_visibility_shared_credentials() returns a pointer the
+  // caller writes through after adding the next entry (see
+  // AddCertifactesToPublishDeviceRequest). deque keeps those pointers valid.
+  std::deque<PerVisibilitySharedCredentials> per_visibility_shared_credentials_;
 };
 
 class QuerySharedCredentialsRequest {
@@ -127,7 +135,7 @@ class QuerySharedCredentialsResponse {
     shared_credentials_.emplace_back();
     return &shared_credentials_.back();
   }
-  const std::vector<SharedCredential>& shared_credentials() const {
+  const std::deque<SharedCredential>& shared_credentials() const {
     return shared_credentials_;
   }
   void set_next_page_token(std::string next_page_token) {
@@ -136,7 +144,8 @@ class QuerySharedCredentialsResponse {
   const std::string& next_page_token() const { return next_page_token_; }
 
  private:
-  std::vector<SharedCredential> shared_credentials_;
+  // std::deque for the same pointer-stability reason as above.
+  std::deque<SharedCredential> shared_credentials_;
   std::string next_page_token_;
 };
 
