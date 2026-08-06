@@ -83,6 +83,14 @@ bool Timer::Create(int delay, int interval,
   spec.it_value = MillisToTimespec(delay);
   spec.it_interval = MillisToTimespec(interval);
 
+  // A zero it_value disarms a POSIX timer (timer_settime never fires the
+  // callback). Schedulers legitimately request a 0 ms delay for "run now"
+  // (immediate requests, e.g. force uploads). Treat that as "fire as soon as
+  // possible" by nudging it_value to 1 ns, so the timer actually arms.
+  if (spec.it_value.tv_sec == 0 && spec.it_value.tv_nsec == 0) {
+    spec.it_value.tv_nsec = 1;
+  }
+
   if (timer_create(CLOCK_MONOTONIC, &ev, &timerid) < 0) {
     LOG(ERROR) << __func__ << ": Error creating POSIX timer: "
                        << std::strerror(errno);
