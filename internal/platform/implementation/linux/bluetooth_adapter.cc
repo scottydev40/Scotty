@@ -36,12 +36,11 @@ bool BluetoothAdapter::SetStatus(Status status) {
 }
 
 bool BluetoothAdapter::IsEnabled() const {
-  try {
-    return bluez_adapter_->Powered();
-  } catch (const sdbus::Error &e) {
-    DBUS_LOG_PROPERTY_GET_ERROR(bluez_adapter_, "Powered", e);
-    return false;
-  }
+  // Cached (PropertiesChanged-backed) read — never a blocking D-Bus call. This
+  // is called on the Nearby service thread from the send path
+  // (IsBluetoothPowered); a synchronous Powered() round-trip here deadlocked
+  // against the sdbus event loop delivering BLE scan callbacks.
+  return bluez_adapter_->PoweredCached();
 }
 
 BluetoothAdapter::ScanMode BluetoothAdapter::GetScanMode() const {
