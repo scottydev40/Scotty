@@ -19,12 +19,16 @@
 #include <unistd.h>
 
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <functional>
+#include <iterator>
 #include <list>
 #include <map>
 #include <memory>
 #include <optional>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -265,9 +269,39 @@ class LinuxBluetoothAdapter final : public api::BluetoothAdapter {
   absl::flat_hash_set<Observer*> observers_;
 };
 
+// Persists public certificates to a directory so they survive restarts and,
+// crucially, so an external opt-in helper (scotty-mydevices) can drop the
+// account's device certificates in for the "My Devices" feature. Each cert is
+// one serialized PublicCertificate at <dir>/<hex secret_id>.cert. Persisting
+// downloaded *public* certs is a benign improvement (they were memory-only
+// before); no account/credential logic lives here.
 class LinuxPublicCertificateDatabase final : public PublicCertificateDatabase {
  public:
+  LinuxPublicCertificateDatabase() : dir_(ComputeDir()) {}
+
   void Initialize(absl::AnyInvocable<void(InitStatus) &&> callback) override {
+    {
+      absl::MutexLock lock(mutex_);
+      entries_.clear();
+      if (!dir_.empty()) {
+        std::error_code ec;
+        std::filesystem::create_directories(dir_, ec);
+        for (const auto& entry :
+             std::filesystem::directory_iterator(dir_, ec)) {
+          if (!entry.is_regular_file() ||
+              entry.path().extension() != ".cert") {
+            continue;
+          }
+          std::ifstream in(entry.path(), std::ios::binary);
+          std::string data((std::istreambuf_iterator<char>(in)),
+                           std::istreambuf_iterator<char>());
+          PublicCertificate cert;
+          if (cert.ParseFromString(data)) {
+            entries_[cert.secret_id()] = std::move(cert);
+          }
+        }
+      }
+    }
     if (callback) {
       std::move(callback)(InitStatus::kOk);
     }
@@ -312,6 +346,7 @@ class LinuxPublicCertificateDatabase final : public PublicCertificateDatabase {
       absl::MutexLock lock(mutex_);
       for (const PublicCertificate& certificate : certificates) {
         entries_[certificate.secret_id()] = certificate;
+        WriteToDisk(certificate);
       }
     }
     if (callback) {
@@ -325,6 +360,10 @@ class LinuxPublicCertificateDatabase final : public PublicCertificateDatabase {
       absl::MutexLock lock(mutex_);
       for (const std::string& id : ids_to_remove) {
         entries_.erase(id);
+        if (!dir_.empty()) {
+          std::error_code ec;
+          std::filesystem::remove(dir_ / (ToHex(id) + ".cert"), ec);
+        }
       }
     }
     if (callback) {
@@ -335,6 +374,10 @@ class LinuxPublicCertificateDatabase final : public PublicCertificateDatabase {
     {
       absl::MutexLock lock(mutex_);
       entries_.clear();
+      if (!dir_.empty()) {
+        std::error_code ec;
+        std::filesystem::remove_all(dir_, ec);
+      }
     }
     if (callback) {
       std::move(callback)(true);
@@ -342,6 +385,44 @@ class LinuxPublicCertificateDatabase final : public PublicCertificateDatabase {
   }
 
  private:
+  static std::filesystem::path ComputeDir() {
+    std::string base;
+    if (const char* xdg = std::getenv("XDG_DATA_HOME"); xdg && *xdg) {
+      base = xdg;
+    } else if (const char* home = std::getenv("HOME"); home && *home) {
+      base = std::string(home) + "/.local/share";
+    } else {
+      return {};
+    }
+    return std::filesystem::path(base) / "scotty" / "public_certs";
+  }
+  static std::string ToHex(const std::string& bytes) {
+    static constexpr char kHex[] = "0123456789abcdef";
+    std::string out;
+    out.reserve(bytes.size() * 2);
+    for (unsigned char c : bytes) {
+      out.push_back(kHex[c >> 4]);
+      out.push_back(kHex[c & 0xf]);
+    }
+    return out;
+  }
+  void WriteToDisk(const PublicCertificate& certificate)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+    if (dir_.empty()) {
+      return;
+    }
+    std::error_code ec;
+    std::filesystem::create_directories(dir_, ec);
+    std::string data;
+    if (!certificate.SerializeToString(&data)) {
+      return;
+    }
+    std::ofstream out(dir_ / (ToHex(certificate.secret_id()) + ".cert"),
+                      std::ios::binary | std::ios::trunc);
+    out.write(data.data(), static_cast<std::streamsize>(data.size()));
+  }
+
+  const std::filesystem::path dir_;
   absl::Mutex mutex_;
   std::map<std::string, PublicCertificate> entries_ ABSL_GUARDED_BY(mutex_);
 };
