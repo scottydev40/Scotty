@@ -711,6 +711,7 @@ void FileShareTrayController::rescanDevices() {
 }
 
 void FileShareTrayController::startDiscoveryWatchdog() {
+  discovery_watchdog_empty_ticks_ = 0;
   if (discovery_watchdog_timer_ && !discovery_watchdog_timer_->isActive()) {
     discovery_watchdog_timer_->start();
   }
@@ -735,11 +736,19 @@ void FileShareTrayController::onDiscoveryWatchdogTick() {
     // Devices are already listed — discovery is healthy and the service's
     // found/lost events keep availability current. Don't re-cycle (it would
     // make the list flicker). Only self-heal the empty "still looking" case.
+    discovery_watchdog_empty_ticks_ = 0;
     return;
   }
-  // Nothing found yet: re-cycle discovery to recover if the service quietly
-  // dropped it, and to pick up a peer that just started advertising or flipped
-  // Contacts→Everyone.
+  // Nothing found yet. Re-cycle discovery a bounded number of times to recover a
+  // quietly-dropped scan, then GIVE UP: if a peer simply isn't reachable (e.g.
+  // it's backgrounded/out of range), re-cycling the whole stack every 10 s
+  // forever just thrashes advertising/discovery and wedges the UI. Discovery is
+  // still live after we stop — the service's own found events will surface a
+  // peer if one appears; the watchdog only covers the transient stuck case.
+  if (++discovery_watchdog_empty_ticks_ > kDiscoveryWatchdogMaxEmptyTicks) {
+    stopDiscoveryWatchdog();
+    return;
+  }
   rescanDevices();
 }
 
