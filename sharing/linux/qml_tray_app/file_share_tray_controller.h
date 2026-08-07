@@ -187,6 +187,10 @@ class FileShareTrayController : public QObject {
   // reflects current availability and recovers if the service quietly dropped
   // discovery. Runs only in send mode; never fires during a transfer.
   QTimer* discovery_watchdog_timer_ = nullptr;
+  // Consecutive empty (no-target) watchdog ticks; capped so the self-heal can't
+  // thrash the stack forever when a peer simply isn't reachable.
+  int discovery_watchdog_empty_ticks_ = 0;
+  static constexpr int kDiscoveryWatchdogMaxEmptyTicks = 6;  // ~60 s, then stop
   void startDiscoveryWatchdog();
   void stopDiscoveryWatchdog();
   void onDiscoveryWatchdogTick();
