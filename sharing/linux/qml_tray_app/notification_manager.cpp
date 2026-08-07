@@ -9,7 +9,10 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <algorithm>
 #include <QIcon>
+#include <QPainter>
+#include <QImage>
 #include <QMessageBox>
 #include <QPixmap>
 #include <QPushButton>
@@ -281,8 +284,48 @@ QString NotificationManager::EnsureNotificationIconPath() {
   }
 
   const QString icon_path = dir.filePath(QStringLiteral("notification-icon.png"));
-  const QPixmap icon_pixmap = tray_icon_->icon().pixmap(128, 128);
-  if (icon_pixmap.isNull() || !icon_pixmap.save(icon_path, "PNG")) {
+  // Render the glyph large so the trimmed result stays crisp after scaling.
+  const QPixmap src = tray_icon_->icon().pixmap(512, 512);
+  if (src.isNull()) {
+    return {};
+  }
+  // The tray glyph's source (app_swap.svg, viewBox 585x460) is non-square AND
+  // has heavy transparent padding, so a raw pixmap renders squished and stuck
+  // in a corner. Trim to the actual content, then center it (aspect preserved)
+  // on a square transparent canvas so the notification server can't distort it.
+  const QImage img = src.toImage().convertToFormat(QImage::Format_ARGB32);
+  int min_x = img.width(), min_y = img.height(), max_x = -1, max_y = -1;
+  for (int y = 0; y < img.height(); ++y) {
+    const QRgb* row = reinterpret_cast<const QRgb*>(img.scanLine(y));
+    for (int x = 0; x < img.width(); ++x) {
+      if (qAlpha(row[x]) > 10) {
+        min_x = std::min(min_x, x);
+        max_x = std::max(max_x, x);
+        min_y = std::min(min_y, y);
+        max_y = std::max(max_y, y);
+      }
+    }
+  }
+  const QPixmap content =
+      (max_x >= min_x && max_y >= min_y)
+          ? src.copy(min_x, min_y, max_x - min_x + 1, max_y - min_y + 1)
+          : src;
+
+  constexpr int kBox = 128;
+  constexpr double kFill = 0.9;  // small margin so it doesn't touch the edges
+  const QSize scaled = content.size().scaled(
+      QSize(static_cast<int>(kBox * kFill), static_cast<int>(kBox * kFill)),
+      Qt::KeepAspectRatio);
+  QPixmap square(kBox, kBox);
+  square.fill(Qt::transparent);
+  QPainter painter(&square);
+  painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+  painter.drawPixmap(QRect(QPoint((kBox - scaled.width()) / 2,
+                                  (kBox - scaled.height()) / 2),
+                           scaled),
+                     content);
+  painter.end();
+  if (!square.save(icon_path, "PNG")) {
     return {};
   }
 
