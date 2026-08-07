@@ -33,9 +33,13 @@ mkdir -p "$SCOTTY_LIB_DIR"; : > "$SCOTTY_APPIMG_DST"
 DSRC="$(mktemp)"; printf '[Desktop Entry]\nType=Application\nName=Scotty\nExec=scotty %%U\nIcon=dev.scotty.Scotty\n' > "$DSRC"
 ISRC="$(mktemp)"; printf 'PNG' > "$ISRC"
 export SCOTTY_TEST_LOG="$(mktemp)"
+scotty_install_wrapper
 scotty_install_desktop "$DSRC" "$ISRC"
+ok "wrapper installed"    '[ -x "$SCOTTY_BIN_DST" ]'
+ok "wrapper runs app+skip" 'grep -qF "SCOTTY_SKIP_SETUP=1" "$SCOTTY_BIN_DST" && grep -qF "$SCOTTY_APPIMG_DST" "$SCOTTY_BIN_DST"'
+ok "wrapper forwards args" 'grep -qF "\$@" "$SCOTTY_BIN_DST"'
 ok "desktop installed"    '[ -f "$SCOTTY_DESKTOP_DST" ]'
-ok "Exec is abs path"     'grep -qxF "Exec=$SCOTTY_APPIMG_DST %U" "$SCOTTY_DESKTOP_DST"'
+ok "Exec points at wrapper" 'grep -qxF "Exec=$SCOTTY_BIN_DST %U" "$SCOTTY_DESKTOP_DST"'
 ok "Icon is abs path"     'grep -qxF "Icon=$SCOTTY_ICON_DST" "$SCOTTY_DESKTOP_DST"'
 ok "icon copied"          '[ -f "$SCOTTY_ICON_DST" ]'
 ok "desktop-db refreshed" 'grep -q update-desktop-database "$SCOTTY_TEST_LOG"'
@@ -93,13 +97,15 @@ EXT="$HOME/.local/share/gnome-shell/extensions/quickshare@ashpika40.github.io"
 mkdir -p "$SCOTTY_LIB_DIR" "$EXT" "$(dirname "$SCOTTY_UNIT_DST")" \
          "$(dirname "$SCOTTY_DESKTOP_DST")" "$(dirname "$SCOTTY_ICON_DST")" \
          "$HOME/.config/autostart"
+mkdir -p "$(dirname "$SCOTTY_BIN_DST")"
 : > "$SCOTTY_APPIMG_DST"; : > "$SCOTTY_UNIT_DST"; : > "$SCOTTY_DESKTOP_DST"
-: > "$SCOTTY_ICON_DST"; : > "$EXT/metadata.json"
+: > "$SCOTTY_ICON_DST"; : > "$EXT/metadata.json"; : > "$SCOTTY_BIN_DST"
 : > "$HOME/.config/autostart/dev.scotty.Scotty.desktop"
 scotty_uninstall
 ok "unit removed"       '[ ! -e "$SCOTTY_UNIT_DST" ]'
 ok "desktop removed"    '[ ! -e "$SCOTTY_DESKTOP_DST" ]'
 ok "icon removed"       '[ ! -e "$SCOTTY_ICON_DST" ]'
+ok "wrapper removed"    '[ ! -e "$SCOTTY_BIN_DST" ]'
 ok "lib dir removed"    '[ ! -e "$SCOTTY_LIB_DIR" ]'
 ok "autostart removed"  '[ ! -e "$HOME/.config/autostart/dev.scotty.Scotty.desktop" ]'
 ok "tile dir removed"   '[ ! -e "$EXT" ]'

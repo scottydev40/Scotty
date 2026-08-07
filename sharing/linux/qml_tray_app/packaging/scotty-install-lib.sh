@@ -8,6 +8,7 @@
 scotty_paths() {
   SCOTTY_LIB_DIR="$HOME/.local/lib/scotty"
   SCOTTY_APPIMG_DST="$SCOTTY_LIB_DIR/Scotty.AppImage"
+  SCOTTY_BIN_DST="$HOME/.local/bin/scotty"
   SCOTTY_DESKTOP_DST="$HOME/.local/share/applications/dev.scotty.Scotty.desktop"
   SCOTTY_ICON_DST="$HOME/.local/share/icons/hicolor/256x256/apps/dev.scotty.Scotty.png"
   SCOTTY_UNIT_DST="$HOME/.config/systemd/user/scotty.service"
@@ -34,12 +35,27 @@ scotty_copy_appimage() {
   fi
 }
 
+# Install the `scotty` launcher on PATH (~/.local/bin/scotty). It runs the real
+# app (SCOTTY_SKIP_SETUP=1 skips the install path) and forwards its arguments,
+# so a second invocation is handed to the already-running instance (single-
+# instance) to raise the window / accept files. The GNOME tile spawns `scotty`
+# by name and the file manager's "Send with Scotty" passes file args here.
+scotty_install_wrapper() {
+  mkdir -p "$(dirname "$SCOTTY_BIN_DST")"
+  cat > "$SCOTTY_BIN_DST" <<WRAP
+#!/usr/bin/env bash
+exec env SCOTTY_SKIP_SETUP=1 "$SCOTTY_APPIMG_DST" "\$@"
+WRAP
+  chmod 0755 "$SCOTTY_BIN_DST"
+}
+
 # Install the icon ($2) and write the desktop entry from template ($1), with
-# Exec/Icon rewritten to absolute installed paths. Refresh the desktop DB.
+# Exec pointed at the `scotty` launcher (so app-grid launch + "Send with Scotty"
+# open the app and pass files) and Icon at the installed absolute path.
 scotty_install_desktop() {
   install -Dm 0644 "$2" "$SCOTTY_ICON_DST"
   mkdir -p "$(dirname "$SCOTTY_DESKTOP_DST")"
-  sed -e "s|^Exec=.*|Exec=$SCOTTY_APPIMG_DST %U|" \
+  sed -e "s|^Exec=.*|Exec=$SCOTTY_BIN_DST %U|" \
       -e "s|^Icon=.*|Icon=$SCOTTY_ICON_DST|" \
       "$1" > "$SCOTTY_DESKTOP_DST"
   chmod 0644 "$SCOTTY_DESKTOP_DST"
@@ -121,6 +137,7 @@ scotty_install_or_update() {
       fi
       ;;
   esac
+  scotty_install_wrapper
   scotty_install_desktop "$2" "$3"
   if scotty_have_systemd_user; then
     local changed=unchanged
@@ -142,7 +159,7 @@ scotty_uninstall() {
   systemctl --user disable --now scotty.service 2>/dev/null || true
   gnome-extensions disable "$ext_uuid" 2>/dev/null || true
   rm -f "$SCOTTY_UNIT_DST" "$SCOTTY_DESKTOP_DST" "$SCOTTY_ICON_DST" \
-        "$HOME/.config/autostart/dev.scotty.Scotty.desktop"
+        "$SCOTTY_BIN_DST" "$HOME/.config/autostart/dev.scotty.Scotty.desktop"
   rm -rf "$SCOTTY_LIB_DIR" \
          "${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell/extensions/$ext_uuid"
   systemctl --user daemon-reload 2>/dev/null || true

@@ -295,7 +295,13 @@ export default class QuickShareExtension extends Extension {
     }
 
     _launchApp(background = false) {
-        const argv = background ? [APP_BINARY, '--background'] : [APP_BINARY];
+        // Prefer the installed launcher by absolute path — GNOME Shell's spawn
+        // environment does not always carry ~/.local/bin on PATH, so spawning
+        // by bare name can silently fail after the app has been quit.
+        const wrapper = `${GLib.get_home_dir()}/.local/bin/scotty`;
+        const bin = GLib.file_test(wrapper, GLib.FileTest.IS_EXECUTABLE)
+            ? wrapper : APP_BINARY;
+        const argv = background ? [bin, '--background'] : [bin];
         try {
             Gio.Subprocess.new(argv, Gio.SubprocessFlags.NONE);
         } catch (e) {
