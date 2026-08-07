@@ -66,11 +66,22 @@ if [[ -z "${SCOTTY_SKIP_SETUP:-}" ]]; then
   ICON_SRC="$HERE/usr/share/icons/hicolor/256x256/apps/dev.scotty.Scotty.png"
   STATE="$(scotty_install_or_update "$SELF" "$DESKTOP_SRC" "$ICON_SRC")"
   case "$STATE" in
-    installed) echo "[scotty] Installed as a background service. Open it from your app grid or the GNOME Quick-Settings tile." >&2 ;;
-    updated)   echo "[scotty] Updated the installed copy and restarted the service." >&2 ;;
+    installed)
+      echo "[scotty] Installed as a background service. Open it from your app grid or the GNOME Quick-Settings tile." >&2
+      systemctl --user start scotty.service 2>/dev/null || true
+      exit 0
+      ;;
+    updated)
+      echo "[scotty] Updated the installed copy and restarted the service." >&2
+      exit 0
+      ;;
+    current)
+      # Already installed — this is the user opening the app (double-click /
+      # "Send with Scotty"). Fall through and run it; single-instance hands the
+      # request (and any file args) to the running service instance.
+      :
+      ;;
   esac
-  systemctl --user start scotty.service 2>/dev/null || true
-  exit 0
 fi
 
 export LD_LIBRARY_PATH="$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
