@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <map>
+#include <optional>
 #include <string>
 #include <variant>
 
@@ -247,6 +248,38 @@ bool BluezGattDiscovery::InitializeKnownServices() {
   }
 
   return true;
+}
+
+std::optional<sdbus::ObjectPath> BluezGattDiscovery::FindDeviceExposingService(
+    const Uuid &service_uuid) {
+  std::map<sdbus::ObjectPath,
+           std::map<sdbus::InterfaceName,
+                    std::map<sdbus::PropertyName, sdbus::Variant>>>
+      objects;
+  try {
+    objects = GetManagedObjects();
+  } catch (const sdbus::Error &e) {
+    DBUS_LOG_METHOD_CALL_ERROR(this, "GetManagedObjects", e);
+    return std::nullopt;
+  }
+
+  for (const auto &[path, ifaces] : objects) {
+    auto iface_it = ifaces.find(
+        sdbus::InterfaceName(org::bluez::GattService1_proxy::INTERFACE_NAME));
+    if (iface_it == ifaces.end()) continue;
+    const auto &properties = iface_it->second;
+    auto uuid_it = properties.find(sdbus::PropertyName("UUID"));
+    auto device_it = properties.find(sdbus::PropertyName("Device"));
+    if (uuid_it == properties.end() || device_it == properties.end()) continue;
+    Uuid uuid(uuid_it->second.get<std::string>());
+    if (uuid == service_uuid) {
+      auto device_path = device_it->second.get<sdbus::ObjectPath>();
+      LOG(INFO) << __func__ << ": service " << std::string(service_uuid)
+                << " is resolved on device " << device_path;
+      return device_path;
+    }
+  }
+  return std::nullopt;
 }
 
 BluezGattDiscovery::CallbackIter BluezGattDiscovery::AddPeripheralConnection(
