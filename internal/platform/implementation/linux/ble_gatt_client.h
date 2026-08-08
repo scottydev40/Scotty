@@ -65,6 +65,14 @@ class BluezGattDiscovery final : public bluez::BluezObjectManager {
       absl::AnyInvocable<void(absl::string_view value)>
           on_characteristic_changed_cb) ABSL_LOCKS_EXCLUDED(mutex_);
 
+  // Returns the device object path that currently exposes a resolved GATT
+  // service with the given UUID, if any. Used to map a rotating-RPA advertiser
+  // back to the bonded/identity device object whose GATT tree is actually
+  // resolved (BLE peers advertise under a private address that differs from the
+  // connected identity device that hosts the GATT server).
+  std::optional<sdbus::ObjectPath> FindDeviceExposingService(
+      const Uuid &service_uuid);
+
  protected:
   void onInterfacesAdded(
       const sdbus::ObjectPath &objectPath,

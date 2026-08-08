@@ -25,9 +25,24 @@
 #include <sdbus-c++/IProxy.h>
 #include <sdbus-c++/Types.h>
 
+#include <atomic>
+#include <memory>
+#include <string>
+#include <utility>
+
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "internal/platform/implementation/ble.h"
 #include "internal/platform/implementation/linux/ble_v2_medium.h"
+#include "internal/platform/implementation/linux/ble_v2_gatt_connection.h"
+#include "internal/platform/implementation/linux/ble_v2_socket.h"
+#include "internal/platform/byte_array.h"
+#include "internal/platform/count_down_latch.h"
+#include "internal/platform/exception.h"
+#include "internal/platform/uuid.h"
+#include "internal/weave/connection.h"
+#include "internal/weave/socket_callback.h"
+#include "internal/weave/sockets/client_socket.h"
 
 #include "connections/implementation/flags/nearby_connections_feature_flags.h"
 #include "absl/types/span.h"
@@ -521,13 +536,121 @@ BleV2Medium::OpenL2capServerSocket(const std::string &service_id) {
   return server_socket;
 }
 
-// This is supposed to be for a socket on top of Weave protocol.
+// Outgoing BLE socket, framed with the Weave protocol over the remote's Nearby
+// GATT socket characteristics (FEF3 copresence service). This is the client
+// counterpart of the server-side ble_v2_socket_adapter and mirrors Apple's
+// BleMedium::Connect: build a Connection over the GATT write/indicate chars,
+// drive the core weave::ClientSocket handshake, then hand back a BleV2Socket.
 std::unique_ptr<api::ble::BleSocket> BleV2Medium::Connect(
   const std::string &service_id, api::ble::TxPowerLevel tx_power_level,
   api::ble::BlePeripheral::UniqueId peripheral_id,
   CancellationFlag *cancellation_flag) {
-  LOG(INFO) << __func__ << ": Not implemented on linux ";
-  return nullptr;
+  (void)tx_power_level;
+  LOG(INFO) << __func__ << ": Weave-over-GATT connect to peripheral "
+            << peripheral_id << " for service " << service_id;
+
+  // Nearby copresence service + the remote's Weave socket characteristics.
+  // The write/indicate UUIDs were confirmed by GATT introspection of an Android
+  // Quick Share peer (write = ...101, indicate = ...102 under FEF3).
+  const Uuid service_uuid("0000FEF3-0000-1000-8000-00805F9B34FB");
+  const Uuid write_char_uuid("00000100-0004-1000-8000-001a11000101");
+  const Uuid indicate_char_uuid("00000100-0004-1000-8000-001a11000102");
+
+  // BLE peers advertise under a rotating private (RPA) address, so the
+  // peripheral_id -> device mapping points at a transient RPA device object
+  // that bluez often deletes on rotation (Connect => UnknownObject) and which
+  // never hosts the GATT server. The resolved GATT tree lives on the bonded
+  // identity device. Prefer whichever device currently exposes a resolved FEF3
+  // service; only fall back to connecting the advertised RPA device.
+  sdbus::ObjectPath device_object_path;
+  auto resolved_device = gatt_discovery_->FindDeviceExposingService(service_uuid);
+  if (resolved_device.has_value()) {
+    device_object_path = *resolved_device;
+    LOG(INFO) << __func__ << ": using already-resolved GATT device "
+              << device_object_path;
+  } else {
+    auto device = devices_->get_device_by_unique_id(peripheral_id);
+    if (!device) {
+      LOG(ERROR) << __func__ << ": Failed to find device with unique ID "
+                 << peripheral_id;
+      return nullptr;
+    }
+    device_object_path = device->GetObjectPath();
+    // DiscoverServiceAndCharacteristics only *waits* for the characteristics to
+    // appear; it does not open the ACL connection, so connect first.
+    if (!device->Connect()) {
+      LOG(ERROR) << __func__ << ": Failed to open BLE connection to "
+                 << device_object_path;
+      return nullptr;
+    }
+    LOG(INFO) << __func__ << ": BLE connection established to "
+              << device_object_path << ", discovering Nearby GATT service";
+  }
+
+  CancellationFlag local_cancel;
+  CancellationFlag &cancel =
+      cancellation_flag != nullptr ? *cancellation_flag : local_cancel;
+  if (!gatt_discovery_->DiscoverServiceAndCharacteristics(
+          device_object_path, service_uuid,
+          {write_char_uuid, indicate_char_uuid}, cancel)) {
+    LOG(ERROR) << __func__
+               << ": Failed to discover Nearby GATT socket characteristics on "
+               << device_object_path;
+    return nullptr;
+  }
+
+  auto connection = std::make_unique<BleV2GattConnection>(
+      gatt_discovery_, device_object_path, service_uuid, write_char_uuid,
+      indicate_char_uuid);
+
+  auto ble_socket = std::make_unique<BleV2Socket>(peripheral_id);
+  BleV2Socket *ble_socket_ptr = ble_socket.get();
+
+  struct ConnectState {
+    CountDownLatch latch{1};
+    std::atomic<bool> connected{false};
+  };
+  auto state = std::make_shared<ConnectState>();
+
+  weave::SocketCallback socket_callback;
+  socket_callback.on_connected_cb = [state]() {
+    state->connected = true;
+    state->latch.CountDown();
+  };
+  socket_callback.on_disconnected_cb = [state]() { state->latch.CountDown(); };
+  socket_callback.on_error_cb = [state](absl::Status status) {
+    LOG(WARNING) << "Weave-over-GATT socket error: " << status;
+    state->latch.CountDown();
+  };
+  socket_callback.on_receive_cb = [ble_socket_ptr](std::string message) {
+    ble_socket_ptr->ReceiveData(ByteArray(std::move(message)));
+  };
+
+  auto weave_socket = std::make_unique<weave::ClientSocket>(
+      *connection, std::move(socket_callback));
+  weave::ClientSocket *weave_socket_ptr = weave_socket.get();
+
+  // App-level writes go through Weave (framing + flow control) to the GATT
+  // write characteristic.
+  ble_socket->SetWriteCallback(
+      [weave_socket_ptr](absl::string_view data) -> bool {
+        weave_socket_ptr->Write(ByteArray(std::string(data)));
+        return true;
+      });
+
+  weave_socket->Connect();
+
+  ExceptionOr<bool> awaited = state->latch.Await(absl::Seconds(10));
+  if (!awaited.ok() || !awaited.result() || !state->connected) {
+    LOG(ERROR) << __func__ << ": Weave handshake did not complete for "
+               << device_object_path;
+    return nullptr;
+  }
+
+  ble_socket->AttachWeaveClient(std::move(connection), std::move(weave_socket));
+  LOG(INFO) << __func__ << ": Weave-over-GATT socket established to "
+            << device_object_path;
+  return ble_socket;
 }
 
 bool BleV2Medium::IsExtendedAdvertisementsAvailable() {

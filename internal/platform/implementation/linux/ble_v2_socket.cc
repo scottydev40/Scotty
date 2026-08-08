@@ -34,11 +34,21 @@ Exception BleV2Socket::Close() {
     return {Exception::kSuccess};
   }
   closed_ = true;
-  
+
   // Close streams
   input_stream_.NotifyClose();
   output_stream_.Close();
-  
+
+  // Tear down the Weave stack first (the client socket references the
+  // connection), then the connection.
+  if (weave_client_socket_) {
+    weave_client_socket_.reset();
+  }
+  if (weave_connection_) {
+    weave_connection_->Close();
+    weave_connection_.reset();
+  }
+
   // Cleanup GATT resources
   if (gatt_client_) {
     LOG(INFO) << "Disconnecting GATT client for peripheral "
@@ -197,6 +207,14 @@ void BleV2Socket::SetGattServer(
   LOG(INFO) << "BLE socket configured with GATT server, RX: "
                     << std::string(rx_char.uuid) 
                     << ", TX: " << std::string(tx_char.uuid);
+}
+
+void BleV2Socket::AttachWeaveClient(
+    std::unique_ptr<::nearby::weave::Connection> connection,
+    std::unique_ptr<::nearby::weave::ClientSocket> weave_socket) {
+  absl::MutexLock lock(&mutex_);
+  weave_connection_ = std::move(connection);
+  weave_client_socket_ = std::move(weave_socket);
 }
 
 void BleV2Socket::SetGattClient(

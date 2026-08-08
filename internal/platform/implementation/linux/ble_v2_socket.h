@@ -24,6 +24,8 @@
 #include "internal/platform/implementation/ble.h"
 #include "internal/platform/input_stream.h"
 #include "internal/platform/output_stream.h"
+#include "internal/weave/connection.h"
+#include "internal/weave/sockets/client_socket.h"
 
 namespace nearby {
 namespace linux {
@@ -77,6 +79,15 @@ class BleV2Socket : public api::ble::BleSocket {
                      const api::ble::GattCharacteristic& tx_char)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
+  // Attach an outgoing Weave-over-GATT client to this socket. The socket takes
+  // ownership so the Weave stack (and the underlying GATT Connection it
+  // references) lives exactly as long as the socket. Declared/destroyed so the
+  // ClientSocket tears down before the Connection it references.
+  void AttachWeaveClient(
+      std::unique_ptr<::nearby::weave::Connection> connection,
+      std::unique_ptr<::nearby::weave::ClientSocket> weave_socket)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
  private:
   class BleInputStream : public InputStream {
    public:
@@ -126,6 +137,14 @@ class BleV2Socket : public api::ble::BleSocket {
   // GATT resources (only one of these will be set)
   std::unique_ptr<api::ble::GattServer> gatt_server_ ABSL_GUARDED_BY(mutex_);
   std::unique_ptr<api::ble::GattClient> gatt_client_ ABSL_GUARDED_BY(mutex_);
+
+  // Outgoing Weave-over-GATT stack (client side). weave_connection_ is declared
+  // before weave_client_socket_ so the socket (which holds a reference to the
+  // connection) is destroyed first.
+  std::unique_ptr<::nearby::weave::Connection> weave_connection_
+      ABSL_GUARDED_BY(mutex_);
+  std::unique_ptr<::nearby::weave::ClientSocket> weave_client_socket_
+      ABSL_GUARDED_BY(mutex_);
   
   // Characteristics for data transfer
   api::ble::GattCharacteristic rx_char_ ABSL_GUARDED_BY(mutex_);
