@@ -17,6 +17,7 @@
 #include <optional>
 #include <string>
 #include <variant>
+#include <vector>
 
 #include <sdbus-c++/Types.h>
 
@@ -28,6 +29,7 @@
 #include "internal/platform/implementation/linux/bluez_gatt_characteristic_client.h"
 #include "internal/platform/implementation/linux/bluez_gatt_service_client.h"
 #include "internal/platform/implementation/linux/dbus.h"
+#include "internal/platform/implementation/linux/generated/dbus/bluez/device_client.h"
 #include "internal/platform/implementation/linux/generated/dbus/bluez/gatt_characteristic_client.h"
 #include "internal/platform/implementation/linux/generated/dbus/bluez/gatt_service_client.h"
 #include "internal/platform/implementation/linux/utils.h"
@@ -280,6 +282,60 @@ std::optional<sdbus::ObjectPath> BluezGattDiscovery::FindDeviceExposingService(
     }
   }
   return std::nullopt;
+}
+
+std::vector<sdbus::ObjectPath> BluezGattDiscovery::GetConnectedDevicePaths() {
+  std::vector<sdbus::ObjectPath> paths;
+  std::map<sdbus::ObjectPath,
+           std::map<sdbus::InterfaceName,
+                    std::map<sdbus::PropertyName, sdbus::Variant>>>
+      objects;
+  try {
+    objects = GetManagedObjects();
+  } catch (const sdbus::Error &e) {
+    DBUS_LOG_METHOD_CALL_ERROR(this, "GetManagedObjects", e);
+    return paths;
+  }
+
+  for (const auto &[path, ifaces] : objects) {
+    auto iface_it = ifaces.find(
+        sdbus::InterfaceName(org::bluez::Device1_proxy::INTERFACE_NAME));
+    if (iface_it == ifaces.end()) continue;
+    const auto &properties = iface_it->second;
+    auto connected_it = properties.find(sdbus::PropertyName("Connected"));
+    if (connected_it == properties.end()) continue;
+    if (connected_it->second.get<bool>()) {
+      paths.push_back(path);
+    }
+  }
+  return paths;
+}
+
+std::vector<sdbus::ObjectPath> BluezGattDiscovery::GetBondedDevicePaths() {
+  std::vector<sdbus::ObjectPath> paths;
+  std::map<sdbus::ObjectPath,
+           std::map<sdbus::InterfaceName,
+                    std::map<sdbus::PropertyName, sdbus::Variant>>>
+      objects;
+  try {
+    objects = GetManagedObjects();
+  } catch (const sdbus::Error &e) {
+    DBUS_LOG_METHOD_CALL_ERROR(this, "GetManagedObjects", e);
+    return paths;
+  }
+
+  for (const auto &[path, ifaces] : objects) {
+    auto iface_it = ifaces.find(
+        sdbus::InterfaceName(org::bluez::Device1_proxy::INTERFACE_NAME));
+    if (iface_it == ifaces.end()) continue;
+    const auto &properties = iface_it->second;
+    auto bonded_it = properties.find(sdbus::PropertyName("Bonded"));
+    if (bonded_it == properties.end()) continue;
+    if (bonded_it->second.get<bool>()) {
+      paths.push_back(path);
+    }
+  }
+  return paths;
 }
 
 BluezGattDiscovery::CallbackIter BluezGattDiscovery::AddPeripheralConnection(

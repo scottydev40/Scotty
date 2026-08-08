@@ -28,10 +28,14 @@
 #include <atomic>
 #include <memory>
 #include <string>
+#include <thread>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
+#include "absl/time/clock.h"
 #include "internal/platform/implementation/ble.h"
 #include "internal/platform/implementation/linux/ble_v2_medium.h"
 #include "internal/platform/implementation/linux/ble_v2_gatt_connection.h"
@@ -559,43 +563,74 @@ std::unique_ptr<api::ble::BleSocket> BleV2Medium::Connect(
   // BLE peers advertise under a rotating private (RPA) address, so the
   // peripheral_id -> device mapping points at a transient RPA device object
   // that bluez often deletes on rotation (Connect => UnknownObject) and which
-  // never hosts the GATT server. The resolved GATT tree lives on the bonded
-  // identity device. Prefer whichever device currently exposes a resolved FEF3
-  // service; only fall back to connecting the advertised RPA device.
+  // never hosts the GATT server. The resolved GATT tree lives on the bonded,
+  // already-connected identity device. Actively try to discover the FEF3 socket
+  // characteristics on each candidate (connected devices first, RPA last),
+  // bounding each attempt so a wrong candidate can't stall the whole request.
+  (void)cancellation_flag;
+  const std::vector<Uuid> socket_char_uuids = {write_char_uuid,
+                                               indicate_char_uuid};
+  auto try_discover = [&](const sdbus::ObjectPath &path,
+                          absl::Duration timeout) -> bool {
+    CancellationFlag cancel;
+    absl::Notification done;
+    std::thread timer([&]() {
+      if (!done.WaitForNotificationWithTimeout(timeout)) cancel.Cancel();
+    });
+    bool ok = gatt_discovery_->DiscoverServiceAndCharacteristics(
+        path, service_uuid, socket_char_uuids, cancel);
+    done.Notify();
+    timer.join();
+    return ok;
+  };
+
   sdbus::ObjectPath device_object_path;
-  auto resolved_device = gatt_discovery_->FindDeviceExposingService(service_uuid);
-  if (resolved_device.has_value()) {
-    device_object_path = *resolved_device;
-    LOG(INFO) << __func__ << ": using already-resolved GATT device "
-              << device_object_path;
-  } else {
-    auto device = devices_->get_device_by_unique_id(peripheral_id);
-    if (!device) {
-      LOG(ERROR) << __func__ << ": Failed to find device with unique ID "
-                 << peripheral_id;
-      return nullptr;
+  bool discovered = false;
+
+  // 1) Fast path: a device that already exposes a resolved FEF3 service.
+  if (auto resolved = gatt_discovery_->FindDeviceExposingService(service_uuid)) {
+    if (try_discover(*resolved, absl::Seconds(8))) {
+      device_object_path = *resolved;
+      discovered = true;
+      LOG(INFO) << __func__ << ": using resolved GATT device "
+                << device_object_path;
     }
-    device_object_path = device->GetObjectPath();
-    // DiscoverServiceAndCharacteristics only *waits* for the characteristics to
-    // appear; it does not open the ACL connection, so connect first.
-    if (!device->Connect()) {
-      LOG(ERROR) << __func__ << ": Failed to open BLE connection to "
-                 << device_object_path;
-      return nullptr;
-    }
-    LOG(INFO) << __func__ << ": BLE connection established to "
-              << device_object_path << ", discovering Nearby GATT service";
   }
 
-  CancellationFlag local_cancel;
-  CancellationFlag &cancel =
-      cancellation_flag != nullptr ? *cancellation_flag : local_cancel;
-  if (!gatt_discovery_->DiscoverServiceAndCharacteristics(
-          device_object_path, service_uuid,
-          {write_char_uuid, indicate_char_uuid}, cancel)) {
+  // 2) Bonded devices (the user's own phone). Bonded device objects are
+  //    persistent even though the phone's BLE link flaps and it advertises
+  //    under a rotating private address, so this is the stable way to reach it:
+  //    (re)establish the link with Connect(), which drives GATT resolution that
+  //    a passive lookup misses, then actively discover the socket chars.
+  if (!discovered) {
+    for (const auto &path : gatt_discovery_->GetBondedDevicePaths()) {
+      if (auto d = devices_->get_device_by_path(path)) d->Connect();
+      if (try_discover(path, absl::Seconds(10))) {
+        device_object_path = path;
+        discovered = true;
+        LOG(INFO) << __func__ << ": discovered Nearby GATT on bonded device "
+                  << device_object_path;
+        break;
+      }
+    }
+  }
+
+  // 3) Last resort: connect the advertised (RPA) device directly.
+  if (!discovered) {
+    if (auto device = devices_->get_device_by_unique_id(peripheral_id)) {
+      auto rpa_path = device->GetObjectPath();
+      if (device->Connect() && try_discover(rpa_path, absl::Seconds(8))) {
+        device_object_path = rpa_path;
+        discovered = true;
+      }
+    }
+  }
+
+  if (!discovered) {
     LOG(ERROR) << __func__
-               << ": Failed to discover Nearby GATT socket characteristics on "
-               << device_object_path;
+               << ": Failed to discover Nearby GATT socket characteristics for "
+                  "peripheral "
+               << peripheral_id;
     return nullptr;
   }
 

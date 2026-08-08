@@ -73,6 +73,17 @@ class BluezGattDiscovery final : public bluez::BluezObjectManager {
   std::optional<sdbus::ObjectPath> FindDeviceExposingService(
       const Uuid &service_uuid);
 
+  // Returns the object paths of all currently-connected remote devices. Used to
+  // nudge bonded peers into resolving their GATT tree before looking up a
+  // service (see FindDeviceExposingService).
+  std::vector<sdbus::ObjectPath> GetConnectedDevicePaths();
+
+  // Returns the object paths of all bonded remote devices. Unlike connected or
+  // rotating-RPA scan devices, bonded device objects are persistent, so this is
+  // the stable way to reach a paired peer (e.g. the user's own phone) whose BLE
+  // link flaps or which currently advertises under a private address.
+  std::vector<sdbus::ObjectPath> GetBondedDevicePaths();
+
  protected:
   void onInterfacesAdded(
       const sdbus::ObjectPath &objectPath,
