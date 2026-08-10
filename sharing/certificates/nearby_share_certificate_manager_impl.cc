@@ -21,6 +21,7 @@
 #include <array>
 #include <functional>
 #include <memory>
+#include <random>
 #include <optional>
 #include <ostream>
 #include <sstream>
@@ -325,7 +326,19 @@ NearbyShareCertificateManagerImpl::~NearbyShareCertificateManagerImpl() {
 }
 
 std::string NearbyShareCertificateManagerImpl::GetId() {
-  return preference_manager_.GetString(PrefNames::kDeviceId, "");
+  std::string id = preference_manager_.GetString(PrefNames::kDeviceId, "");
+  if (id.empty()) {
+    // Linux has no server-assigned device id, so publish/download gate on an
+    // empty id. Mint a stable random one (a positive int64, matching the
+    // devices/{id} name the backend expects) and persist it.
+    std::random_device rd;
+    uint64_t v = ((static_cast<uint64_t>(rd()) << 32) ^ rd()) &
+                 0x7fffffffffffffffULL;
+    if (v == 0) v = 1;
+    id = std::to_string(v);
+    preference_manager_.SetString(PrefNames::kDeviceId, id);
+  }
+  return id;
 }
 
 void NearbyShareCertificateManagerImpl::CertificateDownloadContext::

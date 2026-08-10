@@ -6,6 +6,7 @@ cc_library(
     name = "sharing_rpc_client",
     hdrs = [
         "identity_rpc_types.h",
+        "identity_rpc_wire.h",
         "sharing_rpc_client.h",
     ],
     visibility = ["//visibility:public"],
@@ -26,6 +27,7 @@ cc_library(
         "//location/nearby/sharing/lib/account:account_manager",
         "//sharing/analytics",
         "@com_google_absl//absl/status",
+        "@sdbus_cpp",
     ],
 )
 
