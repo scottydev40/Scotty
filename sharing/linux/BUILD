@@ -170,5 +170,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@nlohmann_json//:json",
+        "@sdbus_cpp",
     ],
 )
