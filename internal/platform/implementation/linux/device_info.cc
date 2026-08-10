@@ -13,11 +13,15 @@
 // limitations under the License.
 
 #include <pwd.h>
+#include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <optional>
 #include <string>
+#include <system_error>
 
 #include <sdbus-c++/IConnection.h>
 #include <sdbus-c++/IProxy.h>
@@ -93,36 +97,73 @@ api::DeviceInfo::DeviceType DeviceInfo::GetDeviceType() const {
 }
 
 
-FilePath DeviceInfo::GetDownloadPath() const {
-  char *dir = getenv("XDG_DOWNLOAD_DIR");
-  if (dir == nullptr) {
-    return FilePath("/tmp");
+namespace {
+
+// The user's home directory, from $HOME or the passwd database. Empty if it
+// cannot be determined.
+std::string HomeDir() {
+  const char *home = getenv("HOME");
+  if (home != nullptr && home[0] != '\0') {
+    return home;
   }
-  return  FilePath(std::string(dir));
+  struct passwd *pw = getpwuid(getuid());
+  if (pw != nullptr && pw->pw_dir != nullptr && pw->pw_dir[0] != '\0') {
+    return pw->pw_dir;
+  }
+  return {};
+}
+
+// Resolves an XDG base directory: $env if set, else $HOME/<home_rel>. As a last
+// resort (no HOME) a uid-namespaced directory under the system temp dir is used
+// instead of a world-shared path. Never returns a bare, predictable "/tmp".
+std::filesystem::path XdgBase(const char *env, const char *home_rel) {
+  const char *val = getenv(env);
+  if (val != nullptr && val[0] != '\0') {
+    return std::filesystem::path(val);
+  }
+  std::string home = HomeDir();
+  if (!home.empty()) {
+    return std::filesystem::path(home) / home_rel;
+  }
+  return std::filesystem::path("/tmp") / ("scotty-" + std::to_string(getuid()));
+}
+
+// Creates `dir` (and parents) and restricts it to owner-only (0700) so private
+// Nearby identity material (certificates, key pairs, secret keys) is not
+// readable or traversable by other local users. Best-effort; returns the path.
+FilePath EnsurePrivateDir(const std::filesystem::path &dir) {
+  std::error_code ec;
+  std::filesystem::create_directories(dir, ec);
+  if (ec) {
+    LOG(WARNING) << "Failed to create private directory " << dir.string()
+                 << ": " << ec.message();
+  }
+  if (chmod(dir.c_str(), S_IRWXU) != 0) {
+    LOG(WARNING) << "Failed to restrict permissions on " << dir.string() << ": "
+                 << std::strerror(errno);
+  }
+  return FilePath(dir.string());
+}
+
+}  // namespace
+
+FilePath DeviceInfo::GetDownloadPath() const {
+  // User-facing downloads; not secret, so no 0700 tightening, but never /tmp.
+  return FilePath(XdgBase("XDG_DOWNLOAD_DIR", "Downloads").string());
 }
 
 FilePath DeviceInfo::GetLocalAppDataPath(FilePath sub_path) const {
-  char *dir = getenv("XDG_CONFIG_HOME");
-  if (dir == nullptr) {
-    return FilePath("/tmp");
-  }
-  return FilePath(std::string((std::filesystem::path(std::string(dir)) / "Google Nearby")));
+  return EnsurePrivateDir(XdgBase("XDG_CONFIG_HOME", ".config") /
+                          "Google Nearby");
 }
 
 FilePath DeviceInfo::GetTemporaryPath() const {
-  char *dir = getenv("XDG_RUNTIME_PATH");
-  if (dir == nullptr) {
-    return FilePath("/tmp");
-  }
-  return FilePath(std::string(std::filesystem::path(std::string(dir)) / "Google Nearby"));
+  return EnsurePrivateDir(XdgBase("XDG_RUNTIME_DIR", ".cache") / "Google Nearby");
 }
 
 FilePath DeviceInfo::GetLogPath() const {
-  char *dir = getenv("XDG_STATE_HOME");
-  if (dir == nullptr) {
-    return FilePath("/tmp");
-  }
-  return FilePath(std::string(std::filesystem::path(std::string(dir)) / "Google Nearby" / "logs"));
+  return EnsurePrivateDir(XdgBase("XDG_STATE_HOME", ".local/state") /
+                          "Google Nearby" / "logs");
 }
 
 

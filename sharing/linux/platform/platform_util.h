@@ -29,6 +29,10 @@ std::string GetEnvOrDefault(const char* key, std::string fallback);
 std::string GetHomeDirectory();
 FilePath BuildPathFromBase(const std::string& base,
                            std::initializer_list<std::string> components);
+// Creates `dir` (and parents) and restricts it to owner-only (0700) so private
+// Nearby identity material stored under it is not readable or traversable by
+// other local users. Best-effort; returns `dir` unchanged.
+FilePath EnsurePrivateDir(const FilePath& dir);
 std::optional<std::string> GetLanguageCode();
 bool HasNonLoopbackInterface();
 

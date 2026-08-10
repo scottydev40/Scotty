@@ -16,9 +16,15 @@
 
 #include <ifaddrs.h>
 #include <net/if.h>
+#include <pwd.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
+#include <cerrno>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
+#include <system_error>
 #include <memory>
 #include <optional>
 #include <string>
@@ -39,7 +45,20 @@ std::string GetEnvOrDefault(const char* key, std::string fallback) {
   return value;
 }
 
-std::string GetHomeDirectory() { return GetEnvOrDefault("HOME", "/tmp"); }
+std::string GetHomeDirectory() {
+  const char* home = std::getenv("HOME");
+  if (home != nullptr && *home != '\0') {
+    return home;
+  }
+  struct passwd* pw = getpwuid(getuid());
+  if (pw != nullptr && pw->pw_dir != nullptr && *pw->pw_dir != '\0') {
+    return pw->pw_dir;
+  }
+  // Last resort: a uid-namespaced private directory, never the shared /tmp root
+  // (predictable, world-readable). Callers tighten it to 0700 via
+  // EnsurePrivateDir before storing anything sensitive.
+  return "/tmp/scotty-" + std::to_string(getuid());
+}
 
 FilePath BuildPathFromBase(const std::string& base,
                            std::initializer_list<std::string> components) {
@@ -48,6 +67,21 @@ FilePath BuildPathFromBase(const std::string& base,
     path /= component;
   }
   return FilePath(path.string());
+}
+
+FilePath EnsurePrivateDir(const FilePath& dir) {
+  const std::string path = dir.ToString();
+  std::error_code ec;
+  std::filesystem::create_directories(path, ec);
+  if (ec) {
+    LOG(WARNING) << "Failed to create private directory " << path << ": "
+                 << ec.message();
+  }
+  if (chmod(path.c_str(), S_IRWXU) != 0) {
+    LOG(WARNING) << "Failed to restrict permissions on " << path << ": "
+                 << std::strerror(errno);
+  }
+  return dir;
 }
 
 std::optional<std::string> GetLanguageCode() {

@@ -12,11 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <filesystem>  // NOLINT(build/c++17)
 #include <memory>
 #include <optional>
 #include <ostream>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -44,7 +48,14 @@ PreferencesManager::PreferencesManager(absl::string_view file_path)
       nearby::api::ImplementationPlatform::CreateDeviceInfo()
           ->GetLocalAppDataPath(nearby::FilePath());
   if (!path.has_value()) {
-    path = FilePath("/tmp");
+    // Should not happen: GetLocalAppDataPath returns a private (0700) dir. Never
+    // fall back to a world-readable /tmp for private certificate storage.
+    std::filesystem::path fallback =
+        std::filesystem::path("/tmp") / ("scotty-" + std::to_string(getuid()));
+    std::error_code ec;
+    std::filesystem::create_directories(fallback, ec);
+    chmod(fallback.c_str(), S_IRWXU);
+    path = FilePath(fallback.string());
   }
 
   std::filesystem::path full_path = std::filesystem::path(path->ToString()) / std::string(file_path);

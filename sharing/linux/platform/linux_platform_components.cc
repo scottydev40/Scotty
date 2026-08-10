@@ -172,7 +172,10 @@ class LinuxDeviceInfo final : public nearby::api::DeviceInfo {
     std::string config_home = GetEnvOrDefault(
         "XDG_CONFIG_HOME",
         BuildPathFromBase(GetHomeDirectory(), {".config"}).ToString());
-    FilePath path = BuildPathFromBase(config_home, {"Google Nearby"});
+    // Tighten the app dir to 0700 so private certs/keys under it are not
+    // world-readable, then append the (possibly file) sub-path.
+    FilePath path =
+        EnsurePrivateDir(BuildPathFromBase(config_home, {"Google Nearby"}));
     if (!sub_path.IsEmpty()) {
       path.append(sub_path);
     }
@@ -180,10 +183,11 @@ class LinuxDeviceInfo final : public nearby::api::DeviceInfo {
   }
   FilePath GetTemporaryPath() const override {
     const char* runtime_dir = std::getenv("XDG_RUNTIME_DIR");
-    if (runtime_dir != nullptr && *runtime_dir != '\0') {
-      return BuildPathFromBase(runtime_dir, {"Google Nearby"});
-    }
-    return BuildPathFromBase("/tmp", {"Google Nearby"});
+    std::string base = (runtime_dir != nullptr && *runtime_dir != '\0')
+                           ? std::string(runtime_dir)
+                           : BuildPathFromBase(GetHomeDirectory(), {".cache"})
+                                 .ToString();
+    return EnsurePrivateDir(BuildPathFromBase(base, {"Google Nearby"}));
   }
   FilePath GetLogPath() const override {
     return GetLocalAppDataPath(FilePath("logs"));
