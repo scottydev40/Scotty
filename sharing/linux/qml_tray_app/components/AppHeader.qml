@@ -37,6 +37,65 @@ Item {
 
 
 
+        // My-Devices: "Sign in" pill when the opt-in plugin is present and
+        // no account is signed in. Hidden entirely on the stock (no-plugin)
+        // build, so the clean core shows no account UI.
+        Rectangle {
+            visible: fileShareController.mydevicesAvailable
+                     && fileShareController.signedInEmail.length === 0
+            Layout.rightMargin: 8
+            Layout.preferredWidth: signInLabel.implicitWidth + 28
+            Layout.preferredHeight: 36
+            radius: 18
+            color: signInArea.containsMouse ? Theme.rowFill : "transparent"
+            border.color: Theme.accentColor
+            border.width: 1
+
+            Label {
+                id: signInLabel
+                anchors.centerIn: parent
+                text: "Sign in"
+                font.pixelSize: 14
+                color: textPrimary
+            }
+            MouseArea {
+                id: signInArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: fileShareController.requestMyDevicesSignIn()
+            }
+        }
+
+        // Account avatar (first letter) once signed in.
+        Rectangle {
+            visible: fileShareController.signedInEmail.length > 0
+            Layout.rightMargin: 8
+            Layout.preferredWidth: 36
+            Layout.preferredHeight: 36
+            radius: 18
+            color: accent
+
+            Label {
+                anchors.centerIn: parent
+                text: fileShareController.signedInEmail.length > 0
+                      ? fileShareController.signedInEmail.charAt(0).toUpperCase()
+                      : ""
+                font.pixelSize: 16
+                font.weight: Font.Medium
+                color: "white"
+            }
+            MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: fileShareController.signOutMyDevices()
+                ToolTip.visible: containsMouse
+                ToolTip.text: "Signed in as " + fileShareController.signedInEmail
+                              + " — click to sign out"
+            }
+        }
+
         Rectangle {
             width: 40
             height: 40

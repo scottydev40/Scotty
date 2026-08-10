@@ -288,6 +288,8 @@ int main(int argc, char* argv[]) {
   QMenu tray_menu;
   QAction* send_action = tray_menu.addAction(QStringLiteral("Send"));
   QAction* receive_action = tray_menu.addAction(QStringLiteral("Receive"));
+  QAction* signin_action =
+      tray_menu.addAction(QStringLiteral("Sign in to My Devices…"));
   tray_menu.addSeparator();
   QAction* show_action = tray_menu.addAction(QStringLiteral("Show"));
   QAction* hide_action = tray_menu.addAction(QStringLiteral("Hide"));
@@ -314,6 +316,12 @@ int main(int argc, char* argv[]) {
                      window->raise();
                      window->requestActivate();
                    });
+
+  // Sign-in is handled entirely by the opt-in plugin over D-Bus; the controller
+  // calls StartSignIn (from the tray action or the in-window pill). The core no
+  // longer hosts a WebView.
+  QObject::connect(signin_action, &QAction::triggered, &controller,
+                   [&controller]() { controller.requestMyDevicesSignIn(); });
 
   QObject::connect(show_action, &QAction::triggered, window, [window]() {
     window->show();

@@ -36,6 +36,11 @@ class FileShareTrayController : public QObject {
   Q_PROPERTY(bool developerMode READ developerMode WRITE setDeveloperMode NOTIFY developerModeChanged)
   // Advertising visibility for receive mode: 0 = Everyone, 1 = Contacts, 2 = Hidden.
   Q_PROPERTY(int visibility READ visibility WRITE setVisibility NOTIFY visibilityChanged)
+  Q_PROPERTY(QString signedInEmail READ signedInEmail NOTIFY signedInEmailChanged)
+  // Whether the opt-in My-Devices plugin (dev.scotty.MyDevices1) is present
+  // (installed/activatable). The core links no grey code; this only gates the
+  // Contacts / Your-devices UI and the Sign-in affordance.
+  Q_PROPERTY(bool mydevicesAvailable READ mydevicesAvailable NOTIFY mydevicesAvailableChanged)
   // Launch the app on login (managed via an XDG autostart .desktop entry).
   Q_PROPERTY(bool runAtStartup READ runAtStartup WRITE setRunAtStartup NOTIFY runAtStartupChanged)
 
@@ -66,6 +71,8 @@ class FileShareTrayController : public QObject {
   QString savePath() const { return state_.savePath(); }
   bool developerMode() const { return state_.developerMode(); }
   int visibility() const { return visibility_; }
+  QString signedInEmail() const { return signed_in_email_; }
+  bool mydevicesAvailable() const { return mydevices_available_; }
   bool runAtStartup() const;
 
   // Public methods
@@ -87,6 +94,11 @@ class FileShareTrayController : public QObject {
   Q_INVOKABLE void switchToSendModeWithFile(const QString& file_path);
   Q_INVOKABLE void switchToSendModeWithFiles(const QStringList& file_paths);
   Q_INVOKABLE void sendPendingFileToTarget(qlonglong share_target_id);
+  // Triggers the opt-in plugin's sign-in flow over D-Bus (StartSignIn). The
+  // plugin owns the WebView / token / RPC; the core never touches grey code.
+  Q_INVOKABLE void requestMyDevicesSignIn();
+  // Signs out via the plugin (SignOut) and reverts to Everyone / No-one.
+  Q_INVOKABLE void signOutMyDevices();
   // Force a fresh discovery cycle in send mode (re-registers the send surface)
   // when a target went stale and the list stopped updating.
   Q_INVOKABLE void rescanDevices();
@@ -128,6 +140,8 @@ class FileShareTrayController : public QObject {
   void developerModeChanged();
   void visibilityChanged();
   void runAtStartupChanged();
+  void signedInEmailChanged();
+  void mydevicesAvailableChanged();
 
   // An incoming transfer needs an answer and auto-accept is off.
   void requestIncomingDecision(qlonglong share_target_id,
@@ -169,7 +183,22 @@ class FileShareTrayController : public QObject {
   void setStatus(const QString& status);
   void notifyStateChange(const QString& property);
 
+  // My-Devices plugin (dev.scotty.MyDevices1) over session D-Bus. The core
+  // holds no grey code; it only reads account state and triggers sign-in.
+  void setupMyDevicesBus();
+  void refreshMyDevicesAvailability();
+  void refreshMyDevicesAccount();
+  void setSignedInEmail(const QString& email);
+
+ private slots:
+  void onMyDevicesAccountChanged(bool signed_in, const QString& email);
+  void onMyDevicesOwnerChanged(const QString& service, const QString& old_owner,
+                               const QString& new_owner);
+
+ private:
   std::unique_ptr<NearbySharingApi> service_;
+  QString signed_in_email_;
+  bool mydevices_available_ = false;
   FileShareState state_;
   // Per-target throughput tracking: last observed byte count + timestamp, and
   // the smoothed rate we report. Keyed by share_target_id.

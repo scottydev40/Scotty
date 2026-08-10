@@ -4,6 +4,12 @@
 #include <future>
 #include <iostream>
 #include <QClipboard>
+#include <QDBusConnection>
+#include <QDBusConnectionInterface>
+#include <QDBusInterface>
+#include <QDBusMessage>
+#include <QDBusReply>
+#include <QDBusServiceWatcher>
 #include <QDesktopServices>
 #include <QDebug>
 #include <QDir>
@@ -33,6 +39,7 @@ FileShareTrayController::FileShareTrayController(QObject* parent)
   }
 
   loadSettings();
+  setupMyDevicesBus();
   refreshAutostartFile();
   initializeService();
 
@@ -506,6 +513,109 @@ void FileShareTrayController::setVisibility(int mode) {
   }
   saveSettings();
   emit visibilityChanged();
+}
+
+namespace {
+constexpr char kMyDevicesService[] = "dev.scotty.MyDevices1";
+constexpr char kMyDevicesPath[] = "/dev/scotty/MyDevices1";
+constexpr char kMyDevicesIface[] = "dev.scotty.MyDevices1";
+}  // namespace
+
+void FileShareTrayController::setupMyDevicesBus() {
+  QDBusConnection bus = QDBusConnection::sessionBus();
+  // React to the plugin appearing / disappearing (install, activation, exit).
+  auto* watcher = new QDBusServiceWatcher(
+      QLatin1String(kMyDevicesService), bus,
+      QDBusServiceWatcher::WatchForOwnerChange, this);
+  connect(watcher, &QDBusServiceWatcher::serviceOwnerChanged, this,
+          &FileShareTrayController::onMyDevicesOwnerChanged);
+  // AccountChanged(bool signed_in, string email) pushes account updates.
+  bus.connect(QLatin1String(kMyDevicesService), QLatin1String(kMyDevicesPath),
+              QLatin1String(kMyDevicesIface), QStringLiteral("AccountChanged"),
+              this, SLOT(onMyDevicesAccountChanged(bool, QString)));
+
+  refreshMyDevicesAvailability();
+  if (mydevices_available_) {
+    refreshMyDevicesAccount();
+  }
+}
+
+void FileShareTrayController::refreshMyDevicesAvailability() {
+  QDBusConnection bus = QDBusConnection::sessionBus();
+  bool available = false;
+  if (auto* dbus = bus.interface()) {
+    if (dbus->isServiceRegistered(QLatin1String(kMyDevicesService))) {
+      available = true;
+    } else {
+      // Installed-but-not-running: activatable name (no activation triggered).
+      QDBusReply<QStringList> names =
+          dbus->call(QStringLiteral("ListActivatableNames"));
+      if (names.isValid()) {
+        available = names.value().contains(QLatin1String(kMyDevicesService));
+      }
+    }
+  }
+  if (available != mydevices_available_) {
+    mydevices_available_ = available;
+    emit mydevicesAvailableChanged();
+  }
+}
+
+void FileShareTrayController::refreshMyDevicesAccount() {
+  QDBusInterface plugin(QLatin1String(kMyDevicesService),
+                        QLatin1String(kMyDevicesPath),
+                        QLatin1String(kMyDevicesIface),
+                        QDBusConnection::sessionBus());
+  QDBusMessage reply = plugin.call(QStringLiteral("GetAccountInfo"));
+  if (reply.type() != QDBusMessage::ReplyMessage) {
+    return;  // plugin not answering; leave current state
+  }
+  const QList<QVariant> args = reply.arguments();
+  const bool signed_in = !args.isEmpty() && args.at(0).toBool();
+  setSignedInEmail(signed_in && args.size() > 1 ? args.at(1).toString()
+                                                : QString());
+}
+
+void FileShareTrayController::requestMyDevicesSignIn() {
+  // Fire-and-forget: the plugin runs the WebView flow and reports back via the
+  // AccountChanged signal. Activates the plugin if installed but not running.
+  QDBusInterface plugin(QLatin1String(kMyDevicesService),
+                        QLatin1String(kMyDevicesPath),
+                        QLatin1String(kMyDevicesIface),
+                        QDBusConnection::sessionBus());
+  plugin.asyncCall(QStringLiteral("StartSignIn"));
+}
+
+void FileShareTrayController::signOutMyDevices() {
+  QDBusInterface plugin(QLatin1String(kMyDevicesService),
+                        QLatin1String(kMyDevicesPath),
+                        QLatin1String(kMyDevicesIface),
+                        QDBusConnection::sessionBus());
+  plugin.asyncCall(QStringLiteral("SignOut"));
+}
+
+void FileShareTrayController::onMyDevicesAccountChanged(bool signed_in,
+                                                       const QString& email) {
+  setSignedInEmail(signed_in ? email : QString());
+}
+
+void FileShareTrayController::onMyDevicesOwnerChanged(const QString& /*service*/,
+                                                     const QString& /*old_owner*/,
+                                                     const QString& new_owner) {
+  refreshMyDevicesAvailability();
+  if (new_owner.isEmpty()) {
+    setSignedInEmail(QString());  // plugin gone
+  } else {
+    refreshMyDevicesAccount();  // plugin appeared
+  }
+}
+
+void FileShareTrayController::setSignedInEmail(const QString& email) {
+  if (email == signed_in_email_) {
+    return;
+  }
+  signed_in_email_ = email;
+  emit signedInEmailChanged();
 }
 
 static QString AutostartFilePath() {
