@@ -58,6 +58,16 @@ constexpr char kFastAdvertisementServiceUuid[] =
     "0000fef3-0000-1000-8000-00805f9b34fb";
 constexpr Strategy kStrategy = Strategy::kP2pPointToPoint;
 
+// scotty: WIFI_LAN-vs-BLE outgoing discovery race. When co-networked, a peer
+// often appears over BLE a beat before its WifiLan (mDNS) route resolves. A
+// Connect fired in that gap picks the BLE-only route -- which has no working
+// outgoing BLE transport on linux -- and fails fast. Retry a few times with a
+// short delay so the WifiLan route can resolve; the core's medium-priority
+// selection then prefers WifiLan and the connect succeeds. Genuinely off-Wi-Fi
+// peers just exhaust the (short) budget and fail as before.
+constexpr int kWifiLanRaceMaxRetries = 4;
+constexpr absl::Duration kWifiLanRaceRetryDelay = absl::Milliseconds(400);
+
 const uint8_t kMinimumAdvertisementSize =
     /* Version(3 bits)|Visibility(1 bit)|Device Type(3 bits)|Reserved(1 bits)=
      */
@@ -355,6 +365,11 @@ void NearbyConnectionsManagerImpl::Connect(
     bluetooth_mac_address.reset();
   }
 
+  // Copies preserved for the WIFI_LAN-vs-BLE race retry (endpoint_info and
+  // bluetooth_mac_address are moved into RequestConnection below).
+  std::vector<uint8_t> endpoint_info_for_retry = endpoint_info;
+  std::optional<std::vector<uint8_t>> mac_for_retry = bluetooth_mac_address;
+
   MediumSelection allowed_mediums = MediumSelection(
       /*bluetooth=*/true,
       /*ble=*/ShouldEnableBleForTransfers(),
@@ -419,13 +434,64 @@ void NearbyConnectionsManagerImpl::Connect(
               transport_type, TransportType::kHighQualityNonDisruptive),
       },
       std::move(connection_listener),
-      [this, endpoint_id = std::string(endpoint_id)](ConnectionsStatus status) {
+      [this, endpoint_id = std::string(endpoint_id),
+       endpoint_info_for_retry = std::move(endpoint_info_for_retry),
+       mac_for_retry = std::move(mac_for_retry), data_usage,
+       transport_type](ConnectionsStatus status) mutable {
         MutexLock lock(&mutex_);
         if (status != ConnectionsStatus::kSuccess) {
+          // WIFI_LAN-vs-BLE race retry: while co-networked and with retry
+          // budget left, a fast failure is almost always the BLE-only
+          // discovery gap before the WifiLan (mDNS) route resolves. Tear this
+          // attempt down (without surfacing failure to the caller) and retry
+          // after a short delay so medium selection can prefer WifiLan.
+          int attempts = ++connect_attempts_[endpoint_id];
+          if (ShouldEnableWifiLan(connectivity_manager_) &&
+              attempts <= kWifiLanRaceMaxRetries &&
+              pending_outgoing_connections_.contains(endpoint_id)) {
+            LOG(WARNING) << "Connect to " << endpoint_id << " failed ("
+                         << ConnectionsStatusToString(status)
+                         << "); WifiLan available, retry " << attempts << "/"
+                         << kWifiLanRaceMaxRetries << " in "
+                         << absl::ToInt64Milliseconds(kWifiLanRaceRetryDelay)
+                         << "ms";
+            // Carry the user callback forward across the retry.
+            NearbyConnectionCallback carried =
+                std::move(pending_outgoing_connections_[endpoint_id]);
+            pending_outgoing_connections_.erase(endpoint_id);
+            connect_timeout_timers_.erase(endpoint_id);
+            connection_info_map_.erase(endpoint_id);
+            auto node = transfer_managers_.extract(endpoint_id);
+            if (!node.empty()) {
+              RemoveTransferManagerOnCallbackThread(std::move(node.mapped()));
+            }
+            auto retry_timer = context_->CreateTimer();
+            // NB: the timer callback must not destroy its own timer (SIGEV_THREAD
+            // + ~Timer would free the running lambda's captures). The entry is
+            // replaced on the next retry or cleared on a terminal state instead.
+            retry_timer->Start(
+                absl::ToInt64Milliseconds(kWifiLanRaceRetryDelay), /*period=*/0,
+                [this, endpoint_id,
+                 endpoint_info_for_retry = std::move(endpoint_info_for_retry),
+                 mac_for_retry = std::move(mac_for_retry), data_usage,
+                 transport_type, carried = std::move(carried)]() mutable {
+                  Connect(std::move(endpoint_info_for_retry), endpoint_id,
+                          std::move(mac_for_retry), data_usage, transport_type,
+                          std::move(carried));
+                });
+            connect_retry_timers_[endpoint_id] = std::move(retry_timer);
+            return;
+          }
+          // Out of retries (or not co-networked): fail for real.
+          connect_attempts_.erase(endpoint_id);
+          connect_retry_timers_.erase(endpoint_id);
           auto node = transfer_managers_.extract(endpoint_id);
           if (!node.empty()) {
             RemoveTransferManagerOnCallbackThread(std::move(node.mapped()));
           }
+        } else {
+          connect_attempts_.erase(endpoint_id);
+          connect_retry_timers_.erase(endpoint_id);
         }
         OnConnectionRequested(endpoint_id, status);
       });
@@ -917,6 +983,8 @@ void NearbyConnectionsManagerImpl::Reset() {
   discovery_listener_ = nullptr;
   incoming_connection_listener_ = nullptr;
   connect_timeout_timers_.clear();
+  connect_attempts_.clear();
+  connect_retry_timers_.clear();
   requested_bwu_endpoint_ids_.clear();
   current_upgraded_mediums_.clear();
 

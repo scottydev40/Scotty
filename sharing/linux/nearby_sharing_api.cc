@@ -426,11 +426,17 @@ void NearbySharingApi::StopSendMode(std::function<void(StatusCode)> callback) {
 
 // Maps the app-facing visibility mode (0=Everyone, 1=Contacts, 2=Hidden) to the
 // Nearby proto enum. Unknown values fall back to Everyone.
+//
+// "Contacts" advertises with the SELF identity (SELF_SHARE): a phone on the same
+// Google account recognizes this device under My Devices without needing
+// Everyone, and the live advert collapses with the account-published device
+// (no duplicate entry). Reaching a *different person's* contact devices is not
+// covered by this single mode.
 static nearby::sharing::proto::DeviceVisibility ToProtoVisibility(int mode) {
   switch (mode) {
     case 1:
       return nearby::sharing::proto::DeviceVisibility::
-          DEVICE_VISIBILITY_ALL_CONTACTS;
+          DEVICE_VISIBILITY_SELF_SHARE;
     case 2:
       return nearby::sharing::proto::DeviceVisibility::DEVICE_VISIBILITY_HIDDEN;
     case 0:
