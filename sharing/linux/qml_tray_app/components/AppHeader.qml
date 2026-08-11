@@ -75,12 +75,22 @@ Item {
             Layout.preferredHeight: 36
             radius: 18
             color: accent
+            clip: true
 
+            // Profile photo when available, else the initial letter.
+            Image {
+                anchors.fill: parent
+                visible: fileShareController.signedInPhotoPath.length > 0
+                source: fileShareController.signedInPhotoPath.length > 0
+                        ? "file://" + fileShareController.signedInPhotoPath : ""
+                fillMode: Image.PreserveAspectCrop
+                layer.enabled: true
+            }
             Label {
                 anchors.centerIn: parent
+                visible: fileShareController.signedInPhotoPath.length === 0
                 text: fileShareController.signedInEmail.length > 0
-                      ? fileShareController.signedInEmail.charAt(0).toUpperCase()
-                      : ""
+                      ? fileShareController.signedInEmail.charAt(0).toUpperCase() : ""
                 font.pixelSize: 16
                 font.weight: Font.Medium
                 color: "white"
@@ -89,10 +99,90 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: fileShareController.signOutMyDevices()
-                ToolTip.visible: containsMouse
-                ToolTip.text: "Signed in as " + fileShareController.signedInEmail
-                              + " — click to sign out"
+                onClicked: accountMenu.open()
+            }
+
+            // Account dropdown — follows this app's existing, crash-free Menu
+            // pattern (see SideBar.qml visibilityMenu). Menu handles its own
+            // popup + positioning relative to the avatar.
+            Menu {
+                id: accountMenu
+                y: parent.height + 8
+                x: parent.width - width
+                width: 280
+                padding: 6
+
+                background: Rectangle {
+                    radius: 12
+                    color: Theme.surface
+                    border.color: Theme.accentColor
+                    border.width: 1
+                }
+
+                // Account identity — a non-interactive header row.
+                Item {
+                    implicitWidth: 280
+                    implicitHeight: 58
+                    Row {
+                        anchors.fill: parent
+                        anchors.margins: 11
+                        spacing: 12
+                        Rectangle {
+                            width: 36; height: 36; radius: 18; color: accent; clip: true
+                            Image {
+                                anchors.fill: parent
+                                visible: fileShareController.signedInPhotoPath.length > 0
+                                source: fileShareController.signedInPhotoPath.length > 0
+                                        ? "file://" + fileShareController.signedInPhotoPath : ""
+                                fillMode: Image.PreserveAspectCrop
+                            }
+                            Label {
+                                anchors.centerIn: parent
+                                visible: fileShareController.signedInPhotoPath.length === 0
+                                text: fileShareController.signedInEmail.length > 0
+                                      ? fileShareController.signedInEmail.charAt(0).toUpperCase() : ""
+                                color: "white"; font.pixelSize: 16; font.weight: Font.Medium
+                            }
+                        }
+                        Column {
+                            width: parent.width - 48
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 1
+                            Label {
+                                visible: fileShareController.signedInName.length > 0
+                                width: parent.width
+                                text: fileShareController.signedInName
+                                color: textPrimary; font.pixelSize: 14; font.weight: Font.Medium
+                                elide: Text.ElideRight
+                            }
+                            Label {
+                                width: parent.width
+                                text: fileShareController.signedInEmail
+                                color: textMuted; font.pixelSize: 12
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+                }
+
+                MenuSeparator { }
+
+                MenuItem {
+                    implicitHeight: 40
+                    contentItem: Row {
+                        spacing: 10
+                        Item { width: 4; height: 1 }
+                        Label { text: "⏻"; color: textPrimary; font.pixelSize: 15
+                                anchors.verticalCenter: parent.verticalCenter }
+                        Label { text: "Sign out"; color: textPrimary; font.pixelSize: 14
+                                anchors.verticalCenter: parent.verticalCenter }
+                    }
+                    background: Rectangle {
+                        radius: 8
+                        color: parent.highlighted ? Theme.rowFill : "transparent"
+                    }
+                    onTriggered: fileShareController.signOutMyDevices()
+                }
             }
         }
 

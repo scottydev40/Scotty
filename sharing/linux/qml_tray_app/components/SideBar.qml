@@ -22,7 +22,7 @@ Item {
         if (v === 2)
             return "Hidden — you won't appear to nearby devices. Active sessions still work."
         if (v === 1)
-            return "Only your saved contacts can discover this device."
+            return "Only your own devices on the same Google account can find you — they share without a prompt."
         return "Nearby devices can share files with you. You'll be notified and must approve each transfer."
     }
 

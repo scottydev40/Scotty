@@ -179,6 +179,13 @@ class NearbyConnectionsManagerImpl : public NearbyConnectionsManager {
   absl::flat_hash_map<std::string, std::unique_ptr<Timer>>
       connect_timeout_timers_ ABSL_GUARDED_BY(mutex_);
 
+  // WIFI_LAN-vs-BLE race retry bookkeeping: per-endpoint failed-attempt counts
+  // and the pending delayed-retry timers.
+  absl::flat_hash_map<std::string, int> connect_attempts_
+      ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<std::string, std::unique_ptr<Timer>> connect_retry_timers_
+      ABSL_GUARDED_BY(mutex_);
+
   // A map of payload_id to PayloadStatusListener weak pointer.
   absl::flat_hash_map<int64_t, std::weak_ptr<PayloadStatusListener>>
       payload_status_listeners_ ABSL_GUARDED_BY(mutex_);
