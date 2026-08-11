@@ -37,6 +37,8 @@ class FileShareTrayController : public QObject {
   // Advertising visibility for receive mode: 0 = Everyone, 1 = Contacts, 2 = Hidden.
   Q_PROPERTY(int visibility READ visibility WRITE setVisibility NOTIFY visibilityChanged)
   Q_PROPERTY(QString signedInEmail READ signedInEmail NOTIFY signedInEmailChanged)
+  Q_PROPERTY(QString signedInName READ signedInName NOTIFY signedInNameChanged)
+  Q_PROPERTY(QString signedInPhotoPath READ signedInPhotoPath NOTIFY signedInPhotoPathChanged)
   // Whether the opt-in My-Devices plugin (dev.scotty.MyDevices1) is present
   // (installed/activatable). The core links no grey code; this only gates the
   // Contacts / Your-devices UI and the Sign-in affordance.
@@ -72,6 +74,8 @@ class FileShareTrayController : public QObject {
   bool developerMode() const { return state_.developerMode(); }
   int visibility() const { return visibility_; }
   QString signedInEmail() const { return signed_in_email_; }
+  QString signedInName() const { return signed_in_name_; }
+  QString signedInPhotoPath() const { return signed_in_photo_path_; }
   bool mydevicesAvailable() const { return mydevices_available_; }
   bool runAtStartup() const;
 
@@ -141,6 +145,8 @@ class FileShareTrayController : public QObject {
   void visibilityChanged();
   void runAtStartupChanged();
   void signedInEmailChanged();
+  void signedInNameChanged();
+  void signedInPhotoPathChanged();
   void mydevicesAvailableChanged();
 
   // An incoming transfer needs an answer and auto-accept is off.
@@ -198,6 +204,8 @@ class FileShareTrayController : public QObject {
  private:
   std::unique_ptr<NearbySharingApi> service_;
   QString signed_in_email_;
+  QString signed_in_name_;
+  QString signed_in_photo_path_;
   bool mydevices_available_ = false;
   FileShareState state_;
   // Per-target throughput tracking: last observed byte count + timestamp, and
