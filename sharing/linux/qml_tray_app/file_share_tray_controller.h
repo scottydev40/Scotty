@@ -194,6 +194,7 @@ class FileShareTrayController : public QObject {
   void setupMyDevicesBus();
   void refreshMyDevicesAvailability();
   void refreshMyDevicesAccount();
+  void refreshMyDevicesProfile();
   void setSignedInEmail(const QString& email);
 
  private slots:

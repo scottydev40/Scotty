@@ -8,6 +8,9 @@
 #include <QDBusConnectionInterface>
 #include <QDBusInterface>
 #include <QDBusMessage>
+#include <QDBusPendingCall>
+#include <QDBusPendingCallWatcher>
+#include <QDBusPendingReply>
 #include <QDBusReply>
 #include <QDBusServiceWatcher>
 #include <QDesktopServices>
@@ -576,6 +579,33 @@ void FileShareTrayController::refreshMyDevicesAccount() {
   const bool signed_in = !args.isEmpty() && args.at(0).toBool();
   setSignedInEmail(signed_in && args.size() > 1 ? args.at(1).toString()
                                                 : QString());
+  if (signed_in) {
+    refreshMyDevicesProfile();
+  }
+}
+
+void FileShareTrayController::refreshMyDevicesProfile() {
+  auto* plugin = new QDBusInterface(
+      QLatin1String(kMyDevicesService), QLatin1String(kMyDevicesPath),
+      QLatin1String(kMyDevicesIface), QDBusConnection::sessionBus(), this);
+  QDBusPendingCall pending = plugin->asyncCall(QStringLiteral("GetProfile"));
+  auto* watcher = new QDBusPendingCallWatcher(pending, this);
+  connect(watcher, &QDBusPendingCallWatcher::finished, this,
+          [this, plugin](QDBusPendingCallWatcher* w) {
+            QDBusPendingReply<QString, QString> reply = *w;
+            if (reply.isValid()) {
+              const QString name = reply.argumentAt<0>();
+              const QString photo = reply.argumentAt<1>();
+              if (name != signed_in_name_) {
+                signed_in_name_ = name; emit signedInNameChanged();
+              }
+              if (photo != signed_in_photo_path_) {
+                signed_in_photo_path_ = photo; emit signedInPhotoPathChanged();
+              }
+            }
+            w->deleteLater();
+            plugin->deleteLater();
+          });
 }
 
 void FileShareTrayController::requestMyDevicesSignIn() {
@@ -599,6 +629,9 @@ void FileShareTrayController::signOutMyDevices() {
 void FileShareTrayController::onMyDevicesAccountChanged(bool signed_in,
                                                        const QString& email) {
   setSignedInEmail(signed_in ? email : QString());
+  if (signed_in) {
+    refreshMyDevicesProfile();
+  }
 }
 
 void FileShareTrayController::onMyDevicesOwnerChanged(const QString& /*service*/,
