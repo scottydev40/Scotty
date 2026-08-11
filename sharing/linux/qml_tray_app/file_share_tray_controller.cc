@@ -433,9 +433,11 @@ void FileShareTrayController::loadSettings() {
 
   const int stored_visibility =
       settings.value(QStringLiteral("visibility"), 0).toInt();
+  // A previously persisted "Your devices" (3) now folds into Contacts (1),
+  // which advertises the self identity.
   visibility_ = (stored_visibility >= 0 && stored_visibility <= 2)
                     ? stored_visibility
-                    : 0;
+                    : (stored_visibility == 3 ? 1 : 0);
 }
 
 void FileShareTrayController::saveSettings() const {
@@ -616,6 +618,10 @@ void FileShareTrayController::setSignedInEmail(const QString& email) {
   }
   signed_in_email_ = email;
   emit signedInEmailChanged();
+  if (email.isEmpty()) {
+    if (!signed_in_name_.isEmpty()) { signed_in_name_.clear(); emit signedInNameChanged(); }
+    if (!signed_in_photo_path_.isEmpty()) { signed_in_photo_path_.clear(); emit signedInPhotoPathChanged(); }
+  }
 }
 
 static QString AutostartFilePath() {
