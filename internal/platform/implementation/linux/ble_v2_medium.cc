@@ -27,6 +27,7 @@
 
 #include <atomic>
 #include <memory>
+#include <regex>
 #include <string>
 #include <thread>
 #include <utility>
@@ -59,6 +60,7 @@
 #include "internal/platform/implementation/linux/bluetooth_devices.h"
 #include "internal/platform/implementation/linux/bluez.h"
 #include "internal/platform/implementation/linux/bluez_advertisement_monitor.h"
+#include "internal/platform/implementation/linux/utils.h"
 #include "internal/platform/implementation/linux/bluez_advertisement_monitor_manager.h"
 #include "internal/platform/implementation/linux/bluez_le_advertisement.h"
 #include "internal/platform/implementation/linux/dbus.h"
@@ -283,6 +285,46 @@ BleV2Medium::StartAdvertising(
     return true;
   }
 
+namespace {
+using AdvFoundCb = absl::AnyInvocable<void(
+    api::ble::BlePeripheral::UniqueId, api::ble::BleAdvertisementData)>;
+
+// Build a general-discovery DiscoveryCallback that decodes a peer's Nearby
+// (FEF3) ServiceData into a scan result. This is the controller-agnostic scan
+// path: bluez's AdvertisementMonitor offload is unavailable here (RegisterMonitor
+// is a no-op and the MT7925/kernel has no MSFT/adv-monitor offload), so the
+// monitor's DeviceFound never fires. The same adverts still arrive via normal
+// LE discovery with ServiceData populated on the bluez device object, so decode
+// them here instead. Mirrors bluez_advertisement_monitor.cc DeviceFound().
+std::unique_ptr<api::BluetoothClassicMedium::DiscoveryCallback>
+MakeFef3ScanDiscoveryCallback(std::shared_ptr<AdvFoundCb> found_cb) {
+  auto discovery_cb =
+      std::make_unique<api::BluetoothClassicMedium::DiscoveryCallback>();
+  discovery_cb->device_discovered_cb =
+      [found_cb](api::BluetoothDevice &device) {
+        auto &dev = static_cast<BluetoothDevice &>(device);
+        auto service_data = dev.ServiceData();
+        if (!service_data.has_value()) return;
+
+        struct api::ble::BleAdvertisementData adv_data;
+        for (const auto &[uuid_str, data] : *service_data) {
+          auto uuid = UuidFromString(uuid_str);
+          if (!uuid.has_value()) continue;
+          std::vector<uint8_t> bytes = data.get<std::vector<uint8_t>>();
+          adv_data.service_data.emplace(
+              *uuid, std::string(bytes.begin(), bytes.end()));
+        }
+        if (adv_data.service_data.empty()) return;
+
+        auto mac = dev.GetMacAddress().ToString();
+        auto id = std::stoull(std::regex_replace(mac, std::regex("[:\\-]"), ""),
+                              nullptr, 16);
+        (*found_cb)(id, adv_data);
+      };
+  return discovery_cb;
+}
+}  // namespace
+
 bool BleV2Medium::StartScanning(const Uuid &service_uuid,
                                 api::ble::TxPowerLevel tx_power_level,
                                 ScanCallback callback) {
@@ -313,9 +355,16 @@ bool BleV2Medium::StartScanning(const Uuid &service_uuid,
     return false;
   }
 
+  // The AdvertisementMonitor offload path is dead on this platform (its
+  // RegisterMonitor is a no-op and the controller has no adv-monitor offload,
+  // so DeviceFound never fires). Keep the monitor object for its D-Bus presence
+  // but hand the real scan callback to the DeviceWatcher below, which decodes
+  // FEF3 ServiceData from devices found via normal LE discovery.
+  auto found_cb = std::make_shared<AdvFoundCb>(
+      std::move(callback.advertisement_found_cb));
   auto monitor = std::make_unique<bluez::AdvertisementMonitor>(
     *system_bus_, service_uuid, tx_power_level, "or_patterns", devices_,
-    std::move(callback));
+    api::ble::BleMedium::ScanCallback{});
   try {
     // why is this emitted?
     monitor->emitInterfacesAddedSignal(
@@ -332,7 +381,8 @@ bool BleV2Medium::StartScanning(const Uuid &service_uuid,
     return false;
   }
   auto device_watcher = std::make_unique<DeviceWatcher>(
-    *system_bus_, adapter_.GetObjectPath(), adapter_, devices_);
+    *system_bus_, adapter_.GetObjectPath(), adapter_, devices_,
+    MakeFef3ScanDiscoveryCallback(found_cb), observers_);
   if (!StartLEDiscovery()) {
     LOG(ERROR) << __func__
                        << ": Could not start LE discovery on adapter "
