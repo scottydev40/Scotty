@@ -200,6 +200,16 @@ BluetoothClassicMedium::ListenForService(const std::string &service_name,
     }
   }
 
+  // We are about to accept incoming connections; make sure our auto-accept
+  // BlueZ agent still owns the default-agent slot so an incoming Just-Works
+  // pairing is answered here instead of stalling (SMP_RSP_TIMEOUT) when e.g.
+  // GNOME's Bluetooth panel has grabbed the default agent.
+  if (agent_manager_ != nullptr) {
+    agent_manager_->EnsureDefaultAgent(
+        /*capability=*/absl::string_view("NoInputNoOutput"),
+        sdbus::ObjectPath(kBluezAgentPath));
+  }
+
   return std::shared_ptr<api::BluetoothServerSocket>(
       new BluetoothServerSocket(*profile_manager_, service_uuid));
 }
