@@ -75,17 +75,8 @@ Item {
             Layout.preferredHeight: 36
             radius: 18
             color: accent
-            clip: true
 
-            // Profile photo when available, else the initial letter.
-            Image {
-                anchors.fill: parent
-                visible: fileShareController.signedInPhotoPath.length > 0
-                source: fileShareController.signedInPhotoPath.length > 0
-                        ? "file://" + fileShareController.signedInPhotoPath : ""
-                fillMode: Image.PreserveAspectCrop
-                layer.enabled: true
-            }
+            // Initial-letter fallback (sits under the photo layer).
             Label {
                 anchors.centerIn: parent
                 visible: fileShareController.signedInPhotoPath.length === 0
@@ -94,6 +85,30 @@ Item {
                 font.pixelSize: 16
                 font.weight: Font.Medium
                 color: "white"
+            }
+            // Profile photo, masked into a circle. clip:/radius alone only
+            // clips to the square bounds, so mask with a round MultiEffect.
+            Image {
+                id: avatarPhoto
+                anchors.fill: parent
+                visible: false
+                source: fileShareController.signedInPhotoPath.length > 0
+                        ? "file://" + encodeURI(fileShareController.signedInPhotoPath) : ""
+                fillMode: Image.PreserveAspectCrop
+            }
+            MultiEffect {
+                anchors.fill: parent
+                visible: fileShareController.signedInPhotoPath.length > 0
+                source: avatarPhoto
+                maskEnabled: true
+                maskSource: avatarMask
+            }
+            Item {
+                id: avatarMask
+                anchors.fill: parent
+                layer.enabled: true
+                visible: false
+                Rectangle { anchors.fill: parent; radius: width / 2 }
             }
             MouseArea {
                 anchors.fill: parent
@@ -128,20 +143,35 @@ Item {
                         anchors.margins: 11
                         spacing: 12
                         Rectangle {
-                            width: 36; height: 36; radius: 18; color: accent; clip: true
-                            Image {
-                                anchors.fill: parent
-                                visible: fileShareController.signedInPhotoPath.length > 0
-                                source: fileShareController.signedInPhotoPath.length > 0
-                                        ? "file://" + fileShareController.signedInPhotoPath : ""
-                                fillMode: Image.PreserveAspectCrop
-                            }
+                            width: 36; height: 36; radius: 18; color: accent
                             Label {
                                 anchors.centerIn: parent
                                 visible: fileShareController.signedInPhotoPath.length === 0
                                 text: fileShareController.signedInEmail.length > 0
                                       ? fileShareController.signedInEmail.charAt(0).toUpperCase() : ""
                                 color: "white"; font.pixelSize: 16; font.weight: Font.Medium
+                            }
+                            Image {
+                                id: menuAvatarPhoto
+                                anchors.fill: parent
+                                visible: false
+                                source: fileShareController.signedInPhotoPath.length > 0
+                                        ? "file://" + encodeURI(fileShareController.signedInPhotoPath) : ""
+                                fillMode: Image.PreserveAspectCrop
+                            }
+                            MultiEffect {
+                                anchors.fill: parent
+                                visible: fileShareController.signedInPhotoPath.length > 0
+                                source: menuAvatarPhoto
+                                maskEnabled: true
+                                maskSource: menuAvatarMask
+                            }
+                            Item {
+                                id: menuAvatarMask
+                                anchors.fill: parent
+                                layer.enabled: true
+                                visible: false
+                                Rectangle { anchors.fill: parent; radius: width / 2 }
                             }
                         }
                         Column {
