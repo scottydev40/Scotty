@@ -95,5 +95,28 @@ bool AgentManager::Register(std::optional<absl::string_view> capability,
   return true;
 }
 
+bool AgentManager::EnsureDefaultAgent(
+    std::optional<absl::string_view> capability,
+    const sdbus::ObjectPath& agent_object_path) {
+  // Not registered yet -> Register() also calls RequestDefaultAgent for us.
+  if (!AgentRegistered(agent_object_path)) {
+    return Register(capability, agent_object_path);
+  }
+
+  // Already registered: just reclaim the default-agent slot. BlueZ keeps a
+  // single default agent, so the last requester wins; doing this as we start
+  // listening puts us back in charge if something grabbed it after startup.
+  try {
+    RequestDefaultAgent(agent_object_path);
+  } catch (const sdbus::Error& e) {
+    LOG(WARNING) << __func__ << ": RequestDefaultAgent failed for "
+                 << agent_object_path << ": " << e.getName() << " ("
+                 << e.getMessage() << ")";
+    return false;
+  }
+  LOG(INFO) << __func__ << ": Reasserted default agent " << agent_object_path;
+  return true;
+}
+
 }  // namespace linux
 }  // namespace nearby
