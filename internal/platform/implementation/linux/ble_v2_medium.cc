@@ -493,13 +493,47 @@ std::unique_ptr<api::ble::GattServer> BleV2Medium::StartGattServer(
                                       std::move(callback));
 }
 
+std::optional<sdbus::ObjectPath> BleV2Medium::ResolvePeripheralPath(
+    api::ble::BlePeripheral::UniqueId peripheral_id,
+    const Uuid &service_uuid) {
+  // 1) A device already exposing the resolved Nearby (FEF3) service. Once bluez
+  //    has resolved the peer's GATT tree this is the identity device, and it
+  //    stays valid across the peer's NRPA rotation.
+  if (auto resolved = gatt_discovery_->FindDeviceExposingService(service_uuid)) {
+    return resolved;
+  }
+  // 2) Bonded devices (the user's own phone) survive RPA rotation even after
+  //    bluez deletes the advertised device object. Connect() drives the GATT
+  //    resolution a passive lookup misses; re-check for the service afterward
+  //    and only accept a bonded device that actually exposes it.
+  for (const auto &path : gatt_discovery_->GetBondedDevicePaths()) {
+    if (auto d = devices_->get_device_by_path(path)) d->Connect();
+    if (auto resolved =
+            gatt_discovery_->FindDeviceExposingService(service_uuid)) {
+      return resolved;
+    }
+  }
+  // 3) Last resort: the advertised (RPA) device from the baked UniqueId. Only
+  //    valid until the peer rotates its NRPA, but it's the best available when
+  //    the peer isn't bonded and hasn't resolved the service yet.
+  if (auto device = devices_->get_device_by_unique_id(peripheral_id)) {
+    return device->GetObjectPath();
+  }
+  return std::nullopt;
+}
+
 std::unique_ptr<api::ble::GattClient> BleV2Medium::ConnectToGattServer(
   api::ble::BlePeripheral::UniqueId peripheral_id,
   api::ble::TxPowerLevel tx_power_level,
   api::ble::ClientGattConnectionCallback callback) {
-  auto device = devices_->get_device_by_unique_id(peripheral_id);
-  if (!device) {
-    LOG(ERROR) << __func__ << ": Failed to find device with unique ID "
+  // The saved peripheral_id encodes the RPA MAC captured at discovery time; the
+  // peer rotates its NRPA and bluez deletes the stale device object, so resolve
+  // the current path (resolved-service -> bonded -> RPA) instead of a bare
+  // get_device_by_unique_id() that misses after rotation.
+  const Uuid service_uuid("0000FEF3-0000-1000-8000-00805F9B34FB");
+  auto peripheral_object_path = ResolvePeripheralPath(peripheral_id, service_uuid);
+  if (!peripheral_object_path) {
+    LOG(ERROR) << __func__ << ": Failed to resolve device for unique ID "
                << peripheral_id;
     return nullptr;
   }
@@ -507,10 +541,9 @@ std::unique_ptr<api::ble::GattClient> BleV2Medium::ConnectToGattServer(
   // Tx power is not configurable for this Linux GATT path yet.
   (void)tx_power_level;
 
-  auto peripheral_object_path = device->GetObjectPath();
   LOG(INFO) << __func__ << ": Creating Linux GATT client for peripheral "
-            << peripheral_object_path;
-  return std::make_unique<GattClient>(system_bus_, peripheral_object_path,
+            << *peripheral_object_path;
+  return std::make_unique<GattClient>(system_bus_, *peripheral_object_path,
                                       gatt_discovery_,
                                       std::move(callback.disconnected_cb));
 }
@@ -738,11 +771,21 @@ std::unique_ptr<api::ble::BleL2capSocket> BleV2Medium::ConnectOverL2cap(
     api::ble::TxPowerLevel tx_power_level,
     api::ble::BlePeripheral::UniqueId peripheral_id,
     CancellationFlag *cancellation_flag) {
-  // return nullptr;
-  auto device = devices_->get_device_by_unique_id(peripheral_id);
-  if (!device) {
-    LOG(ERROR) << __func__ << ": Failed to find device with unique ID "
+  // The saved peripheral_id encodes the RPA MAC captured at discovery time; the
+  // peer rotates its NRPA and bluez deletes the stale device object, so resolve
+  // the current path (resolved-service -> bonded -> RPA) then take the live
+  // device object from it for the L2CAP address/type.
+  const Uuid service_uuid("0000FEF3-0000-1000-8000-00805F9B34FB");
+  auto resolved_path = ResolvePeripheralPath(peripheral_id, service_uuid);
+  if (!resolved_path) {
+    LOG(ERROR) << __func__ << ": Failed to resolve device for unique ID "
                << peripheral_id;
+    return nullptr;
+  }
+  auto device = devices_->get_device_by_path(*resolved_path);
+  if (!device) {
+    LOG(ERROR) << __func__ << ": Resolved path has no device object: "
+               << *resolved_path;
     return nullptr;
   }
 

@@ -124,6 +124,17 @@ class BleV2Medium final : public api::ble::BleMedium {
   bool WaitForAdvertisementMonitorManager();
   void OnRegisterMonitorReply(std::optional<sdbus::Error> error);
 
+  // Resolve the current bluez device object path for a peripheral whose saved
+  // UniqueId encodes a now-rotated NRPA MAC. Prefers a device already exposing
+  // the resolved Nearby service, then a bonded identity device (persistent
+  // across RPA rotation), then the advertised RPA from the baked id as a last
+  // resort. Returns nullopt if nothing resolves. Connect() has a char-level
+  // variant tailored to the Weave socket; this is the service-level version
+  // shared by ConnectToGattServer and ConnectOverL2cap.
+  std::optional<sdbus::ObjectPath> ResolvePeripheralPath(
+      api::ble::BlePeripheral::UniqueId peripheral_id,
+      const Uuid &service_uuid);
+
   bool MonitorManagerSupportsOr() {
     std::vector<std::string> supported_types;
     try {
