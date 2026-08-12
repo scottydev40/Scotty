@@ -434,13 +434,20 @@ void FileShareTrayController::loadSettings() {
   state_.SetDeveloperMode(
       settings.value(QStringLiteral("developerMode"), false).toBool());
 
-  const int stored_visibility =
+  int stored_visibility =
       settings.value(QStringLiteral("visibility"), 0).toInt();
-  // A previously persisted "Your devices" (3) now folds into Contacts (1),
-  // which advertises the self identity.
-  visibility_ = (stored_visibility >= 0 && stored_visibility <= 2)
-                    ? stored_visibility
-                    : (stored_visibility == 3 ? 1 : 0);
+  // Migrate the old 3-value model. Old "Contacts" (1) advertised the self
+  // identity (SELF_SHARE), which is now the dedicated "Your devices" (3); remap
+  // it so existing users keep the exact behavior they had. The temporary
+  // Everyone (4) is never persisted (saveSettings stores the base), so anything
+  // out of the 0..3 range falls back to Everyone.
+  if (stored_visibility == 1) {
+    stored_visibility = 3;
+  } else if (stored_visibility < 0 || stored_visibility > 3) {
+    stored_visibility = 0;
+  }
+  visibility_ = stored_visibility;
+  pre_temp_visibility_ = visibility_;
 }
 
 void FileShareTrayController::saveSettings() const {
@@ -453,7 +460,10 @@ void FileShareTrayController::saveSettings() const {
   settings.setValue(QStringLiteral("logPath"), state_.logPath());
   settings.setValue(QStringLiteral("savePath"), state_.savePath());
   settings.setValue(QStringLiteral("developerMode"), state_.developerMode());
-  settings.setValue(QStringLiteral("visibility"), visibility_);
+  // Never persist the transient "Everyone (10 min)" (4) — store its base so a
+  // restart mid-window lands on the safe prior visibility, not stuck on Everyone.
+  settings.setValue(QStringLiteral("visibility"),
+                    visibility_ == 4 ? pre_temp_visibility_ : visibility_);
 }
 
 void FileShareTrayController::setDeviceName(const QString& device_name) {
@@ -507,17 +517,36 @@ void FileShareTrayController::setHotspotBoost(bool enabled) {
 }
 
 void FileShareTrayController::setVisibility(int mode) {
-  if (mode < 0 || mode > 2 || mode == visibility_) {
+  if (mode < 0 || mode > 4 || mode == visibility_) {
     return;
+  }
+  // Any explicit change cancels a pending "Everyone (10 min)" revert.
+  if (temp_visibility_timer_) {
+    temp_visibility_timer_->stop();
+  }
+  // Entering the temporary-Everyone mode: remember what to fall back to. At this
+  // point visibility_ is never 4 (that would have been the early-return above).
+  if (mode == 4) {
+    pre_temp_visibility_ = visibility_;
   }
   visibility_ = mode;
   // Applies live if the service is receiving; otherwise takes effect on next
-  // StartReceiveMode (see NearbySharingApi::SetVisibility).
+  // StartReceiveMode (see NearbySharingApi::SetVisibility). Mode 4 maps to
+  // Everyone in the engine.
   if (service_) {
     service_->SetVisibility(mode);
   }
   saveSettings();
   emit visibilityChanged();
+  if (mode == 4) {
+    if (!temp_visibility_timer_) {
+      temp_visibility_timer_ = new QTimer(this);
+      temp_visibility_timer_->setSingleShot(true);
+      connect(temp_visibility_timer_, &QTimer::timeout, this,
+              [this] { setVisibility(pre_temp_visibility_); });
+    }
+    temp_visibility_timer_->start(kTempEveryoneMs);
+  }
 }
 
 namespace {

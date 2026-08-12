@@ -34,7 +34,8 @@ class FileShareTrayController : public QObject {
   Q_PROPERTY(QString logPath READ logPath WRITE setLogPath NOTIFY logPathChanged)
   Q_PROPERTY(QString savePath READ savePath WRITE setSavePath NOTIFY savePathChanged)
   Q_PROPERTY(bool developerMode READ developerMode WRITE setDeveloperMode NOTIFY developerModeChanged)
-  // Advertising visibility for receive mode: 0 = Everyone, 1 = Contacts, 2 = Hidden.
+  // Advertising visibility for receive mode: 0=Everyone, 1=Contacts, 2=No one,
+  // 3=Your devices, 4=Everyone (10 min, auto-reverts). 1 and 3 need an account.
   Q_PROPERTY(int visibility READ visibility WRITE setVisibility NOTIFY visibilityChanged)
   Q_PROPERTY(QString signedInEmail READ signedInEmail NOTIFY signedInEmailChanged)
   Q_PROPERTY(QString signedInName READ signedInName NOTIFY signedInNameChanged)
@@ -232,8 +233,13 @@ class FileShareTrayController : public QObject {
   void startDiscoveryWatchdog();
   void stopDiscoveryWatchdog();
   void onDiscoveryWatchdogTick();
-  // Advertising visibility: 0 = Everyone, 1 = Contacts, 2 = Hidden.
+  // Advertising visibility: 0=Everyone, 1=Contacts, 2=No one, 3=Your devices,
+  // 4=Everyone (10 min). Mode 4 advertises Everyone and reverts to
+  // pre_temp_visibility_ when temp_visibility_timer_ fires.
   int visibility_ = 0;
+  int pre_temp_visibility_ = 0;
+  QTimer* temp_visibility_timer_ = nullptr;
+  static constexpr int kTempEveryoneMs = 10 * 60 * 1000;  // 10 minutes
   // Whether the main window is on screen; kept in sync by setReceiveForeground.
   bool window_visible_ = true;
   // Last emitted value of transferActive(), so transferActiveChanged only fires

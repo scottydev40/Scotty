@@ -12,18 +12,32 @@ Item {
     readonly property color textPrimary: Theme.textPrimary
     readonly property color textMuted: Theme.textMuted
 
-    // Visibility (0=Everyone, 1=Contacts, 2=Hidden) label + description.
+    // Visibility label + description.
+    // 0=Everyone, 1=Contacts, 2=No one, 3=Your devices, 4=Everyone (10 min).
     function visibilityLabel(v) {
-        return v === 1 ? "Contacts" : v === 2 ? "Hidden" : "Everyone"
+        switch (v) {
+        case 1: return "Contacts"
+        case 2: return "No one"
+        case 3: return "Your devices"
+        case 4: return "Everyone (10 min)"
+        default: return "Everyone"
+        }
     }
     function visibilityDesc(v) {
         if (!fileShareController.running)
             return "The service is not running. Start it to discover or receive files."
-        if (v === 2)
-            return "Hidden — you won't appear to nearby devices. Active sessions still work."
-        if (v === 1)
-            return "Only your own devices on the same Google account can find you — they share without a prompt."
-        return "Nearby devices can share files with you. You'll be notified and must approve each transfer."
+        switch (v) {
+        case 2:
+            return "No one — you won't appear to nearby devices. Active sessions still work."
+        case 3:
+            return "Only your own devices signed in to the same account can find you — they share without a prompt."
+        case 1:
+            return "Your contacts can find you and share files. You'll be notified and must approve each transfer."
+        case 4:
+            return "Visible to everyone for 10 minutes, then automatically switches back."
+        default:
+            return "Nearby devices can share files with you. You'll be notified and must approve each transfer."
+        }
     }
 
     // True while an outgoing transfer is still active (not yet sent/failed).
@@ -62,7 +76,7 @@ Item {
                 font.pixelSize: 13
             }
 
-            // Visibility selector (Everyone / Contacts / Hidden).
+            // Visibility selector (No one / Your devices / Contacts / Everyone).
             Rectangle {
                 Layout.fillWidth: true
                 Layout.leftMargin: 12
@@ -128,9 +142,27 @@ Item {
                         }
                     }
 
+                    // "Your devices" and "Contacts" need a signed-in account
+                    // (cert exchange), so
+                    // they only appear when signed in — on the clean core the
+                    // menu collapses to No one / Everyone / Everyone (10 min).
+                    readonly property bool hasAccount: fileShareController.signedInEmail.length > 0
+
+                    VisItem { text: "No one"; onTriggered: fileShareController.visibility = 2 }
+                    VisItem {
+                        text: "Your devices"
+                        visible: visibilityMenu.hasAccount
+                        height: visible ? implicitHeight : 0
+                        onTriggered: fileShareController.visibility = 3
+                    }
+                    VisItem {
+                        text: "Contacts"
+                        visible: visibilityMenu.hasAccount
+                        height: visible ? implicitHeight : 0
+                        onTriggered: fileShareController.visibility = 1
+                    }
                     VisItem { text: "Everyone"; onTriggered: fileShareController.visibility = 0 }
-                    VisItem { text: "Contacts"; onTriggered: fileShareController.visibility = 1 }
-                    VisItem { text: "Hidden"; onTriggered: fileShareController.visibility = 2 }
+                    VisItem { text: "Everyone (10 min)"; onTriggered: fileShareController.visibility = 4 }
                 }
             }
 
