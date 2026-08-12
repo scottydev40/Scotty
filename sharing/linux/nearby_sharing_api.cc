@@ -331,7 +331,8 @@ class NearbySharingApi::Impl : public nearby::sharing::ShareTargetDiscoveredCall
   // Which receive surface state to register with. Foreground raises the power
   // level, which adds Bluetooth Classic and therefore renames the adapter.
   bool receive_foreground = true;
-  // App-facing advertising visibility: 0 = Everyone, 1 = Contacts, 2 = Hidden.
+  // App-facing advertising visibility (see ToProtoVisibility): 0=Everyone,
+  // 1=Contacts, 2=No one, 3=Your devices, 4=Everyone(10 min).
   int visibility_mode = 0;
   std::string qr_code_url;
   std::mutex listener_mutex;
@@ -424,22 +425,26 @@ void NearbySharingApi::StopSendMode(std::function<void(StatusCode)> callback) {
       });
 }
 
-// Maps the app-facing visibility mode (0=Everyone, 1=Contacts, 2=Hidden) to the
-// Nearby proto enum. Unknown values fall back to Everyone.
-//
-// "Contacts" advertises with the SELF identity (SELF_SHARE): a phone on the same
-// Google account recognizes this device under My Devices without needing
-// Everyone, and the live advert collapses with the account-published device
-// (no duplicate entry). Reaching a *different person's* contact devices is not
-// covered by this single mode.
+// Maps the app-facing visibility mode to the Nearby proto enum:
+//   0 Everyone           -> EVERYONE
+//   1 Contacts           -> ALL_CONTACTS  (a different person's contact devices)
+//   2 No one             -> HIDDEN
+//   3 Your devices       -> SELF_SHARE    (same account, no prompt)
+//   4 Everyone (10 min)  -> EVERYONE       (the app reverts after 10 min)
+// Unknown values fall back to Everyone. Modes 1 and 3 require a signed-in
+// account (cert exchange); the UI only offers them when signed in.
 static nearby::sharing::proto::DeviceVisibility ToProtoVisibility(int mode) {
   switch (mode) {
     case 1:
       return nearby::sharing::proto::DeviceVisibility::
-          DEVICE_VISIBILITY_SELF_SHARE;
+          DEVICE_VISIBILITY_ALL_CONTACTS;
     case 2:
       return nearby::sharing::proto::DeviceVisibility::DEVICE_VISIBILITY_HIDDEN;
+    case 3:
+      return nearby::sharing::proto::DeviceVisibility::
+          DEVICE_VISIBILITY_SELF_SHARE;
     case 0:
+    case 4:
     default:
       return nearby::sharing::proto::DeviceVisibility::
           DEVICE_VISIBILITY_EVERYONE;
