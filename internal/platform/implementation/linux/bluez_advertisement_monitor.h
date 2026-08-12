@@ -65,9 +65,15 @@ class AdvertisementMonitor final
 
   // Properties
   std::string Type() override { return type_; };
-  int16_t RSSILowThreshold() override { return 127; };
+  // BlueZ reports a monitored device as "found" only once its RSSI rises above
+  // RSSIHighThreshold (valid range -127..20 dBm). The old value 127 is out of
+  // range and unreachable, so DeviceFound never fired and off-Wi-Fi discovery
+  // (which relies on this BLE monitor, not WifiLan/mDNS) could never surface a
+  // peer. Use -127 so any real advert clears the bar and is reported on pattern
+  // match; -127 low threshold means we never drop it on signal alone.
+  int16_t RSSILowThreshold() override { return -127; };
   int16_t RSSIHighThreshold() override {
-    return 127;
+    return -127;
   }
   uint16_t RSSISamplingPeriod() override {
     // The Windows implementation uses a sampling interval of 2 seconds.
