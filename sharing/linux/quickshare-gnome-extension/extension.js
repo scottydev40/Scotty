@@ -1,11 +1,17 @@
 // Quick Share — GNOME Shell Quick Settings tile.
 //
-// Adds a tile (and an optional panel indicator icon) that controls the Nearby /
-// Quick Share Linux app over D-Bus. The app exposes:
+// Android-style tile: it shows the app's current visibility and acts as a
+// launcher, nothing more. Visibility itself is chosen inside the app (the tile
+// used to carry a dropdown of radios; that lived in two places and is gone).
+//
+//   short press  → open the app (launch it if it isn't running)
+//   long  press  → quit the app
+//
+// Talks to the app over D-Bus:
 //
 //   dev.scotty.Scotty  at  /dev/scotty/Scotty
-//     GetVisibility() -> i          (0 Everyone, 1 Contacts, 2 Hidden)
-//     SetVisibility(i)
+//     GetVisibility() -> i   (0 Everyone, 1 Contacts, 2 No one,
+//                             3 Your devices, 4 Everyone (10 min))
 //     GetRunning() -> b
 //     GetTransferActive() -> b
 //     Show()
@@ -14,15 +20,15 @@
 //     signal RunningChanged(b)
 //     signal TransferActiveChanged(b)
 
+import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {
-    QuickMenuToggle,
+    QuickToggle,
     SystemIndicator,
 } from 'resource:///org/gnome/shell/ui/quickSettings.js';
 
@@ -33,6 +39,10 @@ const APP_BINARY = 'scotty';
 // Keep the panel indicator lit this long after a transfer ends, so a fast
 // (e.g. Wi-Fi LAN photo) transfer registers as more than a blip.
 const TRANSFER_HOLD_MS = 3000;
+
+// Hold the tile down at least this long to quit the app (matches the feel of a
+// phone long-press).
+const LONG_PRESS_MS = 500;
 
 const IFACE = `
 <node>
@@ -54,59 +64,52 @@ const IFACE = `
 
 const QuickShareProxy = Gio.DBusProxy.makeProxyWrapper(IFACE);
 
-// Matches the wording Android uses in its own Quick Share tile.
+// Matches the wording the app's own visibility picker uses. "No one" (2) is the
+// non-advertising state; everything else means the device is discoverable.
 const VIS_LABEL = {
     0: 'Everyone',
     1: 'Contacts',
-    2: 'Hidden',
+    2: 'No one',
+    3: 'Your devices',
+    4: 'Everyone (10 min)',
 };
 
 const QuickShareToggle = GObject.registerClass(
-class QuickShareToggle extends QuickMenuToggle {
+class QuickShareToggle extends QuickToggle {
     _init(ext) {
         super._init({
             title: 'Scotty',
             gicon: ext.icon,
-            toggleMode: true,
+            subtitle: VIS_LABEL[0],
         });
         this._ext = ext;
 
-        this.menu.setHeader(ext.icon, 'Scotty', VIS_LABEL[0]);
+        // Short vs long press, decided from how long the tile was held. We time
+        // press → 'clicked' (which St.Button emits on release) rather than
+        // running a self-firing timer: clicking a Quick Settings tile closes the
+        // panel and can swallow the button-release, so a timer would outlive the
+        // grab and fire on its own. One 'clicked' = exactly one action.
+        this._pressTs = 0;
 
-        // Visibility radio items.
-        this._items = {};
-        for (const [val, label] of Object.entries(VIS_LABEL)) {
-            const mode = Number(val);
-            const item = new PopupMenu.PopupMenuItem(label);
-            item.connect('activate', () => this._ext.setVisibility(mode));
-            this.menu.addMenuItem(item);
-            this._items[mode] = item;
-        }
-
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        const openItem = new PopupMenu.PopupMenuItem('Open Scotty');
-        openItem.connect('activate', () => this._ext.openWindow());
-        this.menu.addMenuItem(openItem);
-
-        this._quitItem = new PopupMenu.PopupMenuItem('Quit Scotty');
-        this._quitItem.connect('activate', () => this._ext.quitApp());
-        this.menu.addMenuItem(this._quitItem);
-
-        // Toggling the tile itself: on → Everyone, off → Hidden.
+        this.connect('button-press-event', () => {
+            this._pressTs = GLib.get_monotonic_time();
+            return Clutter.EVENT_PROPAGATE;
+        });
         this.connect('clicked', () => {
-            this._ext.setVisibility(this.checked ? 0 : 2);
+            const heldMs = this._pressTs
+                ? (GLib.get_monotonic_time() - this._pressTs) / 1000 : 0;
+            this._pressTs = 0;
+            if (heldMs >= LONG_PRESS_MS)
+                this._ext.quitApp();
+            else
+                this._ext.openWindow();
         });
     }
 
     syncVisibility(vis) {
+        // Lit while discoverable (anything but "No one").
         this.checked = vis !== 2;
         this.subtitle = VIS_LABEL[vis] ?? '';
-        this.menu.setHeader(this._ext.icon, 'Scotty', VIS_LABEL[vis] ?? '');
-        for (const [val, item] of Object.entries(this._items)) {
-            item.setOrnament(Number(val) === vis
-                ? PopupMenu.Ornament.DOT
-                : PopupMenu.Ornament.NONE);
-        }
     }
 
     syncRunning(running) {
@@ -116,9 +119,6 @@ class QuickShareToggle extends QuickMenuToggle {
         // App gone: the tile must not keep showing the last live state.
         this.checked = false;
         this.subtitle = 'Not running';
-        this.menu.setHeader(this._ext.icon, 'Scotty', 'Not running');
-        for (const item of Object.values(this._items))
-            item.setOrnament(PopupMenu.Ornament.NONE);
     }
 });
 
@@ -161,7 +161,6 @@ export default class QuickShareExtension extends Extension {
                 'view-refresh-symbolic',
             ],
         });
-        this._pendingVisibility = null;
         // Cached panel inputs; _updatePanel() combines them.
         this._visibility = 0;
         this._transferActive = false;
@@ -218,23 +217,7 @@ export default class QuickShareExtension extends Extension {
             this._syncTransferActive(active);
         });
 
-        // A visibility picked while the app was down: apply it now that it is
-        // up. Without this the launch silently restores the app's persisted
-        // visibility and the choice that started it is discarded.
-        if (this._pendingVisibility !== null) {
-            const pending = this._pendingVisibility;
-            this._pendingVisibility = null;
-            this._proxy.SetVisibilityRemote(pending, (res, err) => {
-                if (err)
-                    logError(err, 'Quick Share: pending SetVisibility failed');
-                // Sync explicitly: if the app already sat on `pending` it emits
-                // no VisibilityChanged, and the tile would stay stale.
-                this._syncVisibility(pending);
-            });
-            return;
-        }
-
-        // Pull current visibility.
+        // Pull current visibility for the tile subtitle.
         this._proxy.GetVisibilityRemote((res, err) => {
             if (err) {
                 logError(err, 'Quick Share: GetVisibility failed');
@@ -289,28 +272,14 @@ export default class QuickShareExtension extends Extension {
         }
     }
 
-    // Panel icon shows while running and either advertising (not Hidden) or a
-    // transfer is in flight — so an incoming transfer is visible even in Hidden.
+    // Panel icon shows while running and either advertising (not "No one") or a
+    // transfer is in flight — so an incoming transfer is visible even when set
+    // to No one.
     _updatePanel() {
         const running = !!this._proxy?.g_name_owner;
         const advertising = this._visibility !== 2;
         const visible = running && (advertising || this._transferActive);
         this._indicator?.setPanelState(visible, running && this._transferActive);
-    }
-
-    setVisibility(mode) {
-        if (this._proxy?.g_name_owner) {
-            this._proxy.SetVisibilityRemote(mode, () => {});
-        } else {
-            // App not running: start it, then apply once it appears on the bus
-            // (see _refresh). Launching is not instant, so say so.
-            this._pendingVisibility = mode;
-            // No window: setting visibility from the tile shouldn't throw one
-            // in your face.
-            this._launchApp(true);
-            if (this._indicator)
-                this._indicator.toggle.subtitle = 'Starting…';
-        }
     }
 
     openWindow() {
@@ -357,7 +326,6 @@ export default class QuickShareExtension extends Extension {
             this._proxy.disconnect(this._ownerId);
         this._visSignal = this._runSignal = this._xferSignal = this._ownerId = null;
         this._proxy = null;
-        this._pendingVisibility = null;
 
         this._indicator?.quickSettingsItems.forEach(i => i.destroy());
         this._indicator?.destroy();
