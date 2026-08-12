@@ -242,13 +242,56 @@ void DeviceWatcher::notifyExistingDevices() {
           return false;
         };
         
-        if (check_bool_property(sdbus::PropertyName("Bonded")) || 
+        if (check_bool_property(sdbus::PropertyName("Bonded")) ||
             check_bool_property(sdbus::PropertyName("Paired")) ||
             check_bool_property(sdbus::PropertyName("Connected")) ||
             check_bool_property(sdbus::PropertyName("Trusted"))) {
           should_skip = true;
-          LOG(INFO) << __func__ << ": Skipping device " << device_path 
+          LOG(INFO) << __func__ << ": Skipping device " << device_path
                     << " (bonded/paired/connected/trusted)";
+        }
+
+        // Also keep active Nearby (Quick Share) peers, i.e. anything currently
+        // advertising the FEF3 copresence service. The watcher is rebuilt every
+        // scan cycle (~10s) and this refresh does a destructive bluez
+        // RemoveDevice; on an unbonded peer that is the exact device object an
+        // in-flight send is connecting to, so removing it here deletes the
+        // connect target mid-handshake (surfaced as Connect ... UnknownObject).
+        // Non-Nearby stale devices are still refreshed as before.
+        if (!should_skip) {
+          auto has_nearby_service = [&properties]() -> bool {
+            auto contains_fef3 = [](const std::string &s) {
+              return s.find("fef3") != std::string::npos ||
+                     s.find("FEF3") != std::string::npos;
+            };
+            auto uuids_it = properties.find(sdbus::PropertyName("UUIDs"));
+            if (uuids_it != properties.end()) {
+              try {
+                for (const auto &u :
+                     uuids_it->second.get<std::vector<std::string>>()) {
+                  if (contains_fef3(u)) return true;
+                }
+              } catch (...) {
+              }
+            }
+            auto sd_it = properties.find(sdbus::PropertyName("ServiceData"));
+            if (sd_it != properties.end()) {
+              try {
+                for (const auto &[key, value] :
+                     sd_it->second
+                         .get<std::map<std::string, sdbus::Variant>>()) {
+                  if (contains_fef3(key)) return true;
+                }
+              } catch (...) {
+              }
+            }
+            return false;
+          };
+          if (has_nearby_service()) {
+            should_skip = true;
+            LOG(INFO) << __func__ << ": Skipping active Nearby peer "
+                      << device_path << " (advertising FEF3)";
+          }
         }
       }
       
@@ -258,14 +301,21 @@ void DeviceWatcher::notifyExistingDevices() {
     }
   }
 
-  // Remove existing devices - they will be immediately re-discovered
-  // This triggers InterfacesAdded signals which properly invoke discovery callbacks
-  for (const auto& device_path : existing_device_paths) {
-    LOG(INFO) << __func__ << ": Refreshing existing device " << device_path;
-    if (!adapter_.RemoveDeviceByObjectPath(device_path)) {
-      LOG(WARNING) << __func__ << ": Failed to remove device " << device_path;
-    }
-  }
+  // NOTE: we deliberately do NOT remove existing devices here anymore.
+  //
+  // This used to RemoveDevice() every non-bonded device on each watcher
+  // construction to force a re-discovery (InterfacesAdded re-fires the discovery
+  // callback). But the watcher is rebuilt every scan cycle (~10s), so this
+  // destructively churned the bluez device objects continuously. An unbonded
+  // Nearby peer advertises under a stable RPA for the whole session, but its
+  // bluez object kept getting deleted and recreated -- and an in-flight send
+  // that took ~20s to connect would call Connect() during a deleted window,
+  // producing 'Connect ... Device1 doesn't exist (UnknownObject)' and failing
+  // the transfer. Genuinely new peers still fire InterfacesAdded naturally, and
+  // the FEF3 scan decode runs from that path, so the forced refresh is not
+  // needed for discovery. Leaving objects in place keeps the connect target
+  // alive across the ~20s handshake.
+  (void)existing_device_paths;
 }
 
 }  // namespace linux
