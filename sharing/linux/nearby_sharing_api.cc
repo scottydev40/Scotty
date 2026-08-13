@@ -706,7 +706,11 @@ void NearbySharingApi::SetSavePath(const std::string& path) {
 }
 
 void NearbySharingApi::SetVisibility(int mode) {
-  if (mode < 0 || mode > 2) {
+  // App-facing modes are 0..4 (0=Everyone, 1=Contacts, 2=No one, 3=Your devices,
+  // 4=Everyone 10 min) — see ToProtoVisibility. The old bound of 2 was a leftover
+  // from the 3-value model and silently dropped "Your devices" and the temporary
+  // "Everyone (10 min)", so the device never actually advertised in those modes.
+  if (mode < 0 || mode > 4) {
     return;
   }
   impl_->visibility_mode = mode;
