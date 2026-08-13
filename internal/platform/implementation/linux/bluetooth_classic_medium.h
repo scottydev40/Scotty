@@ -32,6 +32,8 @@
 #include "internal/platform/implementation/linux/bluetooth_adapter.h"
 #include "internal/platform/implementation/linux/bluetooth_bluez_profile.h"
 #include "internal/platform/implementation/linux/bluetooth_devices.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 
 namespace nearby {
 namespace linux {
@@ -109,6 +111,15 @@ class BluetoothClassicMedium : public api::BluetoothClassicMedium {
 
   std::unique_ptr<AgentManager> agent_manager_;
   std::unique_ptr<ProfileManager> profile_manager_;
+
+  // Bare devices for Nearby peers known only by their advertised BR/EDR MAC
+  // (never discovered by bluez). Keyed by MAC string. Backs GetRemoteDevice and
+  // ConnectToService's insecure-RFCOMM-by-address path.
+  absl::Mutex remote_mac_devices_mutex_;
+  absl::flat_hash_map<std::string, std::shared_ptr<BluetoothDevice>>
+      remote_mac_devices_ ABSL_GUARDED_BY(remote_mac_devices_mutex_);
+  std::shared_ptr<BluetoothDevice> GetOrCreateRemoteMacDevice(
+      const MacAddress &address);
 };
 
 }  // namespace linux

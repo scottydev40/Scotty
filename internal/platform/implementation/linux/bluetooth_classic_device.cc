@@ -43,6 +43,14 @@ BluetoothDevice::BluetoothDevice(std::shared_ptr<bluez::Device> device)
   }
 }
 
+BluetoothDevice::BluetoothDevice(const MacAddress &address)
+    : lost_(false), device_(nullptr) {
+  last_known_address_ = address;
+  unique_id_ = last_known_address_.address();
+  LOG(INFO) << "Created bare BluetoothDevice (no bluez backing) for: "
+            << address.ToString();
+}
+
 std::string BluetoothDevice::GetName() const {
   auto device = device_;
   if (device == nullptr) {
@@ -66,10 +74,9 @@ std::string BluetoothDevice::GetName() const {
 MacAddress BluetoothDevice::GetMacAddress() const {
   auto device = device_;
   if (device == nullptr) {
+    // No bluez backing (bare device): the MAC was set at construction.
     absl::ReaderMutexLock l(&properties_mutex_);
-    MacAddress addr;
-    MacAddress::FromString("00:00:00:00:00:00", addr);
-    return addr;
+    return last_known_address_;
   }
 
   try {
