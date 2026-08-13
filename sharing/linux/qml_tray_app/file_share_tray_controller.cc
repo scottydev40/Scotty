@@ -660,6 +660,16 @@ void FileShareTrayController::onMyDevicesAccountChanged(bool signed_in,
   setSignedInEmail(signed_in ? email : QString());
   if (signed_in) {
     refreshMyDevicesProfile();
+    return;
+  }
+  // Signed out. "Contacts" (1) and "Your devices" (3) both need the account to
+  // mean anything — without it they cannot resolve who to be visible to. Leaving
+  // the menu on one of those would keep advertising under a mode that no longer
+  // works, so drop to "No one" (2). This mirrors the engine, which on logout
+  // resets any non-Everyone visibility to hidden (see ResetAllSettings). Everyone
+  // (0) / temporary Everyone (4) need no account, so they are left untouched.
+  if (visibility_ == 1 || visibility_ == 3) {
+    setVisibility(2);
   }
 }
 
