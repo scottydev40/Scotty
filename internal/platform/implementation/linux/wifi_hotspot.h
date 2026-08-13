@@ -78,6 +78,12 @@ class NetworkManagerWifiHotspotMedium : public api::WifiHotspotMedium {
  private:
   bool WifiHotspotActive();
   bool ConnectedToWifi();
+  // Reactivates the station Wi-Fi connection that boost deactivated (if any),
+  // then clears deactivated_station_connection_path_. No-op when boost did not
+  // drop the station. Idempotent, so it is safe to call from both the hotspot
+  // teardown and every StartWifiHotspot failure path — leaving the user with no
+  // Wi-Fi after a failed boost hotspot is the bug this closes.
+  void ReactivateStation();
   // Brings the nearby-ap0 AP interface up (up=true) or down (up=false) on
   // demand by starting/stopping its systemd unit over D-Bus. A polkit rule
   // authorizes the local user for exactly that unit, so no password prompt.
