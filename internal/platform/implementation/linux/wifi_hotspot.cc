@@ -98,6 +98,63 @@ bool ApInterfaceAvailable() {
   return std::filesystem::exists(
       std::string("/sys/class/net/") + kApInterfaceName, ec);
 }
+
+// NM_DEVICE_STATE_DISCONNECTED from NetworkManager's device-state enum: the
+// device is up and idle, ready for AddAndActivateConnection2. Below this
+// (e.g. UNAVAILABLE=20, which nearby-ap0 sits at briefly right after
+// EnsureApInterface merely sees NetworkManager register a device object for
+// it) activation fails with "device is not available".
+constexpr uint32_t kNMDeviceStateDisconnected = 30;
+// Bound on how long StartWifiHotspot waits for nearby-ap0 to reach that
+// state, and how often it polls while waiting.
+constexpr absl::Duration kApDeviceReadyTimeout = absl::Milliseconds(4000);
+constexpr absl::Duration kApDeviceReadyPollInterval = absl::Milliseconds(200);
+
+// Reads the org.freedesktop.NetworkManager.Device `State` property at
+// `device_path`, or nullopt if it could not be read (e.g. the device
+// disappeared). There is no generated proxy for the base Device interface in
+// this tree (only Device.Wireless/Device.WifiP2P), so this goes through
+// sdbus-c++'s generic property-getter convenience API directly, the same way
+// EnsureApInterface talks to systemd without a generated proxy.
+std::optional<uint32_t> GetNMDeviceState(sdbus::IConnection &system_bus,
+                                          const sdbus::ObjectPath &device_path) {
+  try {
+    auto device = sdbus::createProxy(
+        system_bus, sdbus::ServiceName{"org.freedesktop.NetworkManager"},
+        device_path);
+    sdbus::Variant state = device->getProperty("State").onInterface(
+        "org.freedesktop.NetworkManager.Device");
+    return state.get<uint32_t>();
+  } catch (const sdbus::Error &) {
+    return std::nullopt;
+  }
+}
+
+// Blocks (bounded) until the NetworkManager device at `device_path` reaches
+// at least NM_DEVICE_STATE_DISCONNECTED, i.e. is ready to have a connection
+// activated on it. EnsureApInterface only waits for NetworkManager to know
+// about nearby-ap0 at all; the device can still be UNAVAILABLE for a short
+// while after that, and activating on it then fails outright — burning a
+// whole BWU upgrade attempt (~3s) before the caller retries and succeeds. On
+// timeout this logs and returns anyway, preserving the previous (racy)
+// behaviour as a fallback rather than blocking the transfer indefinitely.
+void WaitForApDeviceReady(sdbus::IConnection &system_bus,
+                           const sdbus::ObjectPath &device_path) {
+  const absl::Time deadline = absl::Now() + kApDeviceReadyTimeout;
+  std::optional<uint32_t> state;
+  do {
+    state = GetNMDeviceState(system_bus, device_path);
+    if (state.has_value() && *state >= kNMDeviceStateDisconnected) return;
+    absl::SleepFor(kApDeviceReadyPollInterval);
+  } while (absl::Now() < deadline);
+  LOG(WARNING) << __func__ << ": " << kApInterfaceName
+               << " did not reach a ready state (>= "
+               << kNMDeviceStateDisconnected << ") within "
+               << kApDeviceReadyTimeout << "; last observed state "
+               << (state.has_value() ? std::to_string(*state) : "unknown")
+               << "; proceeding anyway";
+}
+
 // NM_SETTING_WIRELESS_CHANNEL_WIDTH_* (nm-settings: 40mhz=40, 80mhz=80).
 constexpr int32_t k40MhzChannelWidth = 40;
 constexpr int32_t k80MhzChannelWidth = 80;
@@ -389,6 +446,11 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
       ap_device_path = network_manager_->GetDeviceByIpIface(kApInterfaceName);
       LOG(INFO) << __func__ << ": hosting the hotspot on " << kApInterfaceName
                 << ", so the current Wi-Fi connection stays up";
+      // First-try race: nearby-ap0 can still be UNAVAILABLE in NetworkManager
+      // for a short while after GetDeviceByIpIface starts returning it. Wait
+      // for it to become activatable before handing it to
+      // AddAndActivateConnection2 below, instead of eating a failed attempt.
+      WaitForApDeviceReady(*system_bus_, ap_device_path);
     } catch (const sdbus::Error &e) {
       LOG(WARNING) << __func__ << ": " << kApInterfaceName
                    << " exists but NetworkManager has no device for it ("
