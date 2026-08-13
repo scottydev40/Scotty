@@ -51,6 +51,14 @@ class BluetoothDevice : public api::BluetoothDevice {
 
   explicit BluetoothDevice(std::shared_ptr<bluez::Device> device);
 
+  // Bare device for a peer known only by its (advertised, BR/EDR identity) MAC,
+  // with NO bluez Device1 backing (device_ == nullptr). bluez never discovered
+  // the peer (it advertises over BLE only), but Nearby extracted its Bluetooth
+  // MAC from the advert. Used by the insecure-RFCOMM-by-address send path
+  // (Google Nearby's off-network connect medium). Only GetMacAddress/GetAddress
+  // are meaningful on such a device; bluez-backed methods no-op.
+  explicit BluetoothDevice(const MacAddress &address);
+
   std::string GetName() const override;
   MacAddress GetMacAddress() const override;
   std::string GetAddressType() const;
