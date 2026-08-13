@@ -109,6 +109,10 @@ constexpr uint32_t kNMDeviceStateDisconnected = 30;
 // state, and how often it polls while waiting.
 constexpr absl::Duration kApDeviceReadyTimeout = absl::Milliseconds(4000);
 constexpr absl::Duration kApDeviceReadyPollInterval = absl::Milliseconds(200);
+// Bound on how long EnsureWifiRadioEnabled waits for the station device to come
+// up after switching the radio on. A hard rfkill block never gets there, so the
+// timeout doubles as the "cannot enable in software" detector.
+constexpr absl::Duration kWifiRadioReadyTimeout = absl::Milliseconds(5000);
 
 // Reads the org.freedesktop.NetworkManager.Device `State` property at
 // `device_path`, or nullopt if it could not be read (e.g. the device
@@ -314,6 +318,18 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
                           "active on this device";
     return false;
   }
+
+  // Hosting the hotspot needs the radio on. If the user switched Wi-Fi off,
+  // bring it up just for this transfer; the guard restores it on any early exit
+  // and StopWifiHotspot restores it on success. No-op when Wi-Fi was already on.
+  EnsureWifiRadioEnabled();
+  struct WifiRadioRestoreGuard {
+    NetworkManagerWifiHotspotMedium *self;
+    bool armed = true;
+    ~WifiRadioRestoreGuard() {
+      if (armed) self->RestoreWifiRadio();
+    }
+  } wifi_radio_restore_guard{this};
 
   std::string ssid = RandSSID();
   hotspot_credentials->SetSSID(ssid);
@@ -637,8 +653,10 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
                     << ap_device_path << " at "
                     << active_conn->getProxy().getObjectPath();
   // Hotspot is up: the station stays down intentionally for the transfer, and
-  // StopWifiHotspot will restore it. Don't let the guard restore it now.
+  // StopWifiHotspot will restore it. Don't let the guard restore it now. Same
+  // for the radio — it must stay on until the transfer ends.
   station_restore_guard.armed = false;
+  wifi_radio_restore_guard.armed = false;
   return true;
 }
 
@@ -657,7 +675,80 @@ void NetworkManagerWifiHotspotMedium::ReactivateStation() {
   }
 }
 
+bool NetworkManagerWifiHotspotMedium::EnsureWifiRadioEnabled() {
+  bool enabled = true;
+  try {
+    enabled = network_manager_->WirelessEnabled();
+  } catch (const sdbus::Error &e) {
+    LOG(WARNING) << __func__ << ": could not read WirelessEnabled ("
+                 << e.getMessage() << "); assuming the radio is on";
+    return true;
+  }
+  if (enabled) return true;  // Already on — leave the user's state untouched.
+
+  LOG(INFO) << __func__
+            << ": Wi-Fi radio is off; enabling it for the transfer";
+  try {
+    network_manager_->WirelessEnabled(true);
+  } catch (const sdbus::Error &e) {
+    LOG(WARNING) << __func__ << ": could not enable the Wi-Fi radio ("
+                 << e.getMessage() << "); staying on Bluetooth";
+    return false;
+  }
+
+  // Wait, bounded, for the station device to become usable. A hard rfkill block
+  // we cannot override in software never reaches a ready state, so a timeout
+  // here means "cannot enable" — put the toggle back the way we found it and
+  // let the caller fall back to Bluetooth.
+  const sdbus::ObjectPath device_path =
+      wireless_device_->getProxy().getObjectPath();
+  const absl::Time deadline = absl::Now() + kWifiRadioReadyTimeout;
+  do {
+    std::optional<uint32_t> state = GetNMDeviceState(*system_bus_, device_path);
+    if (state.has_value() && *state >= kNMDeviceStateDisconnected) {
+      wifi_radio_enabled_by_us_ = true;
+      LOG(INFO) << __func__
+                << ": Wi-Fi radio is up; it will be switched back off after the "
+                   "transfer";
+      return true;
+    }
+    absl::SleepFor(kApDeviceReadyPollInterval);
+  } while (absl::Now() < deadline);
+
+  LOG(WARNING) << __func__
+               << ": Wi-Fi radio did not come up within " << kWifiRadioReadyTimeout
+               << " (hard-blocked?); reverting the toggle and staying on "
+                  "Bluetooth";
+  try {
+    network_manager_->WirelessEnabled(false);
+  } catch (const sdbus::Error &) {
+    // Best effort; we are already falling back.
+  }
+  return false;
+}
+
+void NetworkManagerWifiHotspotMedium::RestoreWifiRadio() {
+  if (!wifi_radio_enabled_by_us_) return;
+  wifi_radio_enabled_by_us_ = false;
+  LOG(INFO) << __func__
+            << ": switching the Wi-Fi radio back off (it was off before the "
+               "transfer)";
+  try {
+    network_manager_->WirelessEnabled(false);
+  } catch (const sdbus::Error &e) {
+    DBUS_LOG_METHOD_CALL_ERROR(network_manager_, "WirelessEnabled", e);
+  }
+}
+
 bool NetworkManagerWifiHotspotMedium::StopWifiHotspot() {
+  // If we enabled the radio for this transfer, switch it back off once teardown
+  // is done. The destructor runs after the whole function body — i.e. after the
+  // hotspot is torn down — so we never yank the radio out from under the AP.
+  struct WifiRadioRestoreGuard {
+    NetworkManagerWifiHotspotMedium *self;
+    ~WifiRadioRestoreGuard() { self->RestoreWifiRadio(); }
+  } wifi_radio_restore_guard{this};
+
   if (!WifiHotspotActive()) {
     LOG(ERROR)
         << __func__ << ": " << wireless_device_->getProxy().getObjectPath()
@@ -738,16 +829,38 @@ bool NetworkManagerWifiHotspotMedium::StopWifiHotspot() {
 
 bool NetworkManagerWifiHotspotMedium::ConnectWifiHotspot(
     const HotspotCredentials& hotspot_credentials) {
+  // Joining the peer's hotspot needs the radio on. Enable it for the transfer
+  // if the user switched Wi-Fi off; the guard restores it if the join fails,
+  // and DisconnectWifiHotspot restores it when the transfer ends.
+  EnsureWifiRadioEnabled();
+  struct WifiRadioRestoreGuard {
+    NetworkManagerWifiHotspotMedium *self;
+    bool armed = true;
+    ~WifiRadioRestoreGuard() {
+      if (armed) self->RestoreWifiRadio();
+    }
+  } wifi_radio_restore_guard{this};
 
   auto ssid = hotspot_credentials.GetSSID();
   auto password = hotspot_credentials.GetPassword();
 
-  return wireless_device_->ConnectToNetwork(ssid, password,
-                                            NetworkManagerWifiMedium::WifiAuthType::kWpaPsk) ==
-         NetworkManagerWifiMedium::WifiConnectionStatus::kConnected;
+  const bool connected =
+      wireless_device_->ConnectToNetwork(
+          ssid, password, NetworkManagerWifiMedium::WifiAuthType::kWpaPsk) ==
+      NetworkManagerWifiMedium::WifiConnectionStatus::kConnected;
+  // Connected: keep the radio on for the transfer; DisconnectWifiHotspot owns
+  // the restore. Failed: the guard turns it back off now.
+  if (connected) wifi_radio_restore_guard.armed = false;
+  return connected;
 }
 
 bool NetworkManagerWifiHotspotMedium::DisconnectWifiHotspot() {
+  // Restore the radio to off if we enabled it for this join, once we are done.
+  struct WifiRadioRestoreGuard {
+    NetworkManagerWifiHotspotMedium *self;
+    ~WifiRadioRestoreGuard() { self->RestoreWifiRadio(); }
+  } wifi_radio_restore_guard{this};
+
   if (!ConnectedToWifi()) {
     LOG(ERROR) << __func__ << ": Not connected to a WiFi hotspot";
     return false;
