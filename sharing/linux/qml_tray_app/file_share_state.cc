@@ -108,6 +108,15 @@ void FileShareState::RemoveTarget(qlonglong id) {
   }
 }
 
+void FileShareState::ClearTargets() {
+  // Snapshot the ids first — RemoveTarget mutates discovered_row_by_target_ as
+  // it reindexes, so iterating it directly would be unsafe.
+  const QList<qlonglong> ids = discovered_row_by_target_.keys();
+  for (qlonglong id : ids) {
+    RemoveTarget(id);
+  }
+}
+
 QString FileShareState::GetTargetName(qlonglong id) const {
   const QString name = target_names_.value(id).trimmed();
   return name.isEmpty() ? QStringLiteral("Unknown device") : name;

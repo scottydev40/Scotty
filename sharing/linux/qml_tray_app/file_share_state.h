@@ -106,6 +106,11 @@ class FileShareState {
   void AddOrUpdateTarget(qlonglong id, const QString& name, bool is_incoming,
                          int device_type = -1);
   void RemoveTarget(qlonglong id);
+  // Removes every discovered target (each via RemoveTarget, so a target with an
+  // active transfer is deferred rather than yanked). Used when the discovery
+  // context changes wholesale — e.g. sign-out invalidates certificate-resolved
+  // targets that the engine can no longer rebuild.
+  void ClearTargets();
   QString GetTargetName(qlonglong id) const;
   bool HasTarget(qlonglong id) const;
 
