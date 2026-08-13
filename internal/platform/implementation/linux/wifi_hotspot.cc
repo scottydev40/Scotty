@@ -504,6 +504,20 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
     }
   }
 
+  // From here on the boost station may be deactivated. Every early exit below
+  // is a failure to bring the hotspot up, and each one used to leave the
+  // station down — so a start that failed (common during a mid-transfer retry
+  // storm) stranded the user with no Wi-Fi "entirely". This guard restores the
+  // station on any such exit; it is disarmed only on the success path, where
+  // StopWifiHotspot owns the (later) restore instead.
+  struct StationRestoreGuard {
+    NetworkManagerWifiHotspotMedium *self;
+    bool armed = true;
+    ~StationRestoreGuard() {
+      if (armed) self->ReactivateStation();
+    }
+  } station_restore_guard{this};
+
   std::unique_ptr<networkmanager::ActiveConnection> active_conn;
   for (bool include_channel_width : {true, false}) {
     std::map<std::string, std::map<std::string, sdbus::Variant>>
@@ -622,7 +636,25 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
   LOG(INFO) << __func__ << ": Started a WiFi hotspot on device "
                     << ap_device_path << " at "
                     << active_conn->getProxy().getObjectPath();
+  // Hotspot is up: the station stays down intentionally for the transfer, and
+  // StopWifiHotspot will restore it. Don't let the guard restore it now.
+  station_restore_guard.armed = false;
   return true;
+}
+
+void NetworkManagerWifiHotspotMedium::ReactivateStation() {
+  if (deactivated_station_connection_path_.empty()) return;
+  const sdbus::ObjectPath station = deactivated_station_connection_path_;
+  deactivated_station_connection_path_ = {};
+  LOG(INFO) << __func__ << ": Boost — reactivating the station connection "
+            << station << " so Wi-Fi comes back";
+  try {
+    network_manager_->ActivateConnection(
+        station, wireless_device_->getProxy().getObjectPath(),
+        sdbus::ObjectPath("/"));
+  } catch (const sdbus::Error &e) {
+    DBUS_LOG_METHOD_CALL_ERROR(network_manager_, "ActivateConnection", e);
+  }
 }
 
 bool NetworkManagerWifiHotspotMedium::StopWifiHotspot() {
@@ -655,22 +687,16 @@ bool NetworkManagerWifiHotspotMedium::StopWifiHotspot() {
       ap_interface_started_by_us_ = false;
     }
     // Boost deactivated the station Wi-Fi to host on the station device; bring
-    // it back now, or the user is left with no Wi-Fi after the transfer.
-    if (!deactivated_station_connection_path_.empty()) {
-      const sdbus::ObjectPath station = deactivated_station_connection_path_;
-      deactivated_station_connection_path_ = {};
-      LOG(INFO) << __func__ << ": Boost — reactivating the station connection "
-                << station << " so Wi-Fi comes back";
-      try {
-        network_manager_->ActivateConnection(
-            station, wireless_device_->getProxy().getObjectPath(),
-            sdbus::ObjectPath("/"));
-      } catch (const sdbus::Error &e) {
-        DBUS_LOG_METHOD_CALL_ERROR(network_manager_, "ActivateConnection", e);
-      }
-    }
+    // it back now, or the user is left with no Wi-Fi after the transfer. Done
+    // after the hotspot connection is torn down so the station device is free.
+    ReactivateStation();
     return ok;
   }
+
+  // Defence in depth: if boost deactivated the station but we never recorded a
+  // hotspot connection (a start that failed after the deactivation), the block
+  // above is skipped — restore the station here so Wi-Fi never stays dead.
+  ReactivateStation();
 
   // Get the active connection object for the hotspot AP.
   sdbus::ObjectPath active_ap_path;
