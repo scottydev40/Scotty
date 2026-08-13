@@ -84,6 +84,21 @@ class NetworkManagerWifiHotspotMedium : public api::WifiHotspotMedium {
   // teardown and every StartWifiHotspot failure path — leaving the user with no
   // Wi-Fi after a failed boost hotspot is the bug this closes.
   void ReactivateStation();
+
+  // The Wi-Fi upgrade needs the radio on. If the user has Wi-Fi switched off
+  // (NetworkManager WirelessEnabled=false) a transfer stays on slow Bluetooth,
+  // so enable the radio just for the transfer, the way Quick Share does on
+  // Android. Returns true if the radio is usable (was already on, or we brought
+  // it up); false if it could not be enabled — e.g. a hard rfkill block we
+  // cannot override in software, detected by the device never becoming ready —
+  // in which case the toggle is left as it was found and the caller falls back
+  // to Bluetooth. Records whether we were the one to enable it.
+  bool EnsureWifiRadioEnabled();
+  // Turns the Wi-Fi radio back off iff EnsureWifiRadioEnabled turned it on, then
+  // clears the flag. Idempotent no-op otherwise, so it is safe on every teardown
+  // and failure path. Restores exactly the state the user set — never disables a
+  // radio that was already on.
+  void RestoreWifiRadio();
   // Brings the nearby-ap0 AP interface up (up=true) or down (up=false) on
   // demand by starting/stopping its systemd unit over D-Bus. A polkit rule
   // authorizes the local user for exactly that unit, so no password prompt.
@@ -113,6 +128,10 @@ class NetworkManagerWifiHotspotMedium : public api::WifiHotspotMedium {
   // reactivate it when the hotspot is torn down — otherwise Wi-Fi stays dead
   // after a boost transfer. Empty when boost didn't drop the station.
   sdbus::ObjectPath deactivated_station_connection_path_;
+  // True when EnsureWifiRadioEnabled turned the Wi-Fi radio on for a transfer,
+  // so RestoreWifiRadio knows to switch it back off afterwards. False when the
+  // radio was already on (we leave the user's state untouched).
+  bool wifi_radio_enabled_by_us_ = false;
   std::shared_ptr<networkmanager::NetworkManager> network_manager_;
 };
 }  // namespace linux
