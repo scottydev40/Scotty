@@ -671,6 +671,13 @@ void FileShareTrayController::onMyDevicesAccountChanged(bool signed_in,
   if (visibility_ == 1 || visibility_ == 3) {
     setVisibility(2);
   }
+  // Send-targets discovered while signed in (e.g. own devices resolved via the
+  // account's certificates) can no longer be rebuilt once the account is gone —
+  // the engine drops the endpoint ("Failed to convert discovered advertisement")
+  // so the cached entry is stale and a send to it errors out. Clear the list;
+  // any still-valid Everyone-mode target re-appears on the next scan.
+  state_.ClearTargets();
+  emit discoveredTargetsChanged();
 }
 
 void FileShareTrayController::onMyDevicesOwnerChanged(const QString& /*service*/,
