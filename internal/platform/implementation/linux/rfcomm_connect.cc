@@ -212,6 +212,23 @@ std::optional<int> TryConnectRfcommChannel(
     return std::nullopt;
   }
 
+  // Force the link to BT_SECURITY_LOW — no authentication, no bonding — so this
+  // "insecure" RFCOMM connect really is insecure, exactly like Android's
+  // createInsecureRfcommSocketToServiceRecord that Quick Share uses. Without it
+  // the kernel negotiates the default security level, and since the peer has no
+  // BR/EDR link key for us (it only ever LE-bonded during BLE discovery) it asks
+  // the user to pair — the "pair with laptop" prompt that fired repeatedly
+  // during medium retries. Best-effort: if the option is unavailable we still
+  // try the connect rather than fail the transfer outright.
+  struct bt_security sec {};
+  sec.level = BT_SECURITY_LOW;
+  if (setsockopt(fd, SOL_BLUETOOTH, BT_SECURITY, &sec, sizeof(sec)) < 0) {
+    LOG(WARNING) << __func__
+                 << ": Could not set BT_SECURITY_LOW on the RFCOMM socket to "
+                 << remote_mac << " (" << std::strerror(errno)
+                 << "); the peer may prompt to pair";
+  }
+
   struct sockaddr_rc addr {};
   addr.rc_family = AF_BLUETOOTH;
   addr.rc_bdaddr = target;
