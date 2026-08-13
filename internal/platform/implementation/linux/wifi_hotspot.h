@@ -100,6 +100,13 @@ class NetworkManagerWifiHotspotMedium : public api::WifiHotspotMedium {
   // True when we started the nearby-ap0 unit for this transfer, so StopWifiHotspot
   // knows to tear the interface back down.
   bool ap_interface_started_by_us_ = false;
+
+  // Boost hosts the AP on the station device, so it deactivates the station's
+  // Wi-Fi connection first. NetworkManager will NOT auto-reconnect a manually-
+  // deactivated connection, so we remember its settings path here and
+  // reactivate it when the hotspot is torn down — otherwise Wi-Fi stays dead
+  // after a boost transfer. Empty when boost didn't drop the station.
+  sdbus::ObjectPath deactivated_station_connection_path_;
   std::shared_ptr<networkmanager::NetworkManager> network_manager_;
 };
 }  // namespace linux

@@ -474,6 +474,20 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
     try {
       auto station_conn = wireless_device_->GetActiveConnection();
       if (station_conn != nullptr) {
+        // Remember the underlying settings connection so we can bring the
+        // station Wi-Fi back after the transfer (StopWifiHotspot); NM won't
+        // auto-reconnect a manually-deactivated connection.
+        try {
+          sdbus::Variant conn =
+              station_conn->getProxy().getProperty("Connection").onInterface(
+                  "org.freedesktop.NetworkManager.Connection.Active");
+          deactivated_station_connection_path_ = conn.get<sdbus::ObjectPath>();
+        } catch (const sdbus::Error &e) {
+          LOG(WARNING) << __func__
+                       << ": Boost — could not read the station's settings "
+                          "connection path ("
+                       << e.getMessage() << "); Wi-Fi may not auto-restore";
+        }
         LOG(INFO) << __func__
                   << ": Boost — deactivating the station connection first so "
                      "the AP activates cleanly";
@@ -639,6 +653,21 @@ bool NetworkManagerWifiHotspotMedium::StopWifiHotspot() {
     if (ap_interface_started_by_us_) {
       EnsureApInterface(false);
       ap_interface_started_by_us_ = false;
+    }
+    // Boost deactivated the station Wi-Fi to host on the station device; bring
+    // it back now, or the user is left with no Wi-Fi after the transfer.
+    if (!deactivated_station_connection_path_.empty()) {
+      const sdbus::ObjectPath station = deactivated_station_connection_path_;
+      deactivated_station_connection_path_ = {};
+      LOG(INFO) << __func__ << ": Boost — reactivating the station connection "
+                << station << " so Wi-Fi comes back";
+      try {
+        network_manager_->ActivateConnection(
+            station, wireless_device_->getProxy().getObjectPath(),
+            sdbus::ObjectPath("/"));
+      } catch (const sdbus::Error &e) {
+        DBUS_LOG_METHOD_CALL_ERROR(network_manager_, "ActivateConnection", e);
+      }
     }
     return ok;
   }
