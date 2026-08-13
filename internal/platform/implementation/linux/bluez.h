@@ -44,6 +44,7 @@ static constexpr const char *DEVICE_PROP_ADDRESS = "Address";
 static constexpr const char *DEVICE_PROP_ALIAS = "Alias";
 static constexpr const char *DEVICE_PROP_PAIRED = "Paired";
 static constexpr const char *DEVICE_PROP_CONNECTED = "Connected";
+static constexpr const char *DEVICE_PROP_SERVICE_DATA = "ServiceData";
 static constexpr const char *DEVICE_NAME = "Name";
 
 static constexpr const char *NEARBY_BLE_GATT_PATH_ROOT =

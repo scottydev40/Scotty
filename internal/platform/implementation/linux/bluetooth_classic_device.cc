@@ -200,7 +200,21 @@ void MonitoredBluetoothDevice::onPropertiesChanged(
       }
     } else if ( it -> first == "ServicesResolved"){
       LOG(INFO) << ": ServicesResolved :" << it->second.get<std::string>();
-  }else if (it->first == bluez::DEVICE_NAME) {
+  } else if (it->first == bluez::DEVICE_PROP_SERVICE_DATA) {
+      // The FEF3 discovery decode normally runs once, on InterfacesAdded. But
+      // bluez assembles an extended advertisement from AUX packets, so a device's
+      // ServiceData is frequently the truncated legacy payload at add-time and is
+      // completed to the full extended payload moments later — delivered here as
+      // a ServiceData PropertiesChanged. The full payload is what carries a
+      // visible ("Everyone") peer's plaintext device name, which a signed-out
+      // sender needs to build a ShareTarget. Re-run the discovery decode on the
+      // updated ServiceData so that completed advert is picked up rather than the
+      // stale truncated snapshot. (RSSI-only churn arrives as a different
+      // property, so this does not fire on it.)
+      auto callback = GetDiscoveryCallback();
+      if (callback != nullptr && callback->device_discovered_cb != nullptr)
+        callback->device_discovered_cb(*this);
+  } else if (it->first == bluez::DEVICE_NAME) {
       auto callback = GetDiscoveryCallback();
       if (callback != nullptr && callback->device_name_changed_cb != nullptr)
         callback->device_name_changed_cb(*this);
