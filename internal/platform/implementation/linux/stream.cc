@@ -29,6 +29,14 @@
 namespace nearby {
 namespace linux {
 
+// A live Nearby connection exchanges keep-alive frames on the order of every
+// few seconds, so total silence for this long means the peer has abandoned the
+// connection at the app layer while the (Bluetooth) link stayed up. Without a
+// bound, poll(-1) would block the reader forever, and the stalled
+// reader/encryption/endpoint tasks pile up and jam the receive path. On timeout
+// we surface kIo so the reader unwinds and the endpoint is torn down.
+constexpr int kReadIdleTimeoutMillis = 60000;
+
 ExceptionOr<ByteArray> InputStream::Read(std::int64_t size) {
   if (size <= 0) {
     return ExceptionOr<ByteArray>(ByteArray(std::string()));
@@ -46,7 +54,15 @@ ExceptionOr<ByteArray> InputStream::Read(std::int64_t size) {
     pfd.fd = fd_->get();
     pfd.events = POLLIN;
 
-    int poll_result = poll(&pfd, 1, -1);
+    int poll_result = poll(&pfd, 1, kReadIdleTimeoutMillis);
+
+    if (poll_result == 0) {
+      LOG(WARNING) << __func__
+                   << ": no data for " << kReadIdleTimeoutMillis
+                   << "ms; treating connection as dead so the endpoint tears "
+                      "down instead of leaking a blocked reader";
+      return {Exception::kIo};
+    }
 
     if (poll_result < 0) {
       if (errno == EINTR) {
