@@ -29,14 +29,50 @@
 
 #include "internal/platform/cancellation_flag.h"
 #include "internal/platform/logging.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 
 namespace nearby {
 namespace linux {
 
 namespace {
 
-constexpr int kConnectPollTimeoutMillis = 250;
+constexpr int kConnectPollTimeoutMillis = 100;
 constexpr int kConnectTotalTimeoutMillis = 10000;
+
+// sdp_connect can transiently fail with "Host is down" when the peer hasn't
+// been BR/EDR-paged yet (it advertises over BLE, so paging is cold). Retry a
+// few times with a short backoff so a cold peer doesn't fail the whole connect
+// and force a slow (~20s) Nearby-layer retry.
+constexpr int kSdpConnectAttempts = 3;
+constexpr int kSdpConnectRetryBackoffMillis = 400;
+
+// Cache of the last RFCOMM channel that worked per peer MAC. The Nearby stack
+// calls ConnectToService repeatedly for the same peer (medium retries) and each
+// SDP round-trip costs ~1s, so caching lets retries skip SDP. Self-healing: a
+// failed connect on a cached channel invalidates it and re-runs SDP.
+absl::Mutex g_channel_cache_mutex(absl::kConstInit);
+absl::flat_hash_map<std::string, int> *g_channel_cache
+    ABSL_GUARDED_BY(g_channel_cache_mutex) = nullptr;
+
+std::optional<int> GetCachedChannel(const std::string &mac) {
+  absl::MutexLock l(&g_channel_cache_mutex);
+  if (g_channel_cache == nullptr) return std::nullopt;
+  auto it = g_channel_cache->find(mac);
+  if (it == g_channel_cache->end()) return std::nullopt;
+  return it->second;
+}
+void PutCachedChannel(const std::string &mac, int channel) {
+  absl::MutexLock l(&g_channel_cache_mutex);
+  if (g_channel_cache == nullptr) {
+    g_channel_cache = new absl::flat_hash_map<std::string, int>();
+  }
+  (*g_channel_cache)[mac] = channel;
+}
+void InvalidateCachedChannel(const std::string &mac) {
+  absl::MutexLock l(&g_channel_cache_mutex);
+  if (g_channel_cache != nullptr) g_channel_cache->erase(mac);
+}
 
 // Parses a dashed 128-bit UUID string, e.g.
 // "0000fef3-0000-1000-8000-00805f9b34fb", into 16 big-endian bytes suitable
@@ -93,12 +129,18 @@ std::optional<int> FindRfcommChannel(const bdaddr_t &target,
   // BDADDR_ANY expands to the address of a C99 compound literal, which GCC
   // in C++20 mode refuses to take the address of directly (-fpermissive
   // error). Use an explicit local zeroed bdaddr_t instead.
-  bdaddr_t any_addr {};
-  sdp_session_t *session =
-      sdp_connect(&any_addr, &target, SDP_RETRY_IF_BUSY);
+  sdp_session_t *session = nullptr;
+  for (int attempt = 0; attempt < kSdpConnectAttempts; ++attempt) {
+    bdaddr_t any_addr {};
+    session = sdp_connect(&any_addr, &target, SDP_RETRY_IF_BUSY);
+    if (session != nullptr) break;
+    LOG(WARNING) << __func__ << ": sdp_connect attempt " << (attempt + 1) << "/"
+                 << kSdpConnectAttempts << " failed: " << std::strerror(errno);
+    if (attempt + 1 < kSdpConnectAttempts) {
+      usleep(kSdpConnectRetryBackoffMillis * 1000);
+    }
+  }
   if (session == nullptr) {
-    LOG(WARNING) << __func__
-                 << ": sdp_connect failed: " << std::strerror(errno);
     return std::nullopt;
   }
 
@@ -157,34 +199,12 @@ std::optional<int> FindRfcommChannel(const bdaddr_t &target,
   return channel;
 }
 
-}  // namespace
-
-std::optional<int> ConnectInsecureRfcommByAddress(
-    const std::string &remote_mac, const std::string &service_uuid,
+// Opens a non-blocking RFCOMM socket to `target` on `channel`, honoring
+// cancellation, restoring blocking mode on success. Returns the connected fd or
+// std::nullopt.
+std::optional<int> TryConnectRfcommChannel(
+    const bdaddr_t &target, int channel, const std::string &remote_mac,
     nearby::CancellationFlag *cancellation_flag) {
-  bdaddr_t target;
-  if (str2ba(remote_mac.c_str(), &target) < 0) {
-    LOG(ERROR) << __func__ << ": Invalid Bluetooth address: " << remote_mac;
-    return std::nullopt;
-  }
-
-  if (cancellation_flag != nullptr && cancellation_flag->Cancelled()) {
-    LOG(INFO) << __func__ << ": Cancelled before SDP lookup for "
-              << remote_mac;
-    return std::nullopt;
-  }
-
-  std::optional<int> channel = FindRfcommChannel(target, service_uuid);
-  if (!channel.has_value()) {
-    return std::nullopt;
-  }
-
-  if (cancellation_flag != nullptr && cancellation_flag->Cancelled()) {
-    LOG(INFO) << __func__ << ": Cancelled after SDP lookup for "
-              << remote_mac;
-    return std::nullopt;
-  }
-
   int fd = socket(AF_BLUETOOTH, SOCK_STREAM, BTPROTO_RFCOMM);
   if (fd < 0) {
     LOG(ERROR) << __func__
@@ -195,7 +215,7 @@ std::optional<int> ConnectInsecureRfcommByAddress(
   struct sockaddr_rc addr {};
   addr.rc_family = AF_BLUETOOTH;
   addr.rc_bdaddr = target;
-  addr.rc_channel = static_cast<uint8_t>(*channel);
+  addr.rc_channel = static_cast<uint8_t>(channel);
 
   if (!SetNonBlocking(fd)) {
     LOG(ERROR) << __func__ << ": Failed to set RFCOMM socket non-blocking: "
@@ -205,7 +225,7 @@ std::optional<int> ConnectInsecureRfcommByAddress(
   }
 
   LOG(INFO) << __func__ << ": Connecting to " << remote_mac
-            << " on RFCOMM channel " << *channel;
+            << " on RFCOMM channel " << channel;
 
   int ret = connect(fd, reinterpret_cast<struct sockaddr *>(&addr),
                      sizeof(addr));
@@ -282,9 +302,64 @@ std::optional<int> ConnectInsecureRfcommByAddress(
     return std::nullopt;
   }
 
-  LOG(INFO) << __func__ << ": Successfully connected RFCOMM socket to "
-            << remote_mac << " on channel " << *channel;
   return fd;
+}
+
+}  // namespace
+
+std::optional<int> ConnectInsecureRfcommByAddress(
+    const std::string &remote_mac, const std::string &service_uuid,
+    nearby::CancellationFlag *cancellation_flag) {
+  bdaddr_t target;
+  if (str2ba(remote_mac.c_str(), &target) < 0) {
+    LOG(ERROR) << __func__ << ": Invalid Bluetooth address: " << remote_mac;
+    return std::nullopt;
+  }
+
+  // Try up to twice: first with a cached channel (skips the ~1s SDP round-trip
+  // on Nearby's medium-retries), then, if that stale channel fails to connect,
+  // once more after a fresh SDP lookup.
+  for (int attempt = 0; attempt < 2; ++attempt) {
+    if (cancellation_flag != nullptr && cancellation_flag->Cancelled()) {
+      LOG(INFO) << __func__ << ": Cancelled for " << remote_mac;
+      return std::nullopt;
+    }
+
+    std::optional<int> channel =
+        (attempt == 0) ? GetCachedChannel(remote_mac) : std::nullopt;
+    const bool from_cache = channel.has_value();
+    if (from_cache) {
+      LOG(INFO) << __func__ << ": Using cached RFCOMM channel " << *channel
+                << " for " << remote_mac;
+    } else {
+      channel = FindRfcommChannel(target, service_uuid);
+      if (!channel.has_value()) return std::nullopt;
+    }
+
+    if (cancellation_flag != nullptr && cancellation_flag->Cancelled()) {
+      LOG(INFO) << __func__ << ": Cancelled after channel lookup for "
+                << remote_mac;
+      return std::nullopt;
+    }
+
+    std::optional<int> fd = TryConnectRfcommChannel(target, *channel, remote_mac,
+                                                    cancellation_flag);
+    if (fd.has_value()) {
+      PutCachedChannel(remote_mac, *channel);
+      LOG(INFO) << __func__ << ": Successfully connected RFCOMM socket to "
+                << remote_mac << " on channel " << *channel;
+      return fd;
+    }
+
+    // Connect failed. A stale cached channel is the likely cause: drop it and
+    // retry once with a fresh SDP lookup. A fresh-SDP failure is terminal.
+    if (from_cache) {
+      InvalidateCachedChannel(remote_mac);
+      continue;
+    }
+    return std::nullopt;
+  }
+  return std::nullopt;
 }
 
 }  // namespace linux
