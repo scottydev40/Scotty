@@ -204,7 +204,7 @@ std::optional<int> FindRfcommChannel(const bdaddr_t &target,
 // std::nullopt.
 std::optional<int> TryConnectRfcommChannel(
     const bdaddr_t &target, int channel, const std::string &remote_mac,
-    nearby::CancellationFlag *cancellation_flag) {
+    uint8_t security_level, nearby::CancellationFlag *cancellation_flag) {
   int fd = socket(AF_BLUETOOTH, SOCK_STREAM, BTPROTO_RFCOMM);
   if (fd < 0) {
     LOG(ERROR) << __func__
@@ -212,21 +212,20 @@ std::optional<int> TryConnectRfcommChannel(
     return std::nullopt;
   }
 
-  // Force the link to BT_SECURITY_LOW — no authentication, no bonding — so this
-  // "insecure" RFCOMM connect really is insecure, exactly like Android's
-  // createInsecureRfcommSocketToServiceRecord that Quick Share uses. Without it
-  // the kernel negotiates the default security level, and since the peer has no
-  // BR/EDR link key for us (it only ever LE-bonded during BLE discovery) it asks
-  // the user to pair — the "pair with laptop" prompt that fired repeatedly
-  // during medium retries. Best-effort: if the option is unavailable we still
-  // try the connect rather than fail the transfer outright.
+  // Security level for the link. BT_SECURITY_LOW = no authentication, no
+  // encryption, no bonding — Android's createInsecureRfcommSocketToServiceRecord
+  // that Quick Share uses, and what avoids the "pair with laptop" prompt (the
+  // peer only ever LE-bonded during discovery, so demanding a BR/EDR key would
+  // prompt). A Pixel accepts this and transfers. The level is a parameter because
+  // Samsung was investigated as a possible encryption requirement — it is NOT:
+  // the Samsung RFCOMM server hangs up (POLLHUP) at every level, so the caller
+  // stays on LOW. Best-effort: if the option is unavailable we still try.
   struct bt_security sec {};
-  sec.level = BT_SECURITY_LOW;
+  sec.level = security_level;
   if (setsockopt(fd, SOL_BLUETOOTH, BT_SECURITY, &sec, sizeof(sec)) < 0) {
-    LOG(WARNING) << __func__
-                 << ": Could not set BT_SECURITY_LOW on the RFCOMM socket to "
-                 << remote_mac << " (" << std::strerror(errno)
-                 << "); the peer may prompt to pair";
+    LOG(WARNING) << __func__ << ": Could not set BT_SECURITY level "
+                 << static_cast<int>(security_level) << " on the RFCOMM socket to "
+                 << remote_mac << " (" << std::strerror(errno) << ")";
   }
 
   struct sockaddr_rc addr {};
@@ -285,6 +284,10 @@ std::optional<int> TryConnectRfcommChannel(
         continue;
       }
       if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
+        LOG(WARNING) << __func__ << ": RFCOMM connect to " << remote_mac
+                     << " on channel " << channel
+                     << " hung up before connecting (revents=" << pfd.revents
+                     << ") — peer likely rejected this security level";
         failed = true;
         break;
       }
@@ -359,8 +362,16 @@ std::optional<int> ConnectInsecureRfcommByAddress(
       return std::nullopt;
     }
 
-    std::optional<int> fd = TryConnectRfcommChannel(target, *channel, remote_mac,
-                                                    cancellation_flag);
+    // Insecure link: a Pixel accepts it and it avoids any pairing prompt. NOTE:
+    // this does NOT work for Samsung Quick Share — the Samsung RFCOMM server
+    // accepts the channel then immediately sends DISC (poll revents POLLHUP,
+    // ~120ms), and it does so regardless of security level (BT_SECURITY_MEDIUM
+    // was tried and hung up identically, too fast for any encryption negotiation
+    // to matter). The Samsung appears to require the RFCOMM peer to already be
+    // known from the BLE-side Nearby handshake; a bare RFCOMM-to-MAC is dropped.
+    // Left insecure-only until that handshake gap is understood.
+    std::optional<int> fd = TryConnectRfcommChannel(
+        target, *channel, remote_mac, BT_SECURITY_LOW, cancellation_flag);
     if (fd.has_value()) {
       PutCachedChannel(remote_mac, *channel);
       LOG(INFO) << __func__ << ": Successfully connected RFCOMM socket to "
