@@ -212,14 +212,17 @@ std::optional<int> TryConnectRfcommChannel(
     return std::nullopt;
   }
 
-  // Security level for the link. BT_SECURITY_LOW = no authentication, no
-  // encryption, no bonding — Android's createInsecureRfcommSocketToServiceRecord
-  // that Quick Share uses, and what avoids the "pair with laptop" prompt (the
-  // peer only ever LE-bonded during discovery, so demanding a BR/EDR key would
-  // prompt). A Pixel accepts this and transfers. The level is a parameter because
-  // Samsung was investigated as a possible encryption requirement — it is NOT:
-  // the Samsung RFCOMM server hangs up (POLLHUP) at every level, so the caller
-  // stays on LOW. Best-effort: if the option is unavailable we still try.
+  // Security level for the link:
+  //   BT_SECURITY_LOW    = no authentication/encryption/bonding (Android's
+  //                        createInsecureRfcommSocketToServiceRecord). A Pixel
+  //                        accepts this.
+  //   BT_SECURITY_MEDIUM = authenticated + encrypted via SSP. Required by
+  //                        Samsung Quick Share, whose Nearby RFCOMM server runs
+  //                        under Security Mode 4 and DISCs an insecure connect
+  //                        (~120ms). With the adapter in non-bondable mode the
+  //                        SSP is a silent No-Bonding temporary pairing (no
+  //                        prompt on the peer). See ConnectRfcommByAddress.
+  // Best-effort: if the option is unavailable we still try.
   struct bt_security sec {};
   sec.level = security_level;
   if (setsockopt(fd, SOL_BLUETOOTH, BT_SECURITY, &sec, sizeof(sec)) < 0) {
@@ -327,18 +330,16 @@ std::optional<int> TryConnectRfcommChannel(
 
 }  // namespace
 
-std::optional<int> ConnectInsecureRfcommByAddress(
-    const std::string &remote_mac, const std::string &service_uuid,
-    nearby::CancellationFlag *cancellation_flag) {
-  bdaddr_t target;
-  if (str2ba(remote_mac.c_str(), &target) < 0) {
-    LOG(ERROR) << __func__ << ": Invalid Bluetooth address: " << remote_mac;
-    return std::nullopt;
-  }
+namespace {
 
-  // Try up to twice: first with a cached channel (skips the ~1s SDP round-trip
-  // on Nearby's medium-retries), then, if that stale channel fails to connect,
-  // once more after a fresh SDP lookup.
+// Connects to `target`'s Nearby RFCOMM service at a single security level.
+// Tries up to twice: first with a cached channel (skips the ~1s SDP round-trip
+// on Nearby's medium-retries), then, if that stale channel fails to connect,
+// once more after a fresh SDP lookup. Returns a connected fd or std::nullopt.
+std::optional<int> ConnectAtSecurityLevel(
+    const bdaddr_t &target, const std::string &remote_mac,
+    const std::string &service_uuid, uint8_t security_level,
+    nearby::CancellationFlag *cancellation_flag) {
   for (int attempt = 0; attempt < 2; ++attempt) {
     if (cancellation_flag != nullptr && cancellation_flag->Cancelled()) {
       LOG(INFO) << __func__ << ": Cancelled for " << remote_mac;
@@ -362,20 +363,14 @@ std::optional<int> ConnectInsecureRfcommByAddress(
       return std::nullopt;
     }
 
-    // Insecure link: a Pixel accepts it and it avoids any pairing prompt. NOTE:
-    // this does NOT work for Samsung Quick Share — the Samsung RFCOMM server
-    // accepts the channel then immediately sends DISC (poll revents POLLHUP,
-    // ~120ms), and it does so regardless of security level (BT_SECURITY_MEDIUM
-    // was tried and hung up identically, too fast for any encryption negotiation
-    // to matter). The Samsung appears to require the RFCOMM peer to already be
-    // known from the BLE-side Nearby handshake; a bare RFCOMM-to-MAC is dropped.
-    // Left insecure-only until that handshake gap is understood.
     std::optional<int> fd = TryConnectRfcommChannel(
-        target, *channel, remote_mac, BT_SECURITY_LOW, cancellation_flag);
+        target, *channel, remote_mac, security_level, cancellation_flag);
     if (fd.has_value()) {
       PutCachedChannel(remote_mac, *channel);
       LOG(INFO) << __func__ << ": Successfully connected RFCOMM socket to "
-                << remote_mac << " on channel " << *channel;
+                << remote_mac << " on channel " << *channel
+                << " (security level " << static_cast<int>(security_level)
+                << ")";
       return fd;
     }
 
@@ -387,6 +382,54 @@ std::optional<int> ConnectInsecureRfcommByAddress(
     }
     return std::nullopt;
   }
+  return std::nullopt;
+}
+
+}  // namespace
+
+std::optional<int> ConnectRfcommByAddress(
+    const std::string &remote_mac, const std::string &service_uuid,
+    nearby::CancellationFlag *cancellation_flag) {
+  bdaddr_t target;
+  if (str2ba(remote_mac.c_str(), &target) < 0) {
+    LOG(ERROR) << __func__ << ": Invalid Bluetooth address: " << remote_mac;
+    return std::nullopt;
+  }
+
+  // Two peer behaviours, so we try security levels in order:
+  //
+  //  1. BT_SECURITY_MEDIUM (authenticated + encrypted). Samsung Quick Share
+  //     registers its Nearby RFCOMM server under Bluetooth Security Mode 4 and
+  //     drops an insecure connection the instant it opens (RFCOMM accept then
+  //     DISC, ~120ms). It requires an SSP-authenticated, encrypted BR/EDR link.
+  //     A Pixel also accepts a MEDIUM connection, so this is the preferred path.
+  //     For this to complete WITHOUT a user prompt on the peer, the caller must
+  //     have put the local adapter in NON-bondable mode so SSP negotiates a
+  //     No-Bonding *temporary* pairing (auth_req 0x00) — which the peer
+  //     auto-accepts silently. General Bonding (the bondable default) makes the
+  //     peer raise a pairing-consent dialog instead. See BluetoothClassicMedium
+  //     ::ConnectToService, which scopes the non-bondable window around this
+  //     call.
+  //
+  //  2. BT_SECURITY_LOW (insecure) as a fallback for peers that reject a secure
+  //     link — Google Nearby's original off-network behaviour, which a Pixel
+  //     accepts directly.
+  static constexpr uint8_t kSecurityLevels[] = {BT_SECURITY_MEDIUM,
+                                                 BT_SECURITY_LOW};
+  for (uint8_t level : kSecurityLevels) {
+    if (cancellation_flag != nullptr && cancellation_flag->Cancelled()) {
+      LOG(INFO) << __func__ << ": Cancelled for " << remote_mac;
+      return std::nullopt;
+    }
+    std::optional<int> fd = ConnectAtSecurityLevel(
+        target, remote_mac, service_uuid, level, cancellation_flag);
+    if (fd.has_value()) return fd;
+    LOG(INFO) << __func__ << ": RFCOMM connect to " << remote_mac
+              << " at security level " << static_cast<int>(level)
+              << " failed; trying next level";
+  }
+  LOG(ERROR) << __func__ << ": All RFCOMM connect attempts to " << remote_mac
+             << " failed";
   return std::nullopt;
 }
 

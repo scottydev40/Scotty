@@ -24,12 +24,21 @@
 namespace nearby {
 namespace linux {
 
-// Open an INSECURE Bluetooth Classic RFCOMM socket to `remote_address` with no
-// prior bonding and no bluez Device1 object (mirrors Android
-// RFCOMM_CreateConnection). SDP-queries the peer for `service_uuid` to discover
-// the RFCOMM channel, then raw-connects. Returns a connected, blocking socket fd
-// (caller owns and must close) or std::nullopt on any failure / cancellation.
-std::optional<int> ConnectInsecureRfcommByAddress(
+// Open a Bluetooth Classic RFCOMM socket to `remote_mac` with no prior bonding
+// and no bluez Device1 object (mirrors Android RFCOMM_CreateConnection).
+// SDP-queries the peer for `service_uuid` to discover the RFCOMM channel, then
+// raw-connects. Tries an authenticated+encrypted (BT_SECURITY_MEDIUM) link
+// first — required by Samsung Quick Share (Security Mode 4), also accepted by a
+// Pixel — then falls back to an insecure (BT_SECURITY_LOW) link.
+//
+// For the secure attempt to complete without a pairing prompt on the peer, the
+// caller must put the local adapter in NON-bondable mode for the duration of
+// this call so SSP negotiates a No-Bonding temporary pairing (see
+// BluetoothClassicMedium::ConnectToService).
+//
+// Returns a connected, blocking socket fd (caller owns and must close) or
+// std::nullopt on any failure / cancellation.
+std::optional<int> ConnectRfcommByAddress(
     const std::string& remote_mac,       // "AA:BB:CC:DD:EE:FF"
     const std::string& service_uuid,     // e.g. "0000fef3-0000-1000-8000-00805f9b34fb"
     nearby::CancellationFlag* cancellation_flag);
