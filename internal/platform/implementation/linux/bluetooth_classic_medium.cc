@@ -14,6 +14,7 @@
 
 #include <cstring>
 #include <memory>
+#include <optional>
 
 #include <sdbus-c++/IProxy.h>
 #include <sdbus-c++/Types.h>
@@ -147,13 +148,44 @@ std::unique_ptr<api::BluetoothSocket> BluetoothClassicMedium::ConnectToService(
     // its preferred off-network medium. Mirror that here instead of failing;
     // the bluez ConnectProfile path below only works for known devices.
     LOG(INFO) << __func__ << ": " << address.ToString()
-              << " unknown to bluez; connecting insecure RFCOMM by address for "
+              << " unknown to bluez; connecting RFCOMM by address for "
               << service_uuid;
-    auto fd = ConnectInsecureRfcommByAddress(address.ToString(), service_uuid,
-                                             cancellation_flag);
+
+    // Samsung Quick Share's Nearby RFCOMM server runs under Bluetooth Security
+    // Mode 4: it drops an insecure connection instantly and needs an
+    // SSP-authenticated, encrypted link. ConnectRfcommByAddress connects secure
+    // first for that reason. To keep the SSP silent — a No-Bonding *temporary*
+    // pairing the peer auto-accepts with no consent dialog, rather than a
+    // General-Bonding pairing that pops a prompt — the local adapter must be
+    // non-bondable for the duration of the connect. Snapshot Pairable, force it
+    // off, and restore the original value afterwards (even on early return).
+    auto &bluez_adapter = adapter_.GetBluezAdapterObject();
+    std::optional<bool> prev_pairable;
+    try {
+      prev_pairable = bluez_adapter.Pairable();
+      if (*prev_pairable) bluez_adapter.Pairable(false);
+    } catch (const sdbus::Error &e) {
+      LOG(WARNING) << __func__ << ": could not set adapter non-bondable ("
+                   << e.getName()
+                   << "); a secure connect may prompt for pairing on the peer";
+    }
+    struct PairableRestorer {
+      BluezAdapter *adapter;
+      std::optional<bool> restore_to;
+      ~PairableRestorer() {
+        if (!restore_to.has_value()) return;
+        try {
+          adapter->Pairable(*restore_to);
+        } catch (const sdbus::Error &) {
+        }
+      }
+    } pairable_restorer{&bluez_adapter, prev_pairable};
+
+    auto fd = ConnectRfcommByAddress(address.ToString(), service_uuid,
+                                     cancellation_flag);
     if (!fd.has_value()) {
-      LOG(ERROR) << __func__ << ": insecure RFCOMM connect to "
-                 << address.ToString() << " failed";
+      LOG(ERROR) << __func__ << ": RFCOMM connect to " << address.ToString()
+                 << " failed";
       return nullptr;
     }
     return std::unique_ptr<api::BluetoothSocket>(new BluetoothSocket(
