@@ -25,6 +25,7 @@
 #include "internal/base/observer_list.h"
 #include "internal/platform/implementation/bluetooth_classic.h"
 #include "internal/platform/implementation/linux/bluetooth_adapter.h"
+#include "internal/platform/implementation/linux/bluez.h"
 #include "internal/platform/implementation/linux/bluez_agent.h"
 #include "internal/platform/implementation/linux/bluetooth_bluez_profile.h"
 #include "internal/platform/implementation/linux/bluetooth_classic_device.h"
@@ -183,6 +184,26 @@ std::unique_ptr<api::BluetoothSocket> BluetoothClassicMedium::ConnectToService(
 
     auto fd = ConnectRfcommByAddress(address.ToString(), service_uuid,
                                      cancellation_flag);
+    if (!fd.has_value() &&
+        (cancellation_flag == nullptr || !cancellation_flag->Cancelled())) {
+      // The connect can fail because bluez still holds a stale BR/EDR link key
+      // for this peer from a previous (temporary) pairing: on the secure
+      // attempt the kernel offers that key, the peer no longer has a match, and
+      // authentication fails — surfacing as an instant RFCOMM hang-up,
+      // indistinguishable at the socket level from a plain rejection. This
+      // raw-socket path is for ephemeral, off-network Everyone peers where a
+      // stored bond is never wanted, so drop any bluez device object for this
+      // MAC and retry once so the next attempt does fresh SSP.
+      auto dev_path = sdbus::ObjectPath(
+          bluez::device_object_path(adapter_.GetObjectPath(),
+                                    address.ToString()));
+      if (adapter_.RemoveDeviceByObjectPath(dev_path)) {
+        LOG(INFO) << __func__ << ": removed stale bluez device " << dev_path
+                  << "; retrying RFCOMM connect to " << address.ToString();
+        fd = ConnectRfcommByAddress(address.ToString(), service_uuid,
+                                    cancellation_flag);
+      }
+    }
     if (!fd.has_value()) {
       LOG(ERROR) << __func__ << ": RFCOMM connect to " << address.ToString()
                  << " failed";
