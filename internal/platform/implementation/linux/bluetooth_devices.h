@@ -32,6 +32,7 @@
 #include "internal/platform/bluetooth_utils.h"
 #include "internal/platform/implementation/bluetooth_classic.h"
 #include "internal/platform/implementation/linux/bluetooth_classic_device.h"
+#include "internal/platform/implementation/linux/executor.h"
 
 namespace nearby {
 namespace linux {
@@ -145,6 +146,16 @@ class DeviceWatcher final : sdbus::ProxyInterfaces<sdbus::ObjectManager_proxy> {
   std::shared_ptr<api::BluetoothClassicMedium::DiscoveryCallback> discovery_cb_;
   std::shared_ptr<ObserverList<api::BluetoothClassicMedium::Observer>>
       observers_;
+
+  // Runs the discovery/observer callbacks off the sdbus event-loop thread.
+  // onInterfacesAdded/Removed fire on that thread while it holds the sdbus
+  // connection mutex; the callbacks take Nearby-side locks and do blocking
+  // bluez reads, so running them inline can deadlock against another thread
+  // doing a D-Bus call under a Nearby lock (e.g. LEAdvertisement teardown on
+  // shutdown). A single (serial) worker preserves add/remove ordering. Declared
+  // last so it is destroyed first, draining pending tasks while the members they
+  // reference are still alive.
+  Executor callback_executor_{1};
 };
 
 }  // namespace linux

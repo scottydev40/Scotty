@@ -158,16 +158,27 @@ void DeviceWatcher::onInterfacesAdded(
 
   auto device = devices_->add_new_device(objectPath);
   device->SetDiscoveryCallback(discovery_cb_);
-  if (discovery_cb_ != nullptr &&
-      discovery_cb_->device_discovered_cb != nullptr) {
-    discovery_cb_->device_discovered_cb(*device);
-  }
 
-  if (observers_ != nullptr) {
-    for (const auto &observer : observers_->GetObservers()) {
-      observer->DeviceAdded(*device);
+  // We are on the sdbus event-loop thread here, holding the sdbus connection
+  // mutex. The discovery callback (FEF3 decode -> BleMedium::StartScanning) and
+  // the observer notifications take Nearby-side locks and issue blocking bluez
+  // reads; running them inline holds the sdbus mutex across those locks and can
+  // deadlock against another thread doing a D-Bus call under a Nearby lock.
+  // Offload to the serial worker so the event loop returns immediately.
+  // Shared-ptr copies keep everything alive independent of `this`.
+  auto discovery_cb = discovery_cb_;
+  auto observers = observers_;
+  callback_executor_.Execute([device, discovery_cb, observers]() {
+    if (discovery_cb != nullptr &&
+        discovery_cb->device_discovered_cb != nullptr) {
+      discovery_cb->device_discovered_cb(*device);
     }
-  }
+    if (observers != nullptr) {
+      for (const auto &observer : observers->GetObservers()) {
+        observer->DeviceAdded(*device);
+      }
+    }
+  });
 }
 
 void DeviceWatcher::onInterfacesRemoved(
@@ -181,29 +192,36 @@ void DeviceWatcher::onInterfacesRemoved(
   auto removed_device_it = std::find(interfaces.begin(), interfaces.end(),
                                      org::bluez::Device1_proxy::INTERFACE_NAME);
   if (removed_device_it != interfaces.end()) {
-    auto device = devices_->get_device_by_path(objectPath);
-    if (device == nullptr) {
-      LOG(WARNING) << __func__
-                           << ": received InterfacesRemoved for a device "
-                              "we don't know about: "
-                           << objectPath;
-      return;
-    }
-
-    LOG(INFO) << __func__ << ": Device " << objectPath
-                      << " has been removed";
-    if (discovery_cb_ != nullptr && discovery_cb_->device_lost_cb != nullptr) {
-      discovery_cb_->device_lost_cb(*device);
-    }
-
-    if (observers_ != nullptr) {
-      for (const auto &observer : observers_->GetObservers()) {
-        observer->DeviceRemoved(*device);
+    // Offload to the same serial worker as onInterfacesAdded (see there for
+    // why): keeps the sdbus event loop from blocking on Nearby locks, and the
+    // single thread preserves add-before-remove ordering per device.
+    auto devices = devices_;
+    auto discovery_cb = discovery_cb_;
+    auto observers = observers_;
+    callback_executor_.Execute([devices, discovery_cb, observers, objectPath]() {
+      auto device = devices->get_device_by_path(objectPath);
+      if (device == nullptr) {
+        LOG(WARNING) << "onInterfacesRemoved: received InterfacesRemoved for a "
+                        "device we don't know about: "
+                     << objectPath;
+        return;
       }
-      devices_->remove_device_by_path(objectPath);
-    } else {
-      devices_->mark_peripheral_lost(objectPath);
-    }
+
+      LOG(INFO) << "onInterfacesRemoved: Device " << objectPath
+                << " has been removed";
+      if (discovery_cb != nullptr && discovery_cb->device_lost_cb != nullptr) {
+        discovery_cb->device_lost_cb(*device);
+      }
+
+      if (observers != nullptr) {
+        for (const auto &observer : observers->GetObservers()) {
+          observer->DeviceRemoved(*device);
+        }
+        devices->remove_device_by_path(objectPath);
+      } else {
+        devices->mark_peripheral_lost(objectPath);
+      }
+    });
   }
 }
 
