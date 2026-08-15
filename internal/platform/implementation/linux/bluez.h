@@ -21,7 +21,9 @@
 
 #include "absl/strings/string_view.h"
 #include "internal/platform/implementation/ble.h"
+#include "internal/platform/mac_address.h"
 
+#include <optional>
 #include <string>
 
 #define BLUEZ_LOG_METHOD_CALL_ERROR(proxy, method, err)                  \
@@ -54,6 +56,11 @@ static constexpr const char *NEARBY_BLE_GATT_PATH_ROOT =
       "/com/google/nearby/medium/ble/gatt/profile";
   std::string device_object_path(const sdbus::ObjectPath &adapter_object_path,
                                absl::string_view mac_address);
+// Reverse of device_object_path: extract the peer MAC from a bluez Device1
+// object path like "/org/bluez/hci0/dev_74_F4_41_3F_12_D8". Returns nullopt if
+// the path has no valid dev_ MAC suffix.
+std::optional<MacAddress> mac_from_device_object_path(
+    absl::string_view object_path);
 sdbus::ObjectPath profile_object_path(absl::string_view service_uuid);
 sdbus::ObjectPath adapter_object_path(absl::string_view name);
 sdbus::ObjectPath gatt_profile_object_path(absl::string_view service_uuid);

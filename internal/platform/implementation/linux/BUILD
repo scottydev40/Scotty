@@ -317,6 +317,7 @@ cc_test(
         "utils_test.cc",
         "ble_l2cap_socket_test.cc",
         "bluetooth_classic_socket_test.cc",
+        "bluez_test.cc",
         # "bluetooth_adapter_test.cc",
         "crypto_test.cc",
         # "executor_test.cc",
