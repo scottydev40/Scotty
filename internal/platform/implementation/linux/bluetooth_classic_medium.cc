@@ -24,6 +24,7 @@
 #include "absl/time/time.h"
 #include "internal/base/observer_list.h"
 #include "internal/platform/implementation/bluetooth_classic.h"
+#include "internal/platform/implementation/linux/agent_session_gate.h"
 #include "internal/platform/implementation/linux/bluetooth_adapter.h"
 #include "internal/platform/implementation/linux/bluez.h"
 #include "internal/platform/implementation/linux/bluez_agent.h"
@@ -40,8 +41,6 @@
 namespace nearby {
 namespace linux {
 namespace {
-
-constexpr char kBluezAgentPath[] = "/com/google/nearby/bluetooth/agent";
 
 // BlueZ ConnectProfile can fail transiently with 'br-connection-create-socket'
 // when the peer's SDP record for the service UUID hasn't propagated yet — common
@@ -69,13 +68,9 @@ BluetoothClassicMedium::BluetoothClassicMedium(BluetoothAdapter &adapter)
   profile_manager_ =
       std::make_unique<ProfileManager>(*system_bus_, *devices_);
 
-  if (!agent_manager_->Register(
-          /*capability=*/absl::string_view("NoInputNoOutput"),
-          sdbus::ObjectPath(kBluezAgentPath))) {
-    LOG(WARNING) << __func__
-                 << ": Failed to register default BlueZ agent at "
-                 << kBluezAgentPath;
-  }
+  auto gate = GetSharedAgentSessionGate(adapter_.GetObjectPath(),
+                                        absl::Seconds(30));
+  agent_manager_->SetGate(gate);
 }
 
 bool BluetoothClassicMedium::StartDiscovery(
@@ -270,15 +265,9 @@ BluetoothClassicMedium::ListenForService(const std::string &service_name,
     }
   }
 
-  // We are about to accept incoming connections; make sure our auto-accept
-  // BlueZ agent still owns the default-agent slot so an incoming Just-Works
-  // pairing is answered here instead of stalling (SMP_RSP_TIMEOUT) when e.g.
-  // GNOME's Bluetooth panel has grabbed the default agent.
-  if (agent_manager_ != nullptr) {
-    agent_manager_->EnsureDefaultAgent(
-        /*capability=*/absl::string_view("NoInputNoOutput"),
-        sdbus::ObjectPath(kBluezAgentPath));
-  }
+  // The auto-accept agent is no longer claimed here. It is armed per incoming
+  // session via AgentManager::BeginSession (see the BLE receive producer), so
+  // an idle listen never holds the system default-agent slot.
 
   return std::shared_ptr<api::BluetoothServerSocket>(
       new BluetoothServerSocket(*profile_manager_, service_uuid));

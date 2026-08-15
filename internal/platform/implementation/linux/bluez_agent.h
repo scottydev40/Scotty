@@ -77,20 +77,6 @@ class AgentManager final
 
   ~AgentManager() { unregisterProxy(); }
 
-  bool Register(std::optional<absl::string_view> capability,
-                const sdbus::ObjectPath& agent_object_path);
-
-  // (Re)claim the BlueZ default-agent slot for the given agent, registering it
-  // first if necessary. Another process (e.g. GNOME's Bluetooth settings panel)
-  // can grab "default agent" and then fail to answer an incoming Just-Works
-  // pairing -> the peer times out (SMP_RSP_TIMEOUT) and the receive hangs.
-  // Calling this right before we start accepting incoming connections keeps our
-  // auto-accept agent in charge at connect time.
-  bool EnsureDefaultAgent(std::optional<absl::string_view> capability,
-                          const sdbus::ObjectPath& agent_object_path);
-
-  bool AgentRegistered(absl::string_view agent_object_path);
-
   // Install the shared gate and wire arm/disarm to it.
   void SetGate(std::shared_ptr<AgentSessionGate> gate);
   void BeginSession(const MacAddress& peer);
