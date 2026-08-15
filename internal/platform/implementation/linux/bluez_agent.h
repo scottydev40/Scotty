@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -10,10 +11,12 @@
 
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "internal/platform/implementation/linux/agent_session_gate.h"
 #include "internal/platform/implementation/linux/generated/dbus/bluez/agent_server.h"
 #include "internal/platform/implementation/linux/generated/dbus/bluez/agentmanager_client.h"
 #include "internal/platform/implementation/linux/bluez.h"
 #include "internal/platform/logging.h"
+#include "internal/platform/mac_address.h"
 
 namespace nearby::linux {
 
@@ -25,8 +28,9 @@ class Agent final
   Agent& operator=(const Agent&) = delete;
   Agent& operator=(Agent&&) = delete;
 
-  Agent(sdbus::IConnection& system_bus, sdbus::ObjectPath path)
-      : AdaptorInterfaces(system_bus, std::move(path)) {
+  Agent(sdbus::IConnection& system_bus, sdbus::ObjectPath path,
+        std::shared_ptr<AgentSessionGate> gate)
+      : AdaptorInterfaces(system_bus, std::move(path)), gate_(std::move(gate)) {
     registerAdaptor();
     LOG(INFO) << "Created new Agent at path: " << getObject().getObjectPath();
   }
@@ -34,6 +38,8 @@ class Agent final
   ~Agent() { unregisterAdaptor(); }
 
  private:
+  std::shared_ptr<AgentSessionGate> gate_;
+
   void Release() override;
 
   std::string RequestPinCode(const sdbus::ObjectPath& device) override;
@@ -85,7 +91,18 @@ class AgentManager final
 
   bool AgentRegistered(absl::string_view agent_object_path);
 
+  // Install the shared gate and wire arm/disarm to it.
+  void SetGate(std::shared_ptr<AgentSessionGate> gate);
+  void BeginSession(const MacAddress& peer);
+  void EndSession(const MacAddress& peer);
+
  private:
+  void Arm();     // register agent (if needed) + RequestDefaultAgent
+  void Disarm();  // UnregisterAgent
+
+  std::shared_ptr<AgentSessionGate> gate_;
+  sdbus::ObjectPath agent_path_{"/com/google/nearby/bluetooth/agent"};
+
   absl::Mutex registered_agents_mutex_;
   std::map<std::string, std::shared_ptr<Agent>> registered_agents_
       ABSL_GUARDED_BY(registered_agents_mutex_);
