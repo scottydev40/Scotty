@@ -63,6 +63,50 @@ TEST(AgentSessionGateTest, SharedGateIsPerAdapterSingleton) {
   EXPECT_EQ(a.get(), b.get());
 }
 
+TEST(AgentSessionGateTest, RearmsAfterFullDrainCycle) {
+  int arms = 0, disarms = 0;
+  AgentSessionGate gate(absl::Seconds(30));
+  gate.SetArmCallbacks({[&] { arms++; }, [&] { disarms++; }});
+
+  gate.BeginSession(Mac("AA:BB:CC:DD:EE:01"));
+  EXPECT_EQ(arms, 1);
+  EXPECT_EQ(disarms, 0);
+
+  gate.EndSession(Mac("AA:BB:CC:DD:EE:01"));
+  EXPECT_EQ(disarms, 1);
+
+  // Set fully drained; a new session should arm again (state machine
+  // cycles rather than latching disarmed forever).
+  gate.BeginSession(Mac("AA:BB:CC:DD:EE:02"));
+  EXPECT_EQ(arms, 2);
+  EXPECT_EQ(disarms, 1);
+
+  gate.EndSession(Mac("AA:BB:CC:DD:EE:02"));
+  EXPECT_EQ(disarms, 2);
+}
+
+TEST(AgentSessionGateTest, IsAllowedAfterExpiryDoesNotDisarm) {
+  absl::Time now = absl::UnixEpoch();
+  int disarms = 0;
+  AgentSessionGate gate(absl::Seconds(30), [&] { return now; });
+  gate.SetArmCallbacks({[] {}, [&] { disarms++; }});
+
+  gate.BeginSession(Mac("AA:BB:CC:DD:EE:01"));
+  now += absl::Seconds(31);
+
+  // Simulates a BlueZ agent callback (RequestAuthorization/RequestConfirmation)
+  // arriving after the peer's TTL has expired. IsAllowed must purge the
+  // expired entry and report false, but must NEVER fire on_disarm itself:
+  // on_disarm runs AgentManager::Disarm(), which destroys the Agent whose
+  // method would still be on the stack in the real BlueZ callback path.
+  EXPECT_FALSE(gate.IsAllowed(Mac("AA:BB:CC:DD:EE:01")));
+  EXPECT_EQ(disarms, 0);
+
+  // Disarm is deferred to a caller off the agent-callback thread.
+  gate.SweepExpired();
+  EXPECT_EQ(disarms, 1);
+}
+
 }  // namespace
 }  // namespace linux
 }  // namespace nearby
