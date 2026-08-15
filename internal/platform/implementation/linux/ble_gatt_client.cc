@@ -25,6 +25,7 @@
 #include "absl/synchronization/mutex.h"
 #include "internal/platform/cancellation_flag_listener.h"
 #include "internal/platform/implementation/ble.h"
+#include "internal/platform/implementation/linux/agent_session_gate.h"
 #include "internal/platform/implementation/linux/ble_gatt_client.h"
 #include "internal/platform/implementation/linux/bluez_gatt_characteristic_client.h"
 #include "internal/platform/implementation/linux/bluez_gatt_service_client.h"
@@ -37,6 +38,55 @@
 
 namespace nearby {
 namespace linux {
+namespace {
+
+constexpr char kBluezDevicePathMarker[] = "/dev_";
+constexpr std::size_t kMacAddressPathLength = 17;
+constexpr absl::Duration kAgentSessionTtl = absl::Seconds(30);
+
+struct AgentSessionKey {
+  std::string adapter_object_path;
+  MacAddress peer;
+};
+
+std::optional<AgentSessionKey> AgentSessionKeyFromBluezPath(
+    const sdbus::ObjectPath& object_path) {
+  const std::string path = object_path;
+  const std::size_t marker_pos = path.rfind(kBluezDevicePathMarker);
+  if (marker_pos == std::string::npos) return std::nullopt;
+
+  const std::size_t device_path_end =
+      marker_pos + sizeof(kBluezDevicePathMarker) - 1 +
+      kMacAddressPathLength;
+  if (device_path_end > path.size() ||
+      (device_path_end < path.size() && path[device_path_end] != '/')) {
+    return std::nullopt;
+  }
+
+  auto peer = bluez::mac_from_device_object_path(
+      absl::string_view(path).substr(0, device_path_end));
+  if (!peer.has_value()) return std::nullopt;
+  return AgentSessionKey{path.substr(0, marker_pos), *peer};
+}
+
+void BeginAgentSession(const sdbus::ObjectPath& device_object_path) {
+  auto key = AgentSessionKeyFromBluezPath(device_object_path);
+  if (!key.has_value()) return;
+  GetSharedAgentSessionGate(key->adapter_object_path, kAgentSessionTtl)
+      ->BeginSession(key->peer);
+}
+
+void EndAgentSession(const sdbus::ObjectPath& object_path) {
+  auto key = AgentSessionKeyFromBluezPath(object_path);
+  if (!key.has_value()) return;
+  auto gate =
+      GetSharedAgentSessionGate(key->adapter_object_path, kAgentSessionTtl);
+  gate->SweepExpired();
+  gate->EndSession(key->peer);
+}
+
+}  // namespace
+
 bool GattClient::DiscoverServiceAndCharacteristics(
     const Uuid &service_uuid, const std::vector<Uuid> &characteristic_uuids) {
   LOG(INFO) << __func__ << ": Discovering service " << std::string(service_uuid)
@@ -504,15 +554,21 @@ void BluezGattDiscovery::onInterfacesAdded(
   const auto &properties = interfacesAndProperties.at(
       sdbus::InterfaceName(org::bluez::GattCharacteristic1_proxy::INTERFACE_NAME));
 
-  absl::MutexLock lock(&mutex_);
-  auto maybe_props = characteristicProperties(objectPath, properties);
-  if (!maybe_props.has_value()) return;
-  auto [service_uuid, chr_uuid, device_path] = *maybe_props;
+  sdbus::ObjectPath device_path;
+  {
+    absl::MutexLock lock(&mutex_);
+    auto maybe_props = characteristicProperties(objectPath, properties);
+    if (!maybe_props.has_value()) return;
+    auto [service_uuid, chr_uuid, resolved_device_path] = *maybe_props;
+    device_path = resolved_device_path;
 
-  discovered_characteristics_.emplace(
-      std::make_tuple(service_uuid, chr_uuid, device_path), objectPath);
-  characteristics_properties_.emplace(
-      objectPath, std::make_tuple(service_uuid, chr_uuid, device_path));
+    discovered_characteristics_.emplace(
+        std::make_tuple(service_uuid, chr_uuid, device_path), objectPath);
+    characteristics_properties_.emplace(
+        objectPath, std::make_tuple(service_uuid, chr_uuid, device_path));
+  }
+
+  BeginAgentSession(device_path);
 }
 
 void BluezGattDiscovery::onInterfacesRemoved(
@@ -524,27 +580,27 @@ void BluezGattDiscovery::onInterfacesRemoved(
   auto service_it =
       std::find(begin, end, org::bluez::GattService1_proxy::INTERFACE_NAME);
   if (service_it != end) {
-    absl::MutexLock lock(&mutex_);
-    cached_services_.erase(objectPath);
+    {
+      absl::MutexLock lock(&mutex_);
+      cached_services_.erase(objectPath);
+    }
+    EndAgentSession(objectPath);
     return;
   }
 
   auto chr_it = std::find(
       begin, end, org::bluez::GattCharacteristic1_proxy::INTERFACE_NAME);
   if (chr_it != end) {
-    absl::MutexLock lock(&mutex_);
     {
-    auto it = characteristics_properties_.find(objectPath);
-      if (it == characteristics_properties_.end()) {
-        // Not tracked / already removed / never added.
-        // return;  // or just `break;` / `continue;` depending on your context
-        return;
+      absl::MutexLock lock(&mutex_);
+      auto it = characteristics_properties_.find(objectPath);
+      if (it != characteristics_properties_.end()) {
+        auto& props = it->second;
+        discovered_characteristics_.erase(props);
+        characteristics_properties_.erase(it);
       }
-
-      auto &props = it->second;
-      discovered_characteristics_.erase(props);
     }
-    characteristics_properties_.erase(objectPath);
+    EndAgentSession(objectPath);
   }
 }
 
