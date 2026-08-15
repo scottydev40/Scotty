@@ -714,8 +714,16 @@ void NearbySharingApi::SetVisibility(int mode) {
     return;
   }
   impl_->visibility_mode = mode;
-  // Re-apply live so a change takes effect without leaving receive mode.
-  if (impl_->service == nullptr || !impl_->receive_mode_started) {
+  // Push the choice to the engine even when receive mode has not started yet.
+  // The engine persists this as background_visibility and advertises with it
+  // once a receive surface is registered, so pushing unconditionally keeps the
+  // engine in sync with the tray menu. Otherwise a menu change made while idle
+  // (no receive surface) only updated the tray's QSettings and left the engine
+  // on a stale visibility, so the menu and what the device actually advertises
+  // would disagree. StartReceiveMode already calls SetVisibility before
+  // RegisterReceiveSurface, so calling it without a surface is safe and does not
+  // start advertising on its own.
+  if (impl_->service == nullptr) {
     return;
   }
   impl_->service->SetVisibility(
