@@ -77,6 +77,14 @@ class LEAdvertisement final
   //std::map<std::string, sdbus::Variant> ScanResponseServiceData() override {
   //  return {};
   //}
+  // Advertise as non-discoverable. bluez otherwise marks the advertisement
+  // "Discoverable" and prepends a 3-byte General-Discoverable Flags AD; with a
+  // 31-byte FEF3 ServiceData that pushes a legacy ADV_IND to 34 bytes, which the
+  // controller rejects (Invalid HCI Command Parameters) so the self-share advert
+  // never airs. Nearby peers scan by the FEF3 service UUID, not the discoverable
+  // flag (this matches how Google's own advertisements are found), so dropping
+  // the flag is safe and lets the 31-byte advert fit the legacy PDU.
+  bool Discoverable() override { return false; }
   std::vector<std::string> Includes() override {
     return {};
   }

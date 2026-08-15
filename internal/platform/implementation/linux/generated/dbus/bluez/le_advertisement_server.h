@@ -39,6 +39,7 @@ protected:
                           , sdbus::registerProperty("ManufacturerData").withGetter([this](){ return this->ManufacturerData(); })
                           , sdbus::registerProperty("SolicitUUIDs").withGetter([this](){ return this->SolicitUUIDs(); })
                           , sdbus::registerProperty("ServiceData").withGetter([this](){ return this->ServiceData(); })
+                          , sdbus::registerProperty("Discoverable").withGetter([this](){ return this->Discoverable(); })
                           , sdbus::registerProperty("Includes").withGetter([this](){ return this->Includes(); })
                           , sdbus::registerProperty("LocalName").withGetter([this](){ return this->LocalName(); })
                           , sdbus::registerProperty("Duration").withGetter([this](){ return this->Duration(); })
@@ -58,6 +59,7 @@ private:
     virtual std::map<std::string, sdbus::Variant> ManufacturerData() = 0;
     virtual std::vector<std::string> SolicitUUIDs() = 0;
     virtual std::map<std::string, sdbus::Variant> ServiceData() = 0;
+    virtual bool Discoverable() = 0;
     virtual std::vector<std::string> Includes() = 0;
     virtual std::string LocalName() = 0;
     virtual uint16_t Duration() = 0;
