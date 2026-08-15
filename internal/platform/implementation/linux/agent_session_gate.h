@@ -46,6 +46,12 @@ class AgentSessionGate {
   void SweepExpired();
 
  private:
+  // Erases expired entries only. Never touches armed_ and never returns a
+  // callback: safe to call from contexts (e.g. IsAllowed, invoked from live
+  // BlueZ agent callbacks) that must not trigger on_disarm, since on_disarm
+  // may destroy the Agent whose method is currently on the stack.
+  void PurgeExpiredLocked(absl::Time now) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   // Purges expired entries. If doing so drains the set while armed, clears
   // armed_ and returns on_disarm for the caller to invoke outside mu_.
   std::function<void()> PurgeExpiredAndMaybeDisarmLocked(absl::Time now)

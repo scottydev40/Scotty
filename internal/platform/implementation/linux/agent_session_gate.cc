@@ -17,8 +17,7 @@ void AgentSessionGate::SetArmCallbacks(AgentArmCallbacks callbacks) {
   callbacks_ = std::move(callbacks);
 }
 
-std::function<void()> AgentSessionGate::PurgeExpiredAndMaybeDisarmLocked(
-    absl::Time now) {
+void AgentSessionGate::PurgeExpiredLocked(absl::Time now) {
   for (auto it = deadline_by_mac_.begin(); it != deadline_by_mac_.end();) {
     if (it->second <= now) {
       it = deadline_by_mac_.erase(it);
@@ -26,6 +25,11 @@ std::function<void()> AgentSessionGate::PurgeExpiredAndMaybeDisarmLocked(
       ++it;
     }
   }
+}
+
+std::function<void()> AgentSessionGate::PurgeExpiredAndMaybeDisarmLocked(
+    absl::Time now) {
+  PurgeExpiredLocked(now);
   if (armed_ && deadline_by_mac_.empty()) {
     armed_ = false;
     return callbacks_.on_disarm;
@@ -40,13 +44,7 @@ void AgentSessionGate::BeginSession(const MacAddress& peer) {
     const absl::Time now = clock_();
     // Purge without disarming: we're about to (re-)populate the set below,
     // so any transition here is superseded by the insert.
-    for (auto it = deadline_by_mac_.begin(); it != deadline_by_mac_.end();) {
-      if (it->second <= now) {
-        it = deadline_by_mac_.erase(it);
-      } else {
-        ++it;
-      }
-    }
+    PurgeExpiredLocked(now);
     deadline_by_mac_[peer.ToString()] = now + ttl_;
     if (!armed_) {
       armed_ = true;
@@ -70,15 +68,17 @@ void AgentSessionGate::EndSession(const MacAddress& peer) {
 }
 
 bool AgentSessionGate::IsAllowed(const MacAddress& peer) {
-  std::function<void()> disarm;
-  bool allowed;
-  {
-    absl::MutexLock l(&mu_);
-    disarm = PurgeExpiredAndMaybeDisarmLocked(clock_());
-    allowed = deadline_by_mac_.count(peer.ToString()) == 1;
-  }
-  if (disarm) disarm();
-  return allowed;
+  // Called from live BlueZ agent callbacks (Agent::RequestAuthorization /
+  // RequestConfirmation), which may still be on the stack when this
+  // returns. Must NEVER fire on_disarm here: on_disarm runs
+  // AgentManager::Disarm(), which unregisters and destroys the Agent,
+  // which would be a use-after-free of the very callback in flight.
+  // Purge expired entries so an expired peer correctly reads as
+  // not-allowed, but leave any resulting disarm to EndSession/SweepExpired,
+  // neither of which runs on the agent callback thread.
+  absl::MutexLock l(&mu_);
+  PurgeExpiredLocked(clock_());
+  return deadline_by_mac_.count(peer.ToString()) == 1;
 }
 
 void AgentSessionGate::SweepExpired() {
