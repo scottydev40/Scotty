@@ -256,21 +256,12 @@ std::unique_ptr<api::BluetoothSocket> BluetoothClassicMedium::ConnectToService(
 std::shared_ptr<api::BluetoothServerSocket>
 BluetoothClassicMedium::ListenForService(const std::string &service_name,
                                          const std::string &service_uuid) {
-  if (!profile_manager_->ProfileRegistered(service_uuid)) {
-    if (!profile_manager_->Register(service_name, service_uuid)) {
-      LOG(ERROR) << __func__ << ": Could not register profile "
-                         << service_name << " " << service_uuid
-                         << " with Bluez";
-      return nullptr;
-    }
-  }
-
   // The auto-accept agent is no longer claimed here. It is armed per incoming
   // session via AgentManager::BeginSession (see the BLE receive producer), so
   // an idle listen never holds the system default-agent slot.
-
-  return std::shared_ptr<api::BluetoothServerSocket>(
-      new BluetoothServerSocket(*profile_manager_, service_uuid));
+  return BluetoothServerSocket::Create(*profile_manager_, *devices_,
+                                       adapter_.GetMacAddress(), service_name,
+                                       service_uuid);
 }
 
 std::shared_ptr<BluetoothDevice>

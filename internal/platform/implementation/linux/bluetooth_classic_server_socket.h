@@ -15,19 +15,27 @@
 #ifndef PLATFORM_IMPL_LINUX_BLUETOOTH_SERVER_SOCKET_H_
 #define PLATFORM_IMPL_LINUX_BLUETOOTH_SERVER_SOCKET_H_
 
-#include "absl/strings/string_view.h"
-#include "internal/platform/cancellation_flag.h"
+#include <atomic>
+#include <memory>
+#include <string>
+
+#include "absl/synchronization/mutex.h"
 #include "internal/platform/exception.h"
 #include "internal/platform/implementation/bluetooth_classic.h"
 #include "internal/platform/implementation/linux/bluetooth_bluez_profile.h"
+#include "internal/platform/implementation/linux/bluetooth_devices.h"
+#include "internal/platform/mac_address.h"
 
 namespace nearby {
 namespace linux {
 class BluetoothServerSocket final : public api::BluetoothServerSocket {
  public:
-  BluetoothServerSocket(ProfileManager &profile_manager,
-                        absl::string_view service_uuid)
-      : profile_manager_(profile_manager), service_uuid_(service_uuid) {}
+  static std::shared_ptr<BluetoothServerSocket> Create(
+      ProfileManager &profile_manager, BluetoothDevices &devices,
+      const MacAddress &local_address, const std::string &service_name,
+      const std::string &service_uuid);
+
+  ~BluetoothServerSocket() override { Close(); }
 
   // https://developer.android.com/reference/android/bluetooth/BluetoothServerSocket.html#accept()
   //
@@ -46,9 +54,20 @@ class BluetoothServerSocket final : public api::BluetoothServerSocket {
   Exception Close() override;
 
  private:
-  CancellationFlag stopped_;
+  BluetoothServerSocket(ProfileManager &profile_manager,
+                        BluetoothDevices &devices, std::string service_uuid,
+                        int listener_fd)
+      : profile_manager_(profile_manager),
+        devices_(devices),
+        service_uuid_(std::move(service_uuid)),
+        listener_fd_(listener_fd) {}
+
+  std::atomic_bool closed_{false};
   ProfileManager &profile_manager_;
+  BluetoothDevices &devices_;
   std::string service_uuid_;
+  absl::Mutex listener_mutex_;
+  int listener_fd_ ABSL_GUARDED_BY(listener_mutex_);
 };
 }  // namespace linux
 }  // namespace nearby

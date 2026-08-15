@@ -126,6 +126,14 @@ class ProfileManager final
       ABSL_LOCKS_EXCLUDED(registered_service_uuids_mutex_) {
     return Register(std::nullopt, service_uuid);
   }
+  // Registers an SDP record for a raw RFCOMM listener without asking BlueZ to
+  // open its own listening socket. Omitting the Channel/PSM profile options is
+  // intentional: the channel is present only in ServiceRecord and is owned by
+  // the caller's AF_BLUETOOTH socket.
+  bool RegisterRawRfcommServer(absl::string_view service_name,
+                               absl::string_view service_uuid,
+                               uint8_t channel)
+      ABSL_LOCKS_EXCLUDED(registered_service_uuids_mutex_);
   void Unregister(absl::string_view service_uuid)
       ABSL_LOCKS_EXCLUDED(registered_service_uuids_mutex_);
 
@@ -148,6 +156,8 @@ class ProfileManager final
   // Maps service UUIDs to RegisteredService
   absl::Mutex registered_service_uuids_mutex_;
   std::map<std::string, std::shared_ptr<Profile>> registered_services_
+      ABSL_GUARDED_BY(registered_service_uuids_mutex_);
+  std::set<std::string> raw_rfcomm_servers_
       ABSL_GUARDED_BY(registered_service_uuids_mutex_);
 };
 
