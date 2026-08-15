@@ -29,6 +29,20 @@ std::string device_object_path(const sdbus::ObjectPath &adapter_object_path,
       absl::StrReplaceAll(absl::AsciiStrToUpper(mac_address), {{":", "_"}}));
 }
 
+std::optional<MacAddress> mac_from_device_object_path(
+    absl::string_view object_path) {
+  constexpr absl::string_view kMarker = "/dev_";
+  const auto pos = object_path.rfind(kMarker);
+  if (pos == absl::string_view::npos) return std::nullopt;
+  std::string mac(object_path.substr(pos + kMarker.size()));
+  for (char& c : mac) {
+    if (c == '_') c = ':';
+  }
+  MacAddress parsed;
+  if (!MacAddress::FromString(mac, parsed)) return std::nullopt;
+  return parsed;
+}
+
 sdbus::ObjectPath profile_object_path(absl::string_view service_uuid) {
   return sdbus::ObjectPath(absl::Substitute(
       "/com/google/nearby/medium/bluetooth_classic/profiles/$0",
