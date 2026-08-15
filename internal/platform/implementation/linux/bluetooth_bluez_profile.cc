@@ -27,6 +27,7 @@
 #include <sdbus-c++/Types.h>
 
 #include "absl/synchronization/mutex.h"
+#include "absl/strings/str_replace.h"
 #include "internal/platform/cancellation_flag_listener.h"
 #include "internal/platform/implementation/linux/bluetooth_bluez_profile.h"
 #include "internal/platform/implementation/linux/bluetooth_classic_device.h"
@@ -37,6 +38,38 @@
 
 namespace nearby {
 namespace linux {
+namespace {
+
+std::string EscapeXml(absl::string_view value) {
+  return absl::StrReplaceAll(value, {{"&", "&amp;"},
+                                     {"\"", "&quot;"},
+                                     {"'", "&apos;"},
+                                     {"<", "&lt;"},
+                                     {">", "&gt;"}});
+}
+
+std::string BuildRfcommServiceRecord(absl::string_view service_name,
+                                     absl::string_view service_uuid,
+                                     uint8_t channel) {
+  return absl::StrCat(
+      "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>"
+      "<record>"
+      "<attribute id=\"0x0001\"><sequence><uuid value=\"",
+      EscapeXml(service_uuid),
+      "\" /></sequence></attribute>"
+      "<attribute id=\"0x0004\"><sequence>"
+      "<sequence><uuid value=\"0x0100\" /></sequence>"
+      "<sequence><uuid value=\"0x0003\" /><uint8 value=\"",
+      static_cast<unsigned int>(channel),
+      "\" /></sequence></sequence></attribute>"
+      "<attribute id=\"0x0005\"><sequence><uuid value=\"0x1002\" />"
+      "</sequence></attribute>"
+      "<attribute id=\"0x0100\"><text value=\"",
+      EscapeXml(service_name), "\" /></attribute>"
+                               "</record>");
+}
+
+}  // namespace
 
 bool ProfileManager::ProfileRegistered(absl::string_view service_uuid) {
   registered_service_uuids_mutex_.ReaderLock();
@@ -151,6 +184,76 @@ bool ProfileManager::Register(std::optional<absl::string_view> name,
   return true;
 }
 
+bool ProfileManager::RegisterRawRfcommServer(
+    absl::string_view service_name, absl::string_view service_uuid,
+    uint8_t channel) {
+  if (channel == 0 || channel > 30) {
+    LOG(ERROR) << __func__ << ": Invalid RFCOMM channel "
+               << static_cast<unsigned int>(channel);
+    return false;
+  }
+
+  absl::MutexLock l(&registered_service_uuids_mutex_);
+  const std::string uuid(service_uuid);
+  auto existing = registered_services_.find(uuid);
+  if (existing != registered_services_.end()) {
+    if (raw_rfcomm_servers_.contains(uuid)) {
+      LOG(WARNING) << __func__ << ": Raw RFCOMM server already registered for "
+                   << service_uuid;
+      return false;
+    }
+
+    // ConnectToService may have registered this UUID before the receive
+    // listener started. Upgrade that idle profile to the SDP-only form. Never
+    // disrupt a live or pending outgoing connection.
+    {
+      absl::MutexLock connections_lock(&existing->second->connections_lock_);
+      if (!existing->second->connections_.empty() ||
+          !existing->second->pending_outgoing_.empty()) {
+        LOG(ERROR) << __func__ << ": Cannot replace active profile for "
+                   << service_uuid;
+        return false;
+      }
+    }
+    try {
+      UnregisterProfile(existing->second->getObject().getObjectPath());
+    } catch (const sdbus::Error &e) {
+      BLUEZ_LOG_METHOD_CALL_ERROR(this, "UnregisterProfile", e);
+      return false;
+    }
+    registered_services_.erase(existing);
+  }
+
+  auto profile = std::make_shared<Profile>(
+      getProxy().getConnection(), bluez::profile_object_path(service_uuid),
+      devices_);
+
+  try {
+    std::map<std::string, sdbus::Variant> options;
+    options["Name"] = sdbus::Variant(std::string(service_name));
+    options["RequireAuthorization"] = sdbus::Variant(false);
+    options["RequireAuthentication"] = sdbus::Variant(false);
+    options["ServiceRecord"] = sdbus::Variant(
+        BuildRfcommServiceRecord(service_name, service_uuid, channel));
+
+    // Do not pass Channel or PSM here. BlueZ publishes ServiceRecord but opens
+    // no server socket, leaving the raw BT_SECURITY_LOW listener as the sole
+    // owner of this RFCOMM channel. The profile's default client role remains
+    // enabled so the existing BlueZ-backed outgoing path is unchanged.
+    RegisterProfile(profile->getObject().getObjectPath(), uuid, options);
+  } catch (const sdbus::Error &e) {
+    BLUEZ_LOG_METHOD_CALL_ERROR(this, "RegisterProfile", e);
+    return false;
+  }
+
+  registered_services_.emplace(uuid, profile);
+  raw_rfcomm_servers_.insert(uuid);
+  LOG(INFO) << __func__ << ": Published SDP record for raw RFCOMM channel "
+            << static_cast<unsigned int>(channel) << " and service "
+            << service_uuid;
+  return true;
+}
+
 void ProfileManager::Unregister(absl::string_view service_uuid) {
   absl::MutexLock l(&registered_service_uuids_mutex_);
   if (registered_services_.count(std::string(service_uuid)) == 0) {
@@ -171,6 +274,7 @@ void ProfileManager::Unregister(absl::string_view service_uuid) {
   }
 
   registered_services_.erase(std::string(service_uuid));
+  raw_rfcomm_servers_.erase(std::string(service_uuid));
 }
 
 // Get a service record FD for a connected profile (identified by service_uuid)
