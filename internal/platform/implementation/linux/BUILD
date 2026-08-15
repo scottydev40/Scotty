@@ -79,6 +79,7 @@ cc_library(
 cc_library(
     name = "comm",
     hdrs = [
+        "agent_session_gate.h",
         "avahi.h",
         "ble_gatt_server.h",
         "ble_gatt_client.h",
@@ -130,6 +131,7 @@ cc_library(
         ":crypto",
         "//internal/platform:base",
         "//internal/platform:comm",
+        "//internal/platform:mac_address",
         "//internal/platform:types",
         "//internal/platform:uuid",
         "//internal/platform/implementation:comm",
@@ -189,6 +191,7 @@ cc_library(
 cc_library(
     name = "linux",
     srcs = [
+        "agent_session_gate.cc",
         "avahi.cc",
         "ble_gatt_client.cc",
         "ble_gatt_server.cc",
@@ -253,6 +256,7 @@ cc_library(
         "//internal/platform:base",
         "//internal/platform:cancellation_flag",
         "//internal/platform:comm",
+        "//internal/platform:mac_address",
         "//internal/platform:types",
         "//internal/platform:uuid",
         "//internal/platform/flags:platform_flags",
@@ -306,6 +310,7 @@ cc_test(
     name = "impl_test",
     size = "small",
     srcs = [
+        "agent_session_gate_test.cc",
         "atomic_boolean_test.cc",
         "atomic_reference_test.cc",
         "mutex_test.cc",
@@ -331,6 +336,7 @@ cc_test(
         ":linux",
         ":types",
         "//internal/platform:base",
+        "//internal/platform:mac_address",
         "//internal/platform/implementation:comm",
         "//internal/platform/implementation:platform",
         "//internal/platform/implementation:types",
