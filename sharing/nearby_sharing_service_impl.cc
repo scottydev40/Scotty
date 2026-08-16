@@ -1379,6 +1379,17 @@ void NearbySharingServiceImpl::OnLoginSucceeded(absl::string_view account_id) {
     ClearAdvertisingEndpointInfoCache();
     force_new_endpoint_id_ = true;
     ResetAllSettings(/*logout=*/false);
+
+    // The certificate schedulers ran at startup with no signed-in account (the
+    // out-of-process account plugin signs in later) and won't re-fire for their
+    // full period. Now that an account is present, force this device to
+    // generate and publish its private (self-share) certificates, so peers on
+    // the same account recognise it and auto-accept instead of prompting.
+    // Mirrors the upload trigger in RegisterReceiveSurface.
+    if (IsVisibleInBackground(settings_->GetVisibility())) {
+      LOG(INFO) << "[Call Identity API] ForceUploadPrivateCertificates on login.";
+      certificate_manager_->ForceUploadPrivateCertificates();
+    }
   });
 }
 

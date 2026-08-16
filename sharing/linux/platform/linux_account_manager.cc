@@ -139,8 +139,21 @@ class LinuxAccountManager final : public AccountManager {
   }
 
   void AddObserver(Observer* observer) override {
-    absl::MutexLock lock(&mutex_);
-    observers_.insert(observer);
+    std::optional<std::string> signed_in_id;
+    {
+      absl::MutexLock lock(&mutex_);
+      observers_.insert(observer);
+      // The account is seeded at construction (RefreshAccountFromPlugin), which
+      // can happen before this observer registers — in which case it missed the
+      // login. Replay it so a restart with an already-signed-in account still
+      // triggers certificate publishing/advertising, not just a live sign-in.
+      if (account_.has_value()) {
+        signed_in_id = account_->id;
+      }
+    }
+    if (signed_in_id.has_value()) {
+      observer->OnLoginSucceeded(*signed_in_id);
+    }
   }
   void RemoveObserver(Observer* observer) override {
     absl::MutexLock lock(&mutex_);
