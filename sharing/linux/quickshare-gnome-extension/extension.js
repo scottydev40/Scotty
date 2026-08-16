@@ -20,7 +20,6 @@
 //     signal RunningChanged(b)
 //     signal TransferActiveChanged(b)
 
-import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -28,7 +27,7 @@ import GLib from 'gi://GLib';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {
-    QuickToggle,
+    QuickMenuToggle,
     SystemIndicator,
 } from 'resource:///org/gnome/shell/ui/quickSettings.js';
 
@@ -39,10 +38,6 @@ const APP_BINARY = 'scotty';
 // Keep the panel indicator lit this long after a transfer ends, so a fast
 // (e.g. Wi-Fi LAN photo) transfer registers as more than a blip.
 const TRANSFER_HOLD_MS = 3000;
-
-// Hold the tile down at least this long to quit the app (matches the feel of a
-// phone long-press).
-const LONG_PRESS_MS = 500;
 
 const IFACE = `
 <node>
@@ -75,7 +70,7 @@ const VIS_LABEL = {
 };
 
 const QuickShareToggle = GObject.registerClass(
-class QuickShareToggle extends QuickToggle {
+class QuickShareToggle extends QuickMenuToggle {
     _init(ext) {
         super._init({
             title: 'Scotty',
@@ -84,26 +79,14 @@ class QuickShareToggle extends QuickToggle {
         });
         this._ext = ext;
 
-        // Short vs long press, decided from how long the tile was held. We time
-        // press → 'clicked' (which St.Button emits on release) rather than
-        // running a self-firing timer: clicking a Quick Settings tile closes the
-        // panel and can swallow the button-release, so a timer would outlive the
-        // grab and fire on its own. One 'clicked' = exactly one action.
-        this._pressTs = 0;
+        // Short press on the tile body opens the app. Quit lives in the tile's
+        // menu (the ‹ expander) rather than a long-press: clicking a Quick
+        // Settings tile closes the panel and can swallow the button-release, so
+        // a hold gesture is unreliable. A menu action always fires.
+        this.connect('clicked', () => this._ext.openWindow());
 
-        this.connect('button-press-event', () => {
-            this._pressTs = GLib.get_monotonic_time();
-            return Clutter.EVENT_PROPAGATE;
-        });
-        this.connect('clicked', () => {
-            const heldMs = this._pressTs
-                ? (GLib.get_monotonic_time() - this._pressTs) / 1000 : 0;
-            this._pressTs = 0;
-            if (heldMs >= LONG_PRESS_MS)
-                this._ext.quitApp();
-            else
-                this._ext.openWindow();
-        });
+        this.menu.setHeader(ext.icon, 'Scotty');
+        this.menu.addAction('Quit Scotty', () => this._ext.quitApp());
     }
 
     syncVisibility(vis) {
