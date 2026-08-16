@@ -5,7 +5,9 @@
 #include <QDBusMessage>
 #include <QDBusObjectPath>
 #include <QDBusVariant>
+#include <QRegularExpression>
 #include <QSettings>
+#include <QSysInfo>
 #include <QTimer>
 #include <QVariant>
 
@@ -15,6 +17,30 @@ constexpr char kBluezService[] = "org.bluez";
 constexpr char kAdapterInterface[] = "org.bluez.Adapter1";
 constexpr char kPropsInterface[] = "org.freedesktop.DBus.Properties";
 constexpr char kStashKey[] = "bluetoothAliasStash";
+
+// A Nearby advertisement blob: long, base64/url-safe charset, no spaces. The
+// platform layer writes one of these into the adapter Alias while advertising
+// (base64 endpoint metadata). A genuine adapter name ("laptop", "Harsha's
+// Laptop") is short or contains spaces, so this only matches the gibberish.
+bool LooksLikeNearbyBlob(const QString& name) {
+  if (name.size() < 20) {
+    return false;
+  }
+  static const QRegularExpression kBlob(QStringLiteral("^[A-Za-z0-9+/=_-]+$"));
+  return kBlob.match(name).hasMatch();
+}
+
+// The value to remember as an adapter's "original" alias. A blob is never the
+// user's real name — remembering it would make the guard heal the adapter to
+// gibberish forever (the poisoning bug) — so fall back to the host name, which
+// is exactly what BlueZ shows by default. Empty and genuine names pass through
+// unchanged so they still round-trip.
+QString SanitizeOriginal(const QString& current) {
+  if (LooksLikeNearbyBlob(current)) {
+    return QSysInfo::machineHostName();
+  }
+  return current;
+}
 
 // Skips a property dictionary (a{sv}) we don't care about.
 void SkipProperties(const QDBusArgument& arg) {
@@ -109,6 +135,16 @@ void BluetoothNameGuard::writeAlias(const QString& adapter_path,
 void BluetoothNameGuard::loadStash() {
   QSettings settings(QStringLiteral("Nearby"), QStringLiteral("QmlFileTrayApp"));
   stash_ = settings.value(QString::fromLatin1(kStashKey)).toMap();
+  // Heal a stash poisoned by an earlier buggy run that recorded the advertising
+  // blob as the "original": replace any blob with the host name so restore/heal
+  // put back the real name instead of gibberish.
+  for (auto it = stash_.begin(); it != stash_.end(); ++it) {
+    const QString original = it.value().toString();
+    const QString clean = SanitizeOriginal(original);
+    if (clean != original) {
+      it.value() = clean;
+    }
+  }
 }
 
 void BluetoothNameGuard::saveStash() const {
@@ -139,7 +175,10 @@ void BluetoothNameGuard::arm() {
     for (const QString& path : paths) {
       // An empty alias is BlueZ's "use the auto-generated name" state, and
       // writing an empty string back restores exactly that — so it round-trips.
-      stash_.insert(path, readAlias(path));
+      // Sanitize first: if the adapter is already showing an advertising blob
+      // (arm() lost the race with the platform layer), record the host name
+      // instead of adopting the gibberish as the original.
+      stash_.insert(path, SanitizeOriginal(readAlias(path)));
     }
     saveStash();
   }
