@@ -131,3 +131,20 @@ scotty_install_or_update() {
   fi
   echo "$state"
 }
+
+# Remove the entire user-level install: service, desktop entry, icon, autostart
+# fallback, the installed AppImage copy, AND the GNOME Quick-Settings tile.
+# Leaves the shared BlueZ system config in place. (GNOME only drops the tile
+# from a running session at the next logout — the files are gone immediately.)
+scotty_uninstall() {
+  scotty_paths
+  local ext_uuid="quickshare@ashpika40.github.io"
+  systemctl --user disable --now scotty.service 2>/dev/null || true
+  gnome-extensions disable "$ext_uuid" 2>/dev/null || true
+  rm -f "$SCOTTY_UNIT_DST" "$SCOTTY_DESKTOP_DST" "$SCOTTY_ICON_DST" \
+        "$HOME/.config/autostart/dev.scotty.Scotty.desktop"
+  rm -rf "$SCOTTY_LIB_DIR" \
+         "${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell/extensions/$ext_uuid"
+  systemctl --user daemon-reload 2>/dev/null || true
+  update-desktop-database "$(dirname "$SCOTTY_DESKTOP_DST")" 2>/dev/null || true
+}

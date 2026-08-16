@@ -85,5 +85,28 @@ ok "no unit in fallback"    '[ ! -f "$SCOTTY_UNIT_DST" ]'
 unset SCOTTY_FORCE_NO_SYSTEMD SCOTTY_TEST_LOG
 teardown
 
+# --- Task 6b: uninstall removes everything incl the GNOME tile ---
+setup_home; source "$LIB"; scotty_paths
+export SCOTTY_TEST_LOG="$(mktemp)"
+EXT="$HOME/.local/share/gnome-shell/extensions/quickshare@ashpika40.github.io"
+# lay down a full install footprint
+mkdir -p "$SCOTTY_LIB_DIR" "$EXT" "$(dirname "$SCOTTY_UNIT_DST")" \
+         "$(dirname "$SCOTTY_DESKTOP_DST")" "$(dirname "$SCOTTY_ICON_DST")" \
+         "$HOME/.config/autostart"
+: > "$SCOTTY_APPIMG_DST"; : > "$SCOTTY_UNIT_DST"; : > "$SCOTTY_DESKTOP_DST"
+: > "$SCOTTY_ICON_DST"; : > "$EXT/metadata.json"
+: > "$HOME/.config/autostart/dev.scotty.Scotty.desktop"
+scotty_uninstall
+ok "unit removed"       '[ ! -e "$SCOTTY_UNIT_DST" ]'
+ok "desktop removed"    '[ ! -e "$SCOTTY_DESKTOP_DST" ]'
+ok "icon removed"       '[ ! -e "$SCOTTY_ICON_DST" ]'
+ok "lib dir removed"    '[ ! -e "$SCOTTY_LIB_DIR" ]'
+ok "autostart removed"  '[ ! -e "$HOME/.config/autostart/dev.scotty.Scotty.desktop" ]'
+ok "tile dir removed"   '[ ! -e "$EXT" ]'
+ok "tile disabled"      'grep -q "gnome-extensions disable" "$SCOTTY_TEST_LOG"'
+ok "service disabled"   'grep -q "disable --now scotty.service" "$SCOTTY_TEST_LOG"'
+unset SCOTTY_TEST_LOG
+teardown
+
 echo "== $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]
