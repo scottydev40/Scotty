@@ -1,0 +1,38 @@
+Scotty Debian source package
+============================
+
+The package intentionally has three ownership boundaries:
+
+* scotty owns the application, its private Nearby shared library, desktop and
+  AppStream metadata, D-Bus activation file, icons, and dormant user unit.
+* gnome-shell-extension-scotty owns only the optional GNOME Shell extension.
+* scotty-bluez-compat owns the system-wide BlueZ, hotspot-unit, and Polkit
+  integration. Removing it reverses those package-owned system changes.
+
+The user service and GNOME extension are not enabled from maintainer scripts.
+D-Bus activation starts Scotty on demand. A user who wants background receiving
+at every login can explicitly run:
+
+  systemctl --user enable --now scotty.service
+
+Bazel dependency vendoring
+--------------------------
+
+Debian and Launchpad builds cannot access the network. Upstream currently uses
+Bzlmod and several remote archives, so an uploadable source package must include
+a repository cache produced from the exact locked dependency graph and invoke
+Bazel with downloads disabled. The current debian/rules is the local/native
+package build and deliberately does not pretend this remaining release job is
+complete. Do not upload to a PPA until the dependency URLs are pinned by digest,
+the cache is generated as part of the source tarball, and a clean offline build
+has passed.
+
+For package-layout testing only, a developer who already built the exact source
+tree can skip rebuilding the Nearby library:
+
+  SCOTTY_USE_PREBUILT_NEARBY=1 dpkg-buildpackage -b -d -uc -us
+
+This switch is never appropriate for a release or PPA source build.
+
+For Ubuntu PPA versions, append an Ubuntu suffix to the Debian version, for
+example 0.1.0~beta1-1~ubuntu26.04.1, and update debian/changelog with dch.

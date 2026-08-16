@@ -150,7 +150,7 @@ class FileShareState {
   QString qr_code_url_;
   QStringList qr_code_rows_;
   int qr_code_size_ = 0;
-  QString log_path_ = QStringLiteral("/tmp/nearby_qml_file_tray.log");
+  QString log_path_;
   QString save_path_;
   bool developer_mode_ = false;
 

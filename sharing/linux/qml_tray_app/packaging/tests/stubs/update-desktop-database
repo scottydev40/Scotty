@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-echo "update-desktop-database $*" >> "${SCOTTY_TEST_LOG:-/dev/null}"
-exit 0

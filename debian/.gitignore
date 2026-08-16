@@ -1,0 +1,12 @@
+/.debhelper/
+/build/
+/nearby-prefix/
+/tmp/
+/scotty/
+/gnome-shell-extension-scotty/
+/scotty-bluez-compat/
+/*.debhelper
+/*.debhelper.log
+/*.substvars
+/debhelper-build-stamp
+/files

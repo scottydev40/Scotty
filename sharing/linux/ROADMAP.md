@@ -17,20 +17,20 @@ transfers. Below is what's left.
   duplicate, no station mis-selection.
 - ✅ **Custom app + tile icons** — Scotty sync glyph; fill-based symbolic for the
   tile.
-- ✅ **Packaging (bundle)** — `packaging/build-bundle.sh` → relocatable tarball +
-  `install.sh` (app + tile + on-demand unit/polkit).
-- ✅ **AppImage self-install as a service** — first run installs Scotty as a
-  systemd `--user` service + app-grid entry (`AppRun` + `scotty-install-lib.sh`,
-  unit-tested); starts at login, auto-restarts, updates the installed copy on a
-  newer AppImage, `--uninstall` removes it. No more foreground-terminal hang.
+- ✅ **Native package structure** — `debian/` produces separate core app, GNOME
+  extension, and BlueZ/Polkit integration packages with standard ownership.
+- ✅ **Portable AppImage boundary** — AppImage runs in place and no longer
+  self-installs, edits host configuration, or manages the GNOME extension.
+- ⏳ **PPA source readiness** — vendor and checksum the Bazel dependency graph,
+  then prove a clean offline source build before the first signed upload.
 
 ## A. Release blockers (public-shippable)
 - [ ] **Kernel independence.** Discovery depends on the kernel-27 pin (7.0.0-28
       `btmtk` BLE-advertising regression on MT7925). A release can't pin someone's
       kernel. Track upstream; adopt the first kernel that restores `btmtk`
       advertising; verify with the `adv_test.py` probe before trusting it.
-- [ ] **Verify the AppImage build** (`packaging/build-appimage.sh`) end-to-end —
-      the self-contained route (bundles Qt). The tarball bundle needs system Qt6.
+- [ ] **Verify the portable AppImage build** (`packaging/build-appimage.sh`)
+      end-to-end. It bundles Qt but deliberately provides no host integration.
 - [ ] **Non-GNOME desktops.** The tile is a GNOME Shell extension; other DEs get
       the tray app only. Document / degrade gracefully.
 

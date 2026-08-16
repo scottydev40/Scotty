@@ -1,0 +1,15 @@
+[Unit]
+Description=Scotty local file sharing
+Documentation=https://github.com/scottydev40/Scotty
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=dbus
+BusName=dev.scotty.Scotty
+ExecStart=@CMAKE_INSTALL_FULL_BINDIR@/scotty --background
+Restart=on-failure
+RestartSec=2s
+
+[Install]
+WantedBy=default.target

@@ -7,7 +7,7 @@ app for file sharing via Nearby Sharing, wired to:
 - Send mode (discover nearby share targets + send file)
 - Receive mode (incoming requests + accept/reject)
 - Transfer status list (progress + transfer status)
-- Persistent tray behavior (window close hides app to tray)
+- Explicit background behavior (window close hides; Quit and Ctrl+Q stop it)
 - Process log redirection to file (`stdout`/`stderr`)
 
 ## Files
@@ -20,8 +20,8 @@ app for file sharing via Nearby Sharing, wired to:
 
 ## Runtime behavior
 
-- Close button does **not** terminate the process; it hides to tray.
-- Use tray icon menu to show/hide/quit.
+- Close hides the window while background receiving remains active.
+- Quit from the app integration or press Ctrl+Q to stop the process cleanly.
 - Mode `Send`:
   - Starts discovery.
   - Shows discovered share targets.
@@ -33,7 +33,8 @@ app for file sharing via Nearby Sharing, wired to:
 - Transfers are shown with target, direction, status, and progress.
 - `stdout` and `stderr` are redirected at startup to the configured `logPath`
   setting.
-- Default log path is `/tmp/nearby_qml_file_tray.log` when `logPath` is unset.
+- Default log path is `$XDG_STATE_HOME/scotty/scotty.log` (falling back to
+  `~/.local/state/scotty/scotty.log`) when `logPath` is unset.
 - If `logPath` is changed from Settings, restart the app to apply redirection.
 
 ## Building
@@ -43,10 +44,11 @@ This CMake app links against the installed Nearby shared library and header:
 - `libnearby_sharing_api_shared.so`
 - `sharing/linux/nearby_sharing_api.h`
 
-Install them first (repo root):
+Build the shared library first (repo root), then point CMake at a prefix that
+contains the library and public header:
 
 ```bash
-./sharing/linux/install_nearby_sharing_service.sh
+bazel build //sharing/linux:nearby_sharing_api_shared
 ```
 
 Then build the app (from `sharing/linux/qml_tray_app`):
@@ -68,28 +70,15 @@ cmake --install build
 
 Bundle output:
 
-- `dist/bin/nearby_qml_file_tray_app`
-- `dist/bin/libnearby_sharing_api_shared.so`
+- `dist/bin/scotty`
+- `dist/lib/scotty/libnearby_sharing_api_shared.so`
 
-The app is installed with `INSTALL_RPATH=$ORIGIN`, so it resolves the Nearby
-shared library from the same folder in the bundle.
+The app is installed as `bin/scotty` with its private sharing library under
+`lib/scotty` and an install RPATH relative to the executable.
 
-## Build a distributable `.zip` (includes runtime dependencies)
+## Distribution
 
-From `sharing/linux/qml_tray_app`:
-
-```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
-cpack --config build/CPackConfig.cmake -G ZIP
-```
-
-Output:
-
-- `build/nearby_qml_tray_app-Linux-x86_64.zip`
-
-This zip is created from the CMake install tree and includes:
-
-- `nearby_qml_file_tray_app`
-- `libnearby_sharing_api_shared.so`
-- Qt runtime libs/plugins/QML imports discovered by Qt deploy tooling
+Use the repository-level `debian/` package for a native Debian/Ubuntu build or
+`packaging/build-appimage.sh` for a portable artifact. The AppImage is not an
+installer; package-managed desktop, D-Bus, service, GNOME, and system integration
+remain the responsibility of the native packages.

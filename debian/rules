@@ -1,0 +1,50 @@
+#!/usr/bin/make -f
+
+export DH_VERBOSE = 1
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+export DEB_CXXFLAGS_MAINT_APPEND = -fvisibility=hidden
+
+APP_SOURCE := sharing/linux/qml_tray_app
+BUILD_DIR := debian/build
+NEARBY_PREFIX := $(CURDIR)/debian/nearby-prefix
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	if [ "$(SCOTTY_USE_PREBUILT_NEARBY)" != "1" ]; then \
+		bazel build --config=opt //sharing/linux:nearby_sharing_api_shared; \
+	else \
+		test -r bazel-bin/sharing/linux/libnearby_sharing_api_shared.so; \
+	fi
+	install -d $(NEARBY_PREFIX)/lib $(NEARBY_PREFIX)/include/sharing/linux
+	install -m 0644 bazel-bin/sharing/linux/libnearby_sharing_api_shared.so $(NEARBY_PREFIX)/lib/
+	install -m 0644 sharing/linux/nearby_sharing_api.h $(NEARBY_PREFIX)/include/sharing/linux/
+	dh_auto_configure --sourcedirectory=$(APP_SOURCE) --builddirectory=$(BUILD_DIR) -- \
+		-GNinja \
+		-DCMAKE_BUILD_TYPE=RelWithDebInfo \
+		-DNEARBY_PREFIX=$(NEARBY_PREFIX) \
+		-DCMAKE_INSTALL_PREFIX=/usr
+
+override_dh_auto_build:
+	dh_auto_build --sourcedirectory=$(APP_SOURCE) --builddirectory=$(BUILD_DIR)
+
+override_dh_auto_test:
+	desktop-file-validate $(APP_SOURCE)/packaging/dev.scotty.Scotty.desktop
+	appstreamcli validate --no-net $(APP_SOURCE)/packaging/dev.scotty.Scotty.metainfo.xml
+
+override_dh_auto_install:
+	dh_auto_install --sourcedirectory=$(APP_SOURCE) --builddirectory=$(BUILD_DIR) --destdir=debian/tmp
+
+override_dh_shlibdeps:
+	dh_shlibdeps -l$(CURDIR)/debian/tmp/usr/lib/scotty
+
+override_dh_installsystemd:
+	dh_installsystemd --no-enable --no-start
+
+override_dh_installsystemduser:
+	dh_installsystemduser --no-enable
+
+override_dh_auto_clean:
+	dh_auto_clean --sourcedirectory=$(APP_SOURCE) --builddirectory=$(BUILD_DIR)
+	$(RM) -r debian/nearby-prefix

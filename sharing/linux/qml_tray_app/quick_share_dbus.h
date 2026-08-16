@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QStringList>
 
 class QDBusServiceWatcher;
 class FileShareTrayController;
@@ -44,6 +45,8 @@ class QuickShareDbus : public QObject {
   Q_SCRIPTABLE QString GetDeviceName() const;
   // Surface (show + raise + focus) the main window.
   Q_SCRIPTABLE void Show();
+  // Open local files supplied by org.freedesktop.Application.Open.
+  void OpenFiles(const QStringList& paths);
   // Ordered shutdown + quit the process.
   Q_SCRIPTABLE void Quit();
   // Announced by the Quick Settings extension: true when it enables (it owns

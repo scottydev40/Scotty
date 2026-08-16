@@ -1,9 +1,9 @@
 {
-  "uuid": "quickshare@ashpika40.github.io",
+  "uuid": "quickshare@scottydev40.github.io",
   "name": "Scotty",
   "description": "Quick Settings tile to control the Scotty file-sharing app: toggle visibility (Everyone / Contacts / Hidden) and open the window. Talks to the app over D-Bus (dev.scotty.Scotty).",
   "shell-version": ["46", "47", "48", "49", "50"],
-  "url": "https://github.com/ashpika40/scotty",
+  "url": "https://github.com/scottydev40/scotty",
   "session-modes": ["user", "unlock-dialog"],
-  "version": 2
+  "version": 4
 }

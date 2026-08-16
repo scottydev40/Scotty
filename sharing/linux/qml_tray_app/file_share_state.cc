@@ -1,9 +1,10 @@
 #include "file_share_state.h"
+#include "app_paths.h"
 #include "status_mapper.h"
 
 #include <QDateTime>
 
-FileShareState::FileShareState() = default;
+FileShareState::FileShareState() : log_path_(DefaultLogPath()) {}
 
 void FileShareState::AddOrUpdateTarget(qlonglong id, const QString& name,
                                        bool is_incoming, int device_type) {

@@ -1,48 +1,31 @@
-# Quick Share — GNOME Shell extension
+# Scotty GNOME Shell extension
 
-Adds a **Quick Settings** tile (and an optional panel indicator) that controls
-the Nearby / Quick Share Linux tray app without needing the system-tray icon.
+This optional extension adds a Scotty Quick Settings tile and transfer-state
+indicator. It talks only to the session-bus service:
 
-- Toggle the tile: on → visible to **Everyone**, off → **Hidden**.
-- Submenu: **Everyone / Contacts / Hidden** (radio) + **Open Quick Share**.
-- The panel indicator icon shows while the app is running and advertising, and
-  stays visible (tinted, via `stylesheet.css`) during a transfer even in Hidden.
-
-## How it talks to the app
-
-Over the session bus. The app registers:
-
-```
-service:   io.github.ashpika40.QuickShare
-object:    /io/github/ashpika40/QuickShare
-methods:   GetVisibility() -> i   (0 Everyone, 1 Contacts, 2 Hidden)
-           SetVisibility(i)
-           GetRunning() -> b
-           GetTransferActive() -> b
-           Show()
-           Quit()
-signals:   VisibilityChanged(i)
-           RunningChanged(b)
-           TransferActiveChanged(b)
+```text
+name:       dev.scotty.Scotty
+object:     /dev/scotty/Scotty
+interface:  dev.scotty.Scotty
 ```
 
-If the app isn't running, the tile launches it (`nearby_qml_file_tray_app`, must
-be on `PATH`) and applies the requested visibility once it appears on the bus.
+The tile opens Scotty through packaged D-Bus/desktop activation, so it contains
+no hard-coded executable path. Its menu has an explicit **Quit Scotty** action.
+All signals, proxy state, indicators, quick-settings items, and timeout sources
+are released by `disable()`.
 
-## Install
+The Debian package installs the extension system-wide without enabling it. The
+logged-in user chooses whether to enable it:
 
 ```sh
-cp -r sharing/linux/quickshare-gnome-extension \
-      ~/.local/share/gnome-shell/extensions/quickshare@ashpika40.github.io
-gnome-extensions enable quickshare@ashpika40.github.io
+sudo apt install gnome-shell-extension-scotty
+gnome-extensions enable quickshare@scottydev40.github.io
 ```
 
-On **Wayland** a newly installed or edited extension only loads after a full
-**logout / login** (you can't reload the shell). On Xorg, `Alt+F2` → `r`.
+On Wayland, log out and back in after installing a previously unknown extension
+if GNOME Shell has not loaded it. Package removal removes the extension files;
+the current Shell process may retain already-loaded code until the next session.
 
-## Notes
-
-- The tile uses the stock `media-playlist-repeat-symbolic` (a loop/swap motif)
-  so it recolors correctly in light/dark panels. A custom fill-based symbolic
-  matching the app's swap mark can replace it later.
-- `shell-version` in `metadata.json` lists 46–50; bump it as GNOME advances.
+An old per-user Scotty extension shadows the system package. Remove the legacy
+copy with the GNOME Extensions application, then log out and back in, before
+diagnosing the packaged extension.

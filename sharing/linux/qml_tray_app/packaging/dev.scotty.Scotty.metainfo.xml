@@ -5,6 +5,9 @@
   <project_license>Apache-2.0</project_license>
   <name>Scotty</name>
   <summary>Universal local file sharing for Linux</summary>
+  <developer id="dev.scotty">
+    <name>Scotty Developers</name>
+  </developer>
   <description>
     <p>
       Scotty sends and receives files with the phones, tablets, and PCs
@@ -18,9 +21,17 @@
       with an optional Boost mode for maximum throughput.
     </p>
   </description>
-  <url type="homepage">https://github.com/ashpika40/scotty</url>
-  <url type="bugtracker">https://github.com/ashpika40/scotty/issues</url>
+  <url type="homepage">https://github.com/scottydev40/Scotty</url>
+  <url type="bugtracker">https://github.com/scottydev40/Scotty/issues</url>
   <launchable type="desktop-id">dev.scotty.Scotty.desktop</launchable>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0-beta.1" date="2026-08-16" type="development">
+      <description>
+        <p>First beta with native Linux packaging and GNOME integration.</p>
+      </description>
+    </release>
+  </releases>
   <provides>
     <binary>scotty</binary>
   </provides>

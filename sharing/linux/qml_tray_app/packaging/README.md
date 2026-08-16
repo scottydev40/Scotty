@@ -1,57 +1,72 @@
-# Packaging — Scotty AppImage
+# Scotty packaging
 
-Builds a self-contained `Scotty-x86_64.AppImage` that bundles Qt and the shared
-library, so it runs on other distros without installing Qt.
+The Debian/Ubuntu package is Scotty's authoritative installation format. The
+AppImage is a separate portable artifact and does not install, update, enable,
+or remove host resources.
 
-## Approach (and why it differs from upstream)
+## Native packages
 
-The upstream `kidfromjupiter` packaging sourced Qt from Bazel's `rules_qt`,
-because that app is built entirely through Bazel. Scotty builds the app with
-**CMake against system Qt**, so we use the standard **linuxdeploy** +
-**linuxdeploy-plugin-qt** tooling instead — it discovers and bundles the system
-Qt (libraries, plugins, QML modules) automatically. Much less to maintain than a
-hand-rolled Qt-copy script.
+The repository-level `debian/` directory produces:
 
-## Contents
+- `scotty`: application, private sharing library, desktop/AppStream metadata,
+  icons, D-Bus activation, and a dormant systemd user service.
+- `gnome-shell-extension-scotty`: optional GNOME Quick Settings tile.
+- `scotty-bluez-compat`: package-owned BlueZ, systemd, and Polkit integration.
 
-- `dev.scotty.Scotty.desktop` — desktop entry (filename matches the Wayland
-  app_id set via `QGuiApplication::setDesktopFileName`, so the shell matches the
-  window to its icon).
-- `dev.scotty.Scotty.metainfo.xml` — AppStream metadata.
-- `AppRun` — AppImage entrypoint. On first run it applies the BlueZ setup,
-  installs the GNOME tile, and self-installs Scotty as a systemd `--user`
-  service (`scotty.service`) plus an app-grid entry, then hands off and returns
-  the terminal. The service invocation carries `SCOTTY_SKIP_SETUP=1` and runs
-  the real foreground app; it also sets the Qt plugin/QML paths and prefers
-  Wayland. `--uninstall` removes the user install (service, copy, desktop entry,
-  icon), leaving the shared BlueZ system config in place.
-- `scotty-install-lib.sh` — sourceable install logic (copy, desktop entry,
-  systemd unit, autostart fallback, orchestration). Unit-tested by
-  `tests/test-install.sh` against a fake `$HOME` with stubbed `systemctl`.
-- `build-appimage.sh` — the build script (bundles the lib next to `AppRun`).
+Build from the repository root:
 
-## Build
+```sh
+dpkg-buildpackage -b -uc -us
+```
 
-Prereqs: system Qt6 dev packages (`qmake6`), the app built
-(`cmake --build sharing/linux/qml_tray_app/build`), and the shared library built
-(`bazel build //sharing/linux:nearby_sharing_api_shared`).
+The build requires Qt 6 development packages, a current Bazel, debhelper,
+Ninja, and the libraries listed in `debian/control`. See `debian/README.source`
+before preparing a PPA source upload: Bazel's remote dependency graph must be
+vendored and verified by an offline build first.
+
+Install a local build with APT so dependencies and package ownership are
+handled normally:
+
+```sh
+sudo apt install ../scotty_0.1.0~beta1-1_amd64.deb \
+  ../scotty-bluez-compat_0.1.0~beta1-1_all.deb \
+  ../gnome-shell-extension-scotty_0.1.0~beta1-1_all.deb
+```
+
+GNOME extensions are never enabled by package scripts. Enable the tile as the
+logged-in user, then log out/in if GNOME Shell has not loaded it yet:
+
+```sh
+gnome-extensions enable quickshare@scottydev40.github.io
+```
+
+If an older AppImage/self-installer added a per-user Scotty extension, remove it
+with the GNOME Extensions application before enabling the packaged version.
+Per-user extensions take precedence over package-owned extensions in
+`/usr/share`, and keeping both can produce duplicate or stale tiles. Log out and
+back in after this one-time migration; a running GNOME Shell can retain already
+loaded extension code until the session ends even after its files are removed.
+
+Scotty is D-Bus activated when opened. Continuous background receiving at
+login is an explicit user choice:
+
+```sh
+systemctl --user enable --now scotty.service
+```
+
+## Portable AppImage
+
+Build with:
 
 ```sh
 sharing/linux/qml_tray_app/packaging/build-appimage.sh
 ```
 
-First run downloads `linuxdeploy`, `linuxdeploy-plugin-qt`, and `appimagetool`
-into `.appimage-tools/` at the repo root. Output lands in `sharing/linux/dist/`.
+The build does not download moving `continuous` artifacts. Supply pinned,
+verified `linuxdeploy`, its Qt plugin, `appimagetool`, and the runtime under
+`.appimage-tools/`, or set `LINUXDEPLOY`, `LINUXDEPLOY_QT_PLUGIN`,
+`APPIMAGETOOL`, and `APPIMAGE_RUNTIME` to CI-managed paths.
 
-Env overrides: `BINARY`, `SHARED_LIB`, `ICON`, `OUTPUT_DIR`.
-
-## Status
-
-Builds a self-contained AppImage that runs from a single file. First run
-self-installs Scotty as a background systemd `--user` service + app-grid entry
-(`AppRun` + `scotty-install-lib.sh`), so it persists across logins and the
-launching terminal no longer hangs. The install logic is unit-tested
-(`tests/test-install.sh`); end-to-end build + reboot-persistence is verified on
-the dev box per `tools/hil/`. A GitHub Actions release workflow is still a
-follow-up (see kid's `release-minimal-appimage.yaml` for reference, but adapt to
-this CMake flow).
+The result runs in place. It never copies itself to `~/.local`, creates a user
+service, installs a GNOME extension, or invokes a privileged setup script.
+Native system integration is supplied only by the packages above.
