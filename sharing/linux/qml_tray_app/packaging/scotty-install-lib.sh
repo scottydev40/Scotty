@@ -33,3 +33,15 @@ scotty_copy_appimage() {
     echo current
   fi
 }
+
+# Install the icon ($2) and write the desktop entry from template ($1), with
+# Exec/Icon rewritten to absolute installed paths. Refresh the desktop DB.
+scotty_install_desktop() {
+  install -Dm 0644 "$2" "$SCOTTY_ICON_DST"
+  mkdir -p "$(dirname "$SCOTTY_DESKTOP_DST")"
+  sed -e "s|^Exec=.*|Exec=$SCOTTY_APPIMG_DST %U|" \
+      -e "s|^Icon=.*|Icon=$SCOTTY_ICON_DST|" \
+      "$1" > "$SCOTTY_DESKTOP_DST"
+  chmod 0644 "$SCOTTY_DESKTOP_DST"
+  update-desktop-database "$(dirname "$SCOTTY_DESKTOP_DST")" 2>/dev/null || true
+}
