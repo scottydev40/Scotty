@@ -50,9 +50,14 @@ fetch() { # url dest
 readonly LD="$TOOLS_DIR/linuxdeploy-x86_64.AppImage"
 readonly LDQT="$TOOLS_DIR/linuxdeploy-plugin-qt-x86_64.AppImage"
 readonly APPIMAGETOOL="$TOOLS_DIR/appimagetool-x86_64.AppImage"
+# Static AppImage runtime: lets the output run WITHOUT libfuse2 on the target
+# (Ubuntu 22.04+ ships no libfuse2, so a dynamic-runtime AppImage won't launch
+# on a fresh box). appimagetool embeds this via --runtime-file below.
+readonly RUNTIME="$TOOLS_DIR/runtime-x86_64"
 fetch "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage" "$LD"
 fetch "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage" "$LDQT"
 fetch "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" "$APPIMAGETOOL"
+fetch "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64" "$RUNTIME"
 
 # --- stage the AppDir ------------------------------------------------------
 rm -rf "$OUTPUT_DIR"
@@ -64,6 +69,8 @@ mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/lib" \
          "$APPDIR/usr/share/icons/hicolor/256x256/apps"
 
 install -m 0755 "$BINARY" "$APPDIR/usr/bin/scotty"
+# Privileged first-run setup, invoked by AppRun via pkexec on first launch.
+install -m 0755 "$SCRIPT_DIR/scotty-setup.sh" "$APPDIR/usr/bin/scotty-setup"
 install -m 0644 "$SHARED_LIB" "$APPDIR/usr/lib/"
 install -m 0644 "$SCRIPT_DIR/$APP_ID.desktop" "$APPDIR/usr/share/applications/"
 install -m 0644 "$SCRIPT_DIR/$APP_ID.metainfo.xml" "$APPDIR/usr/share/metainfo/"
@@ -74,6 +81,13 @@ if [[ -e "$ICON" ]]; then
 fi
 # linuxdeploy expects the .desktop at the AppDir root too.
 ln -sf "usr/share/applications/$APP_ID.desktop" "$APPDIR/$APP_ID.desktop"
+
+# GNOME Quick Settings tile extension — staged here, installed user-side by
+# AppRun on first run (extensions must live under ~/.local, can't run from the
+# AppImage mount, and need a logout to load).
+install -d "$APPDIR/usr/share/scotty/gnome-extension"
+cp -a "$REPO_ROOT/sharing/linux/quickshare-gnome-extension/." \
+      "$APPDIR/usr/share/scotty/gnome-extension/"
 
 # --- bundle Qt + deps, then package ---------------------------------------
 export QMAKE="$(command -v qmake6 || command -v qmake)"
