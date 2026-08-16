@@ -42,5 +42,23 @@ ok "desktop-db refreshed" 'grep -q update-desktop-database "$SCOTTY_TEST_LOG"'
 unset SCOTTY_TEST_LOG
 teardown
 
+# --- Task 4 ---
+setup_home; source "$LIB"; scotty_paths
+mkdir -p "$SCOTTY_LIB_DIR"; : > "$SCOTTY_APPIMG_DST"
+export SCOTTY_TEST_LOG="$(mktemp)"
+scotty_write_unit
+ok "unit written"          '[ -f "$SCOTTY_UNIT_DST" ]'
+ok "ExecStart abs path"    'grep -qF "ExecStart=$SCOTTY_APPIMG_DST" "$SCOTTY_UNIT_DST"'
+ok "skip-setup env set"    'grep -qxF "Environment=SCOTTY_SKIP_SETUP=1" "$SCOTTY_UNIT_DST"'
+ok "restart on-failure"    'grep -qxF "Restart=on-failure" "$SCOTTY_UNIT_DST"'
+ok "wantedby default"      'grep -qxF "WantedBy=default.target" "$SCOTTY_UNIT_DST"'
+ok "second write no-op"    '! scotty_write_unit'
+scotty_activate_unit changed
+ok "daemon-reload called"  'grep -q "systemctl --user daemon-reload" "$SCOTTY_TEST_LOG"'
+ok "enable --now called"   'grep -q "enable --now scotty.service" "$SCOTTY_TEST_LOG"'
+ok "restart on changed"    'grep -q "restart scotty.service" "$SCOTTY_TEST_LOG"'
+unset SCOTTY_TEST_LOG
+teardown
+
 echo "== $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]

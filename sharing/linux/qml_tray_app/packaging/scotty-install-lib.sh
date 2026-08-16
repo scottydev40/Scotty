@@ -45,3 +45,40 @@ scotty_install_desktop() {
   chmod 0644 "$SCOTTY_DESKTOP_DST"
   update-desktop-database "$(dirname "$SCOTTY_DESKTOP_DST")" 2>/dev/null || true
 }
+
+# Write the scotty.service unit. Idempotent: returns 0 if it wrote/changed the
+# file, 1 if the content was already identical. The service launches the
+# installed AppImage with SCOTTY_SKIP_SETUP=1 so it runs the real foreground app
+# instead of re-triggering first-run setup.
+scotty_write_unit() {
+  mkdir -p "$(dirname "$SCOTTY_UNIT_DST")"
+  local new; new="$(cat <<UNIT
+[Unit]
+Description=Scotty — Quick Share for Linux (background service)
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+Environment=SCOTTY_SKIP_SETUP=1
+ExecStart=$SCOTTY_APPIMG_DST
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
+UNIT
+)"
+  if [ -f "$SCOTTY_UNIT_DST" ] && [ "$new" = "$(cat "$SCOTTY_UNIT_DST")" ]; then
+    return 1   # unchanged
+  fi
+  printf '%s\n' "$new" > "$SCOTTY_UNIT_DST"
+  return 0
+}
+
+# Reload + enable the service now; restart it too when $1 == "changed".
+scotty_activate_unit() {
+  systemctl --user daemon-reload 2>/dev/null || true
+  systemctl --user enable --now scotty.service 2>/dev/null || true
+  [ "${1:-}" = changed ] && systemctl --user restart scotty.service 2>/dev/null || true
+}
