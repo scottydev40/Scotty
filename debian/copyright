@@ -1,0 +1,20 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: Scotty
+Source: https://github.com/scottydev40/Scotty
+
+Files: *
+Copyright: 2026 The Scotty Authors
+           2025-2026 Google LLC
+           Other contributors named in NOTICE and CREDITS.md
+License: Apache-2.0
+
+Files: sharing/linux/qml_tray_app/*
+       sharing/linux/quickshare-gnome-extension/*
+       sharing/linux/packaging/*
+       debian/*
+Copyright: 2026 The Scotty Authors
+License: Apache-2.0
+
+License: Apache-2.0
+ On Debian systems, the complete text of the Apache License, Version 2.0 is
+ available in /usr/share/common-licenses/Apache-2.0.

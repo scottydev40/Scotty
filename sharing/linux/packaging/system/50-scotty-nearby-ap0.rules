@@ -1,0 +1,9 @@
+// Permit only the local active user to start/stop Scotty's on-demand AP
+// interface. This grants no general systemd or network-management authority.
+polkit.addRule(function(action, subject) {
+    if (action.id === "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") === "nearby-ap-interface.service" &&
+        subject.local && subject.active) {
+        return polkit.Result.YES;
+    }
+});

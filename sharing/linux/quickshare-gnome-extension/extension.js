@@ -4,8 +4,8 @@
 // launcher, nothing more. Visibility itself is chosen inside the app (the tile
 // used to carry a dropdown of radios; that lived in two places and is gone).
 //
-//   short press  → open the app (launch it if it isn't running)
-//   long  press  → quit the app
+//   short press  → open the app (D-Bus activates it if it isn't running)
+//   menu action  → quit the app
 //
 // Talks to the app over D-Bus:
 //
@@ -33,7 +33,7 @@ import {
 
 const BUS_NAME = 'dev.scotty.Scotty';
 const OBJECT_PATH = '/dev/scotty/Scotty';
-const APP_BINARY = 'scotty';
+const DESKTOP_ID = 'dev.scotty.Scotty.desktop';
 
 // Keep the panel indicator lit this long after a transfer ends, so a fast
 // (e.g. Wi-Fi LAN photo) transfer registers as more than a blip.
@@ -131,6 +131,7 @@ class QuickShareIndicator extends SystemIndicator {
 
 export default class QuickShareExtension extends Extension {
     enable() {
+        this._enabled = true;
         // Two-arrow loop, matching the app's own swap mark, and stock so it
         // recolors cleanly in the panel/menu. The first name is the closest
         // match but ships with Yaru rather than Adwaita, so fall back for
@@ -157,6 +158,8 @@ export default class QuickShareExtension extends Extension {
         this._proxy = new QuickShareProxy(
             Gio.DBus.session, BUS_NAME, OBJECT_PATH,
             (proxy, error) => {
+                if (!this._enabled)
+                    return;
                 if (error) {
                     logError(error, 'Quick Share: failed to create D-Bus proxy');
                     return;
@@ -266,10 +269,17 @@ export default class QuickShareExtension extends Extension {
     }
 
     openWindow() {
-        if (this._proxy?.g_name_owner)
-            this._proxy.ShowRemote(() => {});
-        else
+        if (!this._proxy) {
             this._launchApp();
+            return;
+        }
+        // D-Bus starts Scotty through its packaged service when the name is
+        // not currently owned. Falling back to the desktop entry also keeps
+        // development/user installs usable when that service is unavailable.
+        this._proxy.ShowRemote((result, error) => {
+            if (error && this._enabled)
+                this._launchApp();
+        });
     }
 
     quitApp() {
@@ -277,22 +287,21 @@ export default class QuickShareExtension extends Extension {
             this._proxy.QuitRemote(() => {});
     }
 
-    _launchApp(background = false) {
-        // Prefer the installed launcher by absolute path — GNOME Shell's spawn
-        // environment does not always carry ~/.local/bin on PATH, so spawning
-        // by bare name can silently fail after the app has been quit.
-        const wrapper = `${GLib.get_home_dir()}/.local/bin/scotty`;
-        const bin = GLib.file_test(wrapper, GLib.FileTest.IS_EXECUTABLE)
-            ? wrapper : APP_BINARY;
-        const argv = background ? [bin, '--background'] : [bin];
+    _launchApp() {
+        const appInfo = Gio.DesktopAppInfo.new(DESKTOP_ID);
+        if (!appInfo) {
+            log(`Quick Share: ${DESKTOP_ID} is not installed`);
+            return;
+        }
         try {
-            Gio.Subprocess.new(argv, Gio.SubprocessFlags.NONE);
+            appInfo.launch([], null);
         } catch (e) {
             logError(e, 'Quick Share: failed to launch app');
         }
     }
 
     disable() {
+        this._enabled = false;
         this._cancelTransferHold();
 
         // Hand control back before we go: the app restores its tray icon, so
@@ -320,5 +329,7 @@ export default class QuickShareExtension extends Extension {
         this._indicator?.destroy();
         this._indicator = null;
         this.icon = null;
+        this._visibility = null;
+        this._transferActive = null;
     }
 }

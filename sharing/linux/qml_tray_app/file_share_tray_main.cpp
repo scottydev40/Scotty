@@ -6,7 +6,6 @@
 #include <QFileInfo>
 #include <QIcon>
 #include <QMenu>
-#include <QPainter>
 #include <QPalette>
 #include <QLocalServer>
 #include <QLocalSocket>
@@ -22,6 +21,7 @@
 #include <unistd.h>
 
 #include "bluetooth_name_guard.h"
+#include "app_paths.h"
 #include "file_share_tray_controller.h"
 #include "notification_manager.h"
 #include "quick_share_dbus.h"
@@ -29,9 +29,8 @@
 
 namespace {
 
-constexpr char kDefaultLogPath[] = "/tmp/nearby_qml_file_tray.log";
 // Per-user single-instance key (QLocalServer socket name).
-constexpr char kInstanceKey[] = "nearby_qml_file_tray_app.instance";
+constexpr char kInstanceKey[] = "dev.scotty.Scotty.instance";
 
 // Wire format for the single-instance socket: a verb line, then one path per
 // line. "SHOW" alone just surfaces the window; "SEND" is followed by the paths
@@ -94,7 +93,8 @@ bool EnsureLogDirectory(const QString& file_path) {
 
 bool RedirectStdStreamsToFile(const QString& file_path) {
   const QByteArray encoded_path = QFile::encodeName(file_path);
-  const int fd = ::open(encoded_path.constData(), O_CREAT | O_APPEND | O_WRONLY, 0644);
+  const int fd =
+      ::open(encoded_path.constData(), O_CREAT | O_APPEND | O_WRONLY, 0600);
   if (fd < 0) {
     return false;
   }
@@ -108,12 +108,11 @@ bool RedirectStdStreamsToFile(const QString& file_path) {
 QString ResolveConfiguredLogPath() {
   QSettings settings(QStringLiteral("Nearby"), QStringLiteral("QmlFileTrayApp"));
   const QString configured_path =
-      settings.value(QStringLiteral("logPath"),
-                     QString::fromLatin1(kDefaultLogPath))
+      settings.value(QStringLiteral("logPath"), DefaultLogPath())
           .toString()
           .trimmed();
   if (configured_path.isEmpty()) {
-    return QString::fromLatin1(kDefaultLogPath);
+    return DefaultLogPath();
   }
   return configured_path;
 }
@@ -124,7 +123,7 @@ void RedirectProcessLogsToConfiguredPath() {
     return;
   }
 
-  const QString fallback_path = QString::fromLatin1(kDefaultLogPath);
+  const QString fallback_path = DefaultLogPath();
   if (log_path == fallback_path) {
     return;
   }
@@ -134,44 +133,17 @@ void RedirectProcessLogsToConfiguredPath() {
   RedirectStdStreamsToFile(fallback_path);
 }
 
-QIcon BuildTintedSymbolicIcon(const QString& source, const QColor& color) {
-  QIcon source_icon(source);
-  if (source_icon.isNull()) {
-    return QIcon();
-  }
-
-  QIcon tinted_icon;
-  for (int size : {16, 18, 20, 22, 24, 32, 40, 48, 64}) {
-    QPixmap pixmap = source_icon.pixmap(size, size);
-    if (pixmap.isNull()) {
-      continue;
-    }
-
-    QPixmap tinted(pixmap.size());
-    tinted.fill(Qt::transparent);
-
-    QPainter painter(&tinted);
-    painter.drawPixmap(0, 0, pixmap);
-    painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
-    painter.fillRect(tinted.rect(), color);
-    painter.end();
-
-    tinted_icon.addPixmap(tinted);
-  }
-
-  return tinted_icon;
-}
-
 }  // namespace
 
 int main(int argc, char* argv[]) {
-  RedirectProcessLogsToConfiguredPath();
-
   QApplication app(argc, argv);
   app.setApplicationName(QStringLiteral("Scotty"));
   app.setApplicationDisplayName(QStringLiteral("Scotty"));
+  app.setOrganizationName(QStringLiteral("Scotty"));
+  app.setOrganizationDomain(QStringLiteral("scotty.dev"));
   app.setQuitOnLastWindowClosed(false);
   app.setWindowIcon(QIcon(QStringLiteral(":/icons/app_icon.svg")));
+  RedirectProcessLogsToConfiguredPath();
 
   // Single instance: hand any request to the running copy and bail. A --send
   // launch from a file manager is the common case — the paths go across so the
@@ -265,20 +237,13 @@ int main(int argc, char* argv[]) {
         window->requestActivate();
       });
 
-  const auto resolve_tray_icon = [&app]() {
-    const QColor white = "white";
-    QIcon tray_icon = BuildTintedSymbolicIcon(
-        QStringLiteral(":/icons/app_swap.svg"), white);
-    if (tray_icon.isNull()) {
-      tray_icon = QIcon::fromTheme(QStringLiteral("network-wireless-symbolic"));
-    }
-    if (tray_icon.isNull()) {
-      tray_icon = QIcon(QStringLiteral(":/icons/tray_icon.png"));
-    }
-    if (tray_icon.isNull()) {
-      tray_icon = app.windowIcon();
-    }
-    return tray_icon;
+  const auto resolve_tray_icon = []() {
+    // StatusNotifierItem hosts prefer a Freedesktop icon name over serialized
+    // pixmaps. The installed symbolic icon lets GNOME choose the correct size,
+    // scale, colour, and padding; the resource remains a portable fallback.
+    return QIcon::fromTheme(
+        QStringLiteral("dev.scotty.Scotty-symbolic"),
+        QIcon(QStringLiteral(":/icons/app_swap.svg")));
   };
 
   QSystemTrayIcon tray(resolve_tray_icon());
@@ -333,11 +298,9 @@ int main(int argc, char* argv[]) {
     window->hide();
   });
 
-  QObject::connect(quit_action, &QAction::triggered, &app,
-                   [&controller, &app]() {
-                     controller.stop();
-                     app.quit();
-                   });
+  QObject::connect(quit_action, &QAction::triggered, &controller,
+                   &FileShareTrayController::quitApplication,
+                   Qt::QueuedConnection);
 
   QObject::connect(&tray, &QSystemTrayIcon::activated, window,
                    [window](QSystemTrayIcon::ActivationReason reason) {

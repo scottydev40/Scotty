@@ -1,0 +1,44 @@
+.TH SCOTTY 1 "August 2026" "Scotty 0.1.0-beta.1" "User Commands"
+.SH NAME
+scotty \- send and receive files with nearby devices
+.SH SYNOPSIS
+.B scotty
+.RI [ options ]
+.br
+.B scotty --send
+.IR file ...
+.SH DESCRIPTION
+.B Scotty
+is a graphical local file-sharing application compatible with Nearby/Quick
+Share devices. It uses Bluetooth for discovery and transfers over the local
+network, an on-demand Wi-Fi hotspot, or Bluetooth.
+.PP
+Only one instance runs per user. Later invocations activate the existing
+window and forward files to it.
+.SH OPTIONS
+.TP
+.B --send
+Open the running instance in send mode with the following local files.
+.TP
+.B --background
+Start without initially showing the main window. This is used by D-Bus and
+systemd user-service activation.
+.SH BACKGROUND RECEIVING
+The packaged service is activated on demand and is not enabled automatically.
+To receive continuously after login, run:
+.PP
+.nf
+systemctl --user enable --now scotty.service
+.fi
+.PP
+Disable continuous startup with:
+.PP
+.nf
+systemctl --user disable --now scotty.service
+.fi
+.SH FILES
+.TP
+.I ~/.local/state/scotty/scotty.log
+Default log file when \fBXDG_STATE_HOME\fR is unset.
+.SH BUGS
+Report bugs at https://github.com/scottydev40/Scotty/issues.

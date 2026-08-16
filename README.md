@@ -29,8 +29,8 @@ Quick-Settings tile.
 - **Boost mode** (opt-in): hands the whole radio to the hotspot for maximum
   throughput (~2.5× faster in testing) at the cost of dropping Wi-Fi for the
   transfer.
-- **Runs in the background**: installs as a per-user service that starts at
-  login and auto-restarts, so it's always ready to receive. On GNOME the
+- **Runs in the background when you choose**: D-Bus activation starts it on
+  demand, and an opt-in user service can keep it ready after login. On GNOME the
   **Quick-Settings tile** is the main surface (a system-tray icon is used on
   desktops that have a tray). Light/dark theme following, "Send with Scotty"
   from the file manager, live transfer speed and per-file progress.
@@ -44,12 +44,21 @@ contacts / QR pairing, packaging, and wider hardware support. See
 
 ## Install
 
-Download `Scotty-x86_64.AppImage` from Releases and run it once. First run (one
-password prompt) applies the Bluetooth setup, installs the GNOME Quick-Settings
-tile, and installs Scotty as a background user service that starts at every
-login — after which it's in your app grid and the terminal returns immediately.
-Running a newer AppImage updates the installed copy in place. Remove everything
-with `./Scotty-x86_64.AppImage --uninstall`.
+Scotty is moving to normal Debian/Ubuntu packages during the beta. A local build
+produces independently removable packages for the app, GNOME tile, and system
+transport integration:
+
+```sh
+dpkg-buildpackage -b -uc -us
+sudo apt install ../scotty_*.deb ../scotty-bluez-compat_*.deb \
+  ../gnome-shell-extension-scotty_*.deb
+gnome-extensions enable quickshare@scottydev40.github.io
+```
+
+The long-term install path is `apt install scotty` from a signed repository.
+The AppImage remains available as a portable build, but it runs in place and no
+longer modifies the host or installs the GNOME tile. See the
+[`packaging` guide](sharing/linux/qml_tray_app/packaging/README.md).
 
 ## Building
 

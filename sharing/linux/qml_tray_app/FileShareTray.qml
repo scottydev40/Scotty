@@ -27,6 +27,11 @@ ApplicationWindow {
         fileShareController.hideToTray()
     }
 
+    Shortcut {
+        sequence: StandardKey.Quit
+        onActivated: fileShareController.quitApplication()
+    }
+
     SettingsPanel {
         id: settingsPanel
     }

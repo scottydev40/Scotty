@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = remove ] || [ "$1" = purge ]; then
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    if command -v deb-systemd-invoke >/dev/null 2>&1; then
+        deb-systemd-invoke try-restart bluetooth.service >/dev/null 2>&1 || true
+    fi
+fi
+
+#DEBHELPER#

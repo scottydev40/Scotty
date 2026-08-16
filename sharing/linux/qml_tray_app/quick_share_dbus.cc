@@ -6,6 +6,7 @@
 #include <QQuickWindow>
 
 #include "file_share_tray_controller.h"
+#include "freedesktop_application_adaptor.h"
 
 namespace {
 constexpr char kServiceName[] = "dev.scotty.Scotty";
@@ -17,6 +18,7 @@ constexpr char kShellService[] = "org.gnome.Shell";
 QuickShareDbus::QuickShareDbus(FileShareTrayController* controller,
                                QQuickWindow* window, QObject* parent)
     : QObject(parent), controller_(controller), window_(window) {
+  new FreedesktopApplicationAdaptor(this);
   // Re-broadcast controller state changes onto the bus so the extension stays
   // in sync without polling.
   connect(controller_, &FileShareTrayController::visibilityChanged, this,
@@ -38,8 +40,10 @@ QuickShareDbus::QuickShareDbus(FileShareTrayController* controller,
 
 bool QuickShareDbus::registerOnBus() {
   QDBusConnection bus = QDBusConnection::sessionBus();
-  if (!bus.registerObject(QString::fromLatin1(kObjectPath), this,
-                          QDBusConnection::ExportScriptableContents)) {
+  if (!bus.registerObject(
+          QString::fromLatin1(kObjectPath), this,
+          QDBusConnection::ExportScriptableContents |
+              QDBusConnection::ExportAdaptors)) {
     return false;
   }
   return bus.registerService(QString::fromLatin1(kServiceName));
@@ -70,9 +74,15 @@ void QuickShareDbus::Show() {
   window_->requestActivate();
 }
 
+void QuickShareDbus::OpenFiles(const QStringList& paths) {
+  if (!paths.isEmpty()) {
+    controller_->switchToSendModeWithFiles(paths);
+  }
+  Show();
+}
+
 void QuickShareDbus::Quit() {
-  controller_->stop();
-  QCoreApplication::quit();
+  controller_->quitApplication();
 }
 
 void QuickShareDbus::SetTileActive(bool active) {

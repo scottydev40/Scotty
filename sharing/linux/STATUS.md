@@ -11,31 +11,27 @@ Two build systems. The shared library is Bazel, the app is CMake:
 ```sh
 # shared library (~8s incremental with a warm cache)
 bazel build //sharing/linux:nearby_sharing_api_shared
-cp bazel-bin/sharing/linux/libnearby_sharing_api_shared.so  ~/.local/lib/
 cp bazel-bin/sharing/linux/libnearby_sharing_api_shared.so  "$NEARBY_PREFIX/lib/"
 cp sharing/linux/nearby_sharing_api.h                       "$NEARBY_PREFIX/include/sharing/linux/"
 
 # app — NEARBY_PREFIX is baked into build/CMakeCache.txt, not ~/.local
 cmake --build sharing/linux/qml_tray_app/build
-rm -f ~/.local/bin/scotty   # avoid ETXTBSY if it is running
-cp sharing/linux/qml_tray_app/build/nearby_qml_file_tray_app ~/.local/bin/scotty
+DESTDIR="$PWD/stage" cmake --install sharing/linux/qml_tray_app/build
 ```
 
-The CMake output is still named `nearby_qml_file_tray_app`; it is installed as
-`scotty`. Both copies of the library matter: the app links against
-`NEARBY_PREFIX` (see `build/CMakeCache.txt`) and resolves at runtime via RUNPATH.
+The CMake output and installed executable are both named `scotty`. The app links
+against `NEARBY_PREFIX` (see `build/CMakeCache.txt`) and the native install puts
+the private library under `/usr/lib/scotty`, resolved through a relative RUNPATH.
 Editing the header without copying it to the prefix produces "no member named …"
 errors against a library that already has the symbol.
 
-Run `cmake` from the build directory, never the source directory.
+Use an out-of-tree CMake build directory; never generate build files in the
+source directory.
 
-For a distributable, see `qml_tray_app/packaging/` (`build-bundle.sh` → a
-relocatable tarball; `build-appimage.sh` → a self-contained AppImage). On first
-run the AppImage self-installs Scotty as a systemd `--user` service
-(`scotty.service`) plus an app-grid entry, so it starts at every login and
-auto-restarts; a bare launch installs-then-exits (no terminal hang) while the
-service invocation runs the real app. Undo with
-`./Scotty-x86_64.AppImage --uninstall`.
+For a distributable, see `qml_tray_app/packaging/`. The repository-level
+`debian/` directory is the authoritative native installation and produces
+separate app, GNOME-extension, and transport-integration packages. The AppImage
+is portable only: it runs in place and never installs host resources.
 
 ## Transports: what actually happens
 

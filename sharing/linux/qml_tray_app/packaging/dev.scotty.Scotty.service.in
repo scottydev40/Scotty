@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=dev.scotty.Scotty
+Exec=@CMAKE_INSTALL_FULL_BINDIR@/scotty --background
+SystemdService=scotty.service

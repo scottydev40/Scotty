@@ -1,0 +1,7 @@
+scotty (0.1.0~beta1-1) unstable; urgency=medium
+
+  * Initial native Debian/Ubuntu beta packaging.
+  * Split the GNOME Shell tile and BlueZ integration into separate packages.
+  * Add D-Bus activation and an on-demand systemd user service.
+
+ -- Scotty Developers <scottydev40@users.noreply.github.com>  Sun, 16 Aug 2026 12:00:00 -0500

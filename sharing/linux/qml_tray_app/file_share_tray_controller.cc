@@ -1,5 +1,7 @@
 #include "file_share_tray_controller.h"
 
+#include "app_paths.h"
+
 #include <chrono>
 #include <future>
 #include <iostream>
@@ -420,7 +422,7 @@ void FileShareTrayController::loadSettings() {
       settings.value(QStringLiteral("hotspotBoost"), false).toBool());
 
   const QString stored_log_path =
-      settings.value(QStringLiteral("logPath"), QStringLiteral("/tmp/nearby_qml_file_tray.log"))
+      settings.value(QStringLiteral("logPath"), DefaultLogPath())
           .toString()
           .trimmed();
   if (!stored_log_path.isEmpty()) {
@@ -767,8 +769,10 @@ void FileShareTrayController::setReceiveForeground(bool foreground) {
 }
 
 void FileShareTrayController::quitApplication() {
-  // aboutToQuit is wired to stop() in main() for an ordered teardown.
-  QCoreApplication::quit();
+  // The QML window deliberately rejects ordinary close events to hide to the
+  // tray. quit() can therefore be rejected too; exit(0) is Qt's documented
+  // non-interruptible application exit. aboutToQuit still performs cleanup.
+  QCoreApplication::exit(0);
 }
 
 void FileShareTrayController::setLogPath(const QString& path) {

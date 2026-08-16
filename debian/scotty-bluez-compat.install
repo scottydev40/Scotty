@@ -1,0 +1,3 @@
+sharing/linux/packaging/system/10-scotty-nearby.conf usr/lib/systemd/system/bluetooth.service.d
+sharing/linux/nearby-ap-interface.service usr/lib/systemd/system
+sharing/linux/packaging/system/50-scotty-nearby-ap0.rules usr/share/polkit-1/rules.d
