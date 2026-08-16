@@ -9,10 +9,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
-#include <algorithm>
 #include <QIcon>
-#include <QPainter>
-#include <QImage>
 #include <QMessageBox>
 #include <QPixmap>
 #include <QPushButton>
@@ -78,12 +75,11 @@ uint NotificationManager::PostNotification(const QString& title,
       QString::fromLatin1(kNotificationsInterface),
       QDBusConnection::sessionBus());
 
-  const QString notification_icon = EnsureNotificationIconPath();
+  // Let the notification server draw the app's own icon (full-colour, correctly
+  // sized and padded) from the desktop entry — the way Firefox and other apps
+  // do — instead of hand-rendering the monochrome tray glyph into the slot.
   QVariantMap hints{
       {QStringLiteral("desktop-entry"), QString::fromLatin1(kDesktopEntryId)}};
-  if (!notification_icon.isEmpty()) {
-    hints.insert(QStringLiteral("image-path"), notification_icon);
-  }
   if (resident) {
     // Keep it on screen until answered rather than fading out with the sender
     // still waiting.
@@ -93,9 +89,7 @@ uint NotificationManager::PostNotification(const QString& title,
 
   QDBusReply<uint> reply = notification_interface.call(
       QStringLiteral("Notify"), QCoreApplication::applicationName(),
-      static_cast<uint>(0),
-      notification_icon.isEmpty() ? QString::fromLatin1(kDesktopEntryId)
-                                  : notification_icon,
+      static_cast<uint>(0), QString::fromLatin1(kDesktopEntryId),
       title, body, actions, hints, timeout_ms);
   return reply.isValid() ? reply.value() : 0;
 }
@@ -161,17 +155,11 @@ void NotificationManager::ShowCopyableNotification(
         QString::fromLatin1(kNotificationsInterface),
         QDBusConnection::sessionBus());
     const QString application_name = QCoreApplication::applicationName();
-    const QString notification_icon = EnsureNotificationIconPath();
     QVariantMap hints{{QStringLiteral("desktop-entry"),
                        QString::fromLatin1(kDesktopEntryId)}};
-    if (!notification_icon.isEmpty()) {
-      hints.insert(QStringLiteral("image-path"), notification_icon);
-    }
     QDBusReply<uint> reply = notification_interface.call(
         QStringLiteral("Notify"), application_name,
-        static_cast<uint>(0),
-        notification_icon.isEmpty() ? QString::fromLatin1(kDesktopEntryId)
-                                    : notification_icon,
+        static_cast<uint>(0), QString::fromLatin1(kDesktopEntryId),
         title, body,
         QStringList{QString::fromLatin1(kCopyActionId), trimmed_action_label},
         hints, 8000);
@@ -260,77 +248,6 @@ void NotificationManager::CopyTextToClipboard(
     tray_icon_->showMessage(confirmation_title, confirmation_body,
                             QSystemTrayIcon::Information, 2500);
   }
-}
-
-QString NotificationManager::EnsureNotificationIconPath() {
-  if (!notification_icon_path_.isEmpty() &&
-      QFileInfo::exists(notification_icon_path_)) {
-    return notification_icon_path_;
-  }
-
-  if (tray_icon_ == nullptr || tray_icon_->icon().isNull()) {
-    return {};
-  }
-
-  QString cache_dir =
-      QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
-  if (cache_dir.isEmpty()) {
-    cache_dir = QDir::tempPath() + QStringLiteral("/nearby-file-share");
-  }
-
-  QDir dir(cache_dir);
-  if (!dir.exists() && !dir.mkpath(QStringLiteral("."))) {
-    return {};
-  }
-
-  const QString icon_path = dir.filePath(QStringLiteral("notification-icon.png"));
-  // Render the glyph large so the trimmed result stays crisp after scaling.
-  const QPixmap src = tray_icon_->icon().pixmap(512, 512);
-  if (src.isNull()) {
-    return {};
-  }
-  // The tray glyph's source (app_swap.svg, viewBox 585x460) is non-square AND
-  // has heavy transparent padding, so a raw pixmap renders squished and stuck
-  // in a corner. Trim to the actual content, then center it (aspect preserved)
-  // on a square transparent canvas so the notification server can't distort it.
-  const QImage img = src.toImage().convertToFormat(QImage::Format_ARGB32);
-  int min_x = img.width(), min_y = img.height(), max_x = -1, max_y = -1;
-  for (int y = 0; y < img.height(); ++y) {
-    const QRgb* row = reinterpret_cast<const QRgb*>(img.scanLine(y));
-    for (int x = 0; x < img.width(); ++x) {
-      if (qAlpha(row[x]) > 10) {
-        min_x = std::min(min_x, x);
-        max_x = std::max(max_x, x);
-        min_y = std::min(min_y, y);
-        max_y = std::max(max_y, y);
-      }
-    }
-  }
-  const QPixmap content =
-      (max_x >= min_x && max_y >= min_y)
-          ? src.copy(min_x, min_y, max_x - min_x + 1, max_y - min_y + 1)
-          : src;
-
-  constexpr int kBox = 128;
-  constexpr double kFill = 0.9;  // small margin so it doesn't touch the edges
-  const QSize scaled = content.size().scaled(
-      QSize(static_cast<int>(kBox * kFill), static_cast<int>(kBox * kFill)),
-      Qt::KeepAspectRatio);
-  QPixmap square(kBox, kBox);
-  square.fill(Qt::transparent);
-  QPainter painter(&square);
-  painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
-  painter.drawPixmap(QRect(QPoint((kBox - scaled.width()) / 2,
-                                  (kBox - scaled.height()) / 2),
-                           scaled),
-                     content);
-  painter.end();
-  if (!square.save(icon_path, "PNG")) {
-    return {};
-  }
-
-  notification_icon_path_ = icon_path;
-  return notification_icon_path_;
 }
 
 void NotificationManager::ShowFallbackDialog(const QString& title,

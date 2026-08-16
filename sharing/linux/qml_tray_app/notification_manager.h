@@ -44,7 +44,6 @@ class NotificationManager : public QObject {
   void CopyTextToClipboard(const QString& text_to_copy,
                            const QString& confirmation_title,
                            const QString& confirmation_body) const;
-  QString EnsureNotificationIconPath();
   void ShowFallbackDialog(const QString& title, const QString& body,
                           const QString& informative_text,
                           const QString& text_to_copy,
@@ -65,7 +64,6 @@ class NotificationManager : public QObject {
   QHash<uint, CopyActionState> copy_actions_;
   // Notification id -> the transfer it is asking about.
   QHash<uint, qlonglong> pending_decisions_;
-  QString notification_icon_path_;
   QSystemTrayIcon* tray_icon_ = nullptr;
 };
 
