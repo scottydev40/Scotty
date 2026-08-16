@@ -8,14 +8,8 @@ source "$HERE/scotty-install-lib.sh"
 
 # --- uninstall (user-level; leaves the shared BlueZ system config in place) --
 if [[ -z "${SCOTTY_SKIP_SETUP:-}" && "${1:-}" == "--uninstall" ]]; then
-  scotty_paths
-  systemctl --user disable --now scotty.service 2>/dev/null || true
-  rm -f "$SCOTTY_UNIT_DST" "$SCOTTY_DESKTOP_DST" "$SCOTTY_ICON_DST" \
-        "$HOME/.config/autostart/dev.scotty.Scotty.desktop"
-  rm -rf "$SCOTTY_LIB_DIR"
-  systemctl --user daemon-reload 2>/dev/null || true
-  update-desktop-database "$(dirname "$SCOTTY_DESKTOP_DST")" 2>/dev/null || true
-  echo "[scotty] Uninstalled (BlueZ system config left in place)." >&2
+  scotty_uninstall
+  echo "[scotty] Uninstalled (BlueZ system config left in place). Log out/in to clear the tile from the current session." >&2
   exit 0
 fi
 
