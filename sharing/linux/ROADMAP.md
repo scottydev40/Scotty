@@ -19,6 +19,10 @@ transfers. Below is what's left.
   tile.
 - ✅ **Packaging (bundle)** — `packaging/build-bundle.sh` → relocatable tarball +
   `install.sh` (app + tile + on-demand unit/polkit).
+- ✅ **AppImage self-install as a service** — first run installs Scotty as a
+  systemd `--user` service + app-grid entry (`AppRun` + `scotty-install-lib.sh`,
+  unit-tested); starts at login, auto-restarts, updates the installed copy on a
+  newer AppImage, `--uninstall` removes it. No more foreground-terminal hang.
 
 ## A. Release blockers (public-shippable)
 - [ ] **Kernel independence.** Discovery depends on the kernel-27 pin (7.0.0-28

@@ -29,9 +29,11 @@ Quick-Settings tile.
 - **Boost mode** (opt-in): hands the whole radio to the hotspot for maximum
   throughput (~2.5× faster in testing) at the cost of dropping Wi-Fi for the
   transfer.
-- **Native app**: tray + Quick-Settings tile, light/dark theme following,
-  "Send with Scotty" from the file manager, live transfer speed and per-file
-  progress.
+- **Runs in the background**: installs as a per-user service that starts at
+  login and auto-restarts, so it's always ready to receive. On GNOME the
+  **Quick-Settings tile** is the main surface (a system-tray icon is used on
+  desktops that have a tray). Light/dark theme following, "Send with Scotty"
+  from the file manager, live transfer speed and per-file progress.
 
 ## On the roadmap
 
@@ -39,6 +41,15 @@ A native **AWDL** transport so Scotty also interoperates with Apple **AirDrop** 
 one app that talks to Apple, Google, and Windows devices alike. Plus Google
 contacts / QR pairing, packaging, and wider hardware support. See
 [`sharing/linux/ROADMAP.md`](sharing/linux/ROADMAP.md).
+
+## Install
+
+Download `Scotty-x86_64.AppImage` from Releases and run it once. First run (one
+password prompt) applies the Bluetooth setup, installs the GNOME Quick-Settings
+tile, and installs Scotty as a background user service that starts at every
+login — after which it's in your app grid and the terminal returns immediately.
+Running a newer AppImage updates the installed copy in place. Remove everything
+with `./Scotty-x86_64.AppImage --uninstall`.
 
 ## Building
 

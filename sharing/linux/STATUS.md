@@ -30,7 +30,12 @@ errors against a library that already has the symbol.
 Run `cmake` from the build directory, never the source directory.
 
 For a distributable, see `qml_tray_app/packaging/` (`build-bundle.sh` → a
-relocatable tarball; `build-appimage.sh` → a self-contained AppImage, unverified).
+relocatable tarball; `build-appimage.sh` → a self-contained AppImage). On first
+run the AppImage self-installs Scotty as a systemd `--user` service
+(`scotty.service`) plus an app-grid entry, so it starts at every login and
+auto-restarts; a bare launch installs-then-exits (no terminal hang) while the
+service invocation runs the real app. Undo with
+`./Scotty-x86_64.AppImage --uninstall`.
 
 ## Transports: what actually happens
 
