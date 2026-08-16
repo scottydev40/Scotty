@@ -16,3 +16,20 @@ scotty_paths() {
 # Absolute path of the running AppImage. $APPIMAGE is set by the runtime to the
 # real .AppImage file (not the FUSE mount); fall back to $0 outside an AppImage.
 scotty_self_path() { readlink -f "${APPIMAGE:-$0}"; }
+
+# True when the installed copy is missing or older than the source ($1).
+scotty_needs_copy() {
+  [ -f "$SCOTTY_APPIMG_DST" ] || return 0
+  [ "$1" -nt "$SCOTTY_APPIMG_DST" ]
+}
+
+# Install source AppImage ($1) into the stable location. Echoes copied|current.
+scotty_copy_appimage() {
+  if scotty_needs_copy "$1"; then
+    mkdir -p "$SCOTTY_LIB_DIR"
+    install -m 0755 "$1" "$SCOTTY_APPIMG_DST"
+    echo copied
+  else
+    echo current
+  fi
+}
