@@ -18,8 +18,17 @@ hand-rolled Qt-copy script.
   app_id set via `QGuiApplication::setDesktopFileName`, so the shell matches the
   window to its icon).
 - `dev.scotty.Scotty.metainfo.xml` — AppStream metadata.
-- `AppRun` — AppImage entrypoint; sets Qt plugin/QML paths, prefers Wayland.
-- `build-appimage.sh` — the build script.
+- `AppRun` — AppImage entrypoint. On first run it applies the BlueZ setup,
+  installs the GNOME tile, and self-installs Scotty as a systemd `--user`
+  service (`scotty.service`) plus an app-grid entry, then hands off and returns
+  the terminal. The service invocation carries `SCOTTY_SKIP_SETUP=1` and runs
+  the real foreground app; it also sets the Qt plugin/QML paths and prefers
+  Wayland. `--uninstall` removes the user install (service, copy, desktop entry,
+  icon), leaving the shared BlueZ system config in place.
+- `scotty-install-lib.sh` — sourceable install logic (copy, desktop entry,
+  systemd unit, autostart fallback, orchestration). Unit-tested by
+  `tests/test-install.sh` against a fake `$HOME` with stubbed `systemctl`.
+- `build-appimage.sh` — the build script (bundles the lib next to `AppRun`).
 
 ## Build
 
@@ -38,8 +47,11 @@ Env overrides: `BINARY`, `SHARED_LIB`, `ICON`, `OUTPUT_DIR`.
 
 ## Status
 
-Scaffold is in place and the app/library build clean. The AppImage build itself
-hasn't been run end-to-end yet — expect to iterate on the Qt-plugin bundling
-(QML module discovery, `EXTRA_QT_PLUGINS`) the first time through. A GitHub
-Actions release workflow is a follow-up (see kid's
-`release-minimal-appimage.yaml` for reference, but adapt to this CMake flow).
+Builds a self-contained AppImage that runs from a single file. First run
+self-installs Scotty as a background systemd `--user` service + app-grid entry
+(`AppRun` + `scotty-install-lib.sh`), so it persists across logins and the
+launching terminal no longer hangs. The install logic is unit-tested
+(`tests/test-install.sh`); end-to-end build + reboot-persistence is verified on
+the dev box per `tools/hil/`. A GitHub Actions release workflow is still a
+follow-up (see kid's `release-minimal-appimage.yaml` for reference, but adapt to
+this CMake flow).
