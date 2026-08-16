@@ -27,5 +27,20 @@ ok "no copy when same mtime" 'touch -r "$SCOTTY_APPIMG_DST" "$SRC"; ! scotty_nee
 ok "newer src needs copy"    'touch -d "+1 hour" "$SRC"; scotty_needs_copy "$SRC"'
 teardown
 
+# --- Task 3 ---
+setup_home; source "$LIB"; scotty_paths
+mkdir -p "$SCOTTY_LIB_DIR"; : > "$SCOTTY_APPIMG_DST"
+DSRC="$(mktemp)"; printf '[Desktop Entry]\nType=Application\nName=Scotty\nExec=scotty %%U\nIcon=dev.scotty.Scotty\n' > "$DSRC"
+ISRC="$(mktemp)"; printf 'PNG' > "$ISRC"
+export SCOTTY_TEST_LOG="$(mktemp)"
+scotty_install_desktop "$DSRC" "$ISRC"
+ok "desktop installed"    '[ -f "$SCOTTY_DESKTOP_DST" ]'
+ok "Exec is abs path"     'grep -qxF "Exec=$SCOTTY_APPIMG_DST %U" "$SCOTTY_DESKTOP_DST"'
+ok "Icon is abs path"     'grep -qxF "Icon=$SCOTTY_ICON_DST" "$SCOTTY_DESKTOP_DST"'
+ok "icon copied"          '[ -f "$SCOTTY_ICON_DST" ]'
+ok "desktop-db refreshed" 'grep -q update-desktop-database "$SCOTTY_TEST_LOG"'
+unset SCOTTY_TEST_LOG
+teardown
+
 echo "== $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]
