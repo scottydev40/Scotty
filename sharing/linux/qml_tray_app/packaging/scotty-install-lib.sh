@@ -82,3 +82,52 @@ scotty_activate_unit() {
   systemctl --user enable --now scotty.service 2>/dev/null || true
   [ "${1:-}" = changed ] && systemctl --user restart scotty.service 2>/dev/null || true
 }
+
+# True when a systemd --user instance is usable. Overridable in tests via
+# SCOTTY_FORCE_NO_SYSTEMD. Tolerates 'degraded'/'starting' as long as a user
+# runtime dir exists.
+scotty_have_systemd_user() {
+  [ -n "${SCOTTY_FORCE_NO_SYSTEMD:-}" ] && return 1
+  command -v systemctl >/dev/null 2>&1 || return 1
+  systemctl --user is-system-running >/dev/null 2>&1 || [ -n "${XDG_RUNTIME_DIR:-}" ]
+}
+
+# Fallback for sessions without systemd --user: an XDG autostart entry that
+# launches the installed AppImage at login.
+scotty_install_autostart() {
+  local d="$HOME/.config/autostart"; mkdir -p "$d"
+  cat > "$d/dev.scotty.Scotty.desktop" <<AUTO
+[Desktop Entry]
+Type=Application
+Name=Scotty
+Exec=$SCOTTY_APPIMG_DST
+X-GNOME-Autostart-enabled=true
+Terminal=false
+AUTO
+}
+
+# Top-level: copy the AppImage ($1), install the desktop entry from template
+# ($2) + icon ($3), then register the background service (systemd unit, or
+# autostart fallback). Echoes installed | updated | current.
+scotty_install_or_update() {
+  scotty_paths
+  local state=current
+  case "$(scotty_copy_appimage "$1")" in
+    copied)
+      if [ -f "$SCOTTY_UNIT_DST" ] || [ -f "$HOME/.config/autostart/dev.scotty.Scotty.desktop" ]; then
+        state=updated
+      else
+        state=installed
+      fi
+      ;;
+  esac
+  scotty_install_desktop "$2" "$3"
+  if scotty_have_systemd_user; then
+    local changed=unchanged
+    scotty_write_unit && changed=changed
+    scotty_activate_unit "$changed"
+  else
+    scotty_install_autostart
+  fi
+  echo "$state"
+}
