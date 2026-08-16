@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+echo "systemctl $*" >> "${SCOTTY_TEST_LOG:-/dev/null}"
+exit 0
