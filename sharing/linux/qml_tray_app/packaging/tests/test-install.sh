@@ -17,5 +17,15 @@ ok "unit path correct"      '[ "$SCOTTY_UNIT_DST" = "$HOME/.config/systemd/user/
 ok "desktop path correct"   '[ "$SCOTTY_DESKTOP_DST" = "$HOME/.local/share/applications/dev.scotty.Scotty.desktop" ]'
 teardown
 
+# --- Task 2 ---
+setup_home; source "$LIB"; scotty_paths
+SRC="$(mktemp)"; printf 'v1' > "$SRC"
+ok "needs copy when absent"  'scotty_needs_copy "$SRC"'
+ok "copy reports copied"     '[ "$(scotty_copy_appimage "$SRC")" = "copied" ]'
+ok "installed file exists"   '[ -x "$SCOTTY_APPIMG_DST" ]'
+ok "no copy when same mtime" 'touch -r "$SCOTTY_APPIMG_DST" "$SRC"; ! scotty_needs_copy "$SRC"'
+ok "newer src needs copy"    'touch -d "+1 hour" "$SRC"; scotty_needs_copy "$SRC"'
+teardown
+
 echo "== $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]
