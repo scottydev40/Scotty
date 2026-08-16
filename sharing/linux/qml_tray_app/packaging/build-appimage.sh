@@ -75,6 +75,8 @@ install -m 0644 "$SHARED_LIB" "$APPDIR/usr/lib/"
 install -m 0644 "$SCRIPT_DIR/$APP_ID.desktop" "$APPDIR/usr/share/applications/"
 install -m 0644 "$SCRIPT_DIR/$APP_ID.metainfo.xml" "$APPDIR/usr/share/metainfo/"
 install -m 0755 "$SCRIPT_DIR/AppRun" "$APPDIR/AppRun"
+# Sourced by AppRun for the first-run self-install (service + desktop entry).
+install -m 0644 "$SCRIPT_DIR/scotty-install-lib.sh" "$APPDIR/scotty-install-lib.sh"
 if [[ -e "$ICON" ]]; then
   install -m 0644 "$ICON" "$APPDIR/usr/share/icons/hicolor/256x256/apps/$APP_ID.png"
   install -m 0644 "$ICON" "$APPDIR/$APP_ID.png"
@@ -101,6 +103,7 @@ export EXTRA_QT_PLUGINS="platforms;wayland;imageformats"
 
 # linuxdeploy writes its own AppRun; restore ours (sets QML paths + Wayland).
 install -m 0755 "$SCRIPT_DIR/AppRun" "$APPDIR/AppRun"
+install -m 0644 "$SCRIPT_DIR/scotty-install-lib.sh" "$APPDIR/scotty-install-lib.sh"
 
 ARCH=x86_64 "$APPIMAGETOOL" "$APPDIR" "$OUTPUT_DIR/Scotty-x86_64.AppImage"
 echo "Built: $OUTPUT_DIR/Scotty-x86_64.AppImage"

@@ -3,6 +3,22 @@ set -e
 
 HERE="$(cd -- "$(dirname -- "$(readlink -f -- "$0")")" && pwd)"
 
+# shellcheck source=scotty-install-lib.sh
+source "$HERE/scotty-install-lib.sh"
+
+# --- uninstall (user-level; leaves the shared BlueZ system config in place) --
+if [[ -z "${SCOTTY_SKIP_SETUP:-}" && "${1:-}" == "--uninstall" ]]; then
+  scotty_paths
+  systemctl --user disable --now scotty.service 2>/dev/null || true
+  rm -f "$SCOTTY_UNIT_DST" "$SCOTTY_DESKTOP_DST" "$SCOTTY_ICON_DST" \
+        "$HOME/.config/autostart/dev.scotty.Scotty.desktop"
+  rm -rf "$SCOTTY_LIB_DIR"
+  systemctl --user daemon-reload 2>/dev/null || true
+  update-desktop-database "$(dirname "$SCOTTY_DESKTOP_DST")" 2>/dev/null || true
+  echo "[scotty] Uninstalled (BlueZ system config left in place)." >&2
+  exit 0
+fi
+
 # --- first-run privileged setup (BlueZ "combined recipe") -------------------
 # Nearby needs Experimental=true + a bluetoothd `--noplugin=mcp` drop-in. Those
 # are system-level and can't be done from an unprivileged app, so on first run we
@@ -42,7 +58,25 @@ if [[ -z "${SCOTTY_SKIP_SETUP:-}" && -d "$EXT_SRC" && ! -d "$EXT_DST" ]] \
   mkdir -p "$EXT_DST"
   cp -a "$EXT_SRC/." "$EXT_DST/"
   command -v gnome-extensions >/dev/null 2>&1 && gnome-extensions enable "$EXT_UUID" 2>/dev/null || true
-  echo "[scotty] Tile installed — log out/in to see it in Quick Settings." >&2
+  echo "[scotty] Tile installed — open it from Quick Settings." >&2
+fi
+
+# --- first-run self-install as a background service + hand-off ---------------
+# A bare launch (no SCOTTY_SKIP_SETUP) installs Scotty as a systemd --user
+# service, then exits and returns the terminal — single-instance means running
+# the app here would just exit anyway. The service invocation below carries
+# SCOTTY_SKIP_SETUP=1 and falls through to the real foreground app.
+if [[ -z "${SCOTTY_SKIP_SETUP:-}" ]]; then
+  SELF="$(scotty_self_path)"
+  DESKTOP_SRC="$HERE/usr/share/applications/dev.scotty.Scotty.desktop"
+  ICON_SRC="$HERE/usr/share/icons/hicolor/256x256/apps/dev.scotty.Scotty.png"
+  STATE="$(scotty_install_or_update "$SELF" "$DESKTOP_SRC" "$ICON_SRC")"
+  case "$STATE" in
+    installed) echo "[scotty] Installed as a background service. Open it from your app grid or the GNOME Quick-Settings tile." >&2 ;;
+    updated)   echo "[scotty] Updated the installed copy and restarted the service." >&2 ;;
+  esac
+  systemctl --user start scotty.service 2>/dev/null || true
+  exit 0
 fi
 
 export LD_LIBRARY_PATH="$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
