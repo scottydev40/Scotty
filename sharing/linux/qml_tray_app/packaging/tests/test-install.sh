@@ -60,5 +60,30 @@ ok "restart on changed"    'grep -q "restart scotty.service" "$SCOTTY_TEST_LOG"'
 unset SCOTTY_TEST_LOG
 teardown
 
+# --- Task 5: systemd path ---
+setup_home; source "$LIB"; scotty_paths
+export SCOTTY_TEST_LOG="$(mktemp)"
+SELF="$(mktemp)"; printf 'v1' > "$SELF"
+DSRC="$(mktemp)"; printf '[Desktop Entry]\nExec=scotty %%U\nIcon=x\n' > "$DSRC"
+ISRC="$(mktemp)"; printf 'PNG' > "$ISRC"
+ok "first run = installed"  '[ "$(scotty_install_or_update "$SELF" "$DSRC" "$ISRC")" = installed ]'
+ok "unit present"           '[ -f "$SCOTTY_UNIT_DST" ]'
+ok "rerun same = current"   '[ "$(scotty_install_or_update "$SELF" "$DSRC" "$ISRC")" = current ]'
+ok "newer self = updated"   'touch -d "+1 hour" "$SELF"; [ "$(scotty_install_or_update "$SELF" "$DSRC" "$ISRC")" = updated ]'
+unset SCOTTY_TEST_LOG
+teardown
+
+# --- Task 5: no-systemd fallback ---
+setup_home; source "$LIB"; scotty_paths
+export SCOTTY_FORCE_NO_SYSTEMD=1 SCOTTY_TEST_LOG="$(mktemp)"
+SELF="$(mktemp)"; printf 'v1' > "$SELF"
+DSRC="$(mktemp)"; printf '[Desktop Entry]\nExec=scotty %%U\nIcon=x\n' > "$DSRC"
+ISRC="$(mktemp)"; printf 'PNG' > "$ISRC"
+scotty_install_or_update "$SELF" "$DSRC" "$ISRC" >/dev/null
+ok "autostart written"      '[ -f "$HOME/.config/autostart/dev.scotty.Scotty.desktop" ]'
+ok "no unit in fallback"    '[ ! -f "$SCOTTY_UNIT_DST" ]'
+unset SCOTTY_FORCE_NO_SYSTEMD SCOTTY_TEST_LOG
+teardown
+
 echo "== $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]
