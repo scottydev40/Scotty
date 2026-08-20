@@ -36,27 +36,24 @@ class NoOpSharingRpcClient : public nearby::sharing::api::SharingRpcClient {
   }
 };
 
-class NoOpIdentityRpcClient : public nearby::sharing::api::IdentityRpcClient {
+class NoOpCertTransportClient
+    : public nearby::sharing::api::CertTransportClient {
  public:
-  void QuerySharedCredentials(
-      google::nearby::identity::v1::QuerySharedCredentialsRequest request,
-      QuerySharedCredentialsCallback callback) override {
-    static_cast<void>(request);
-    callback(google::nearby::identity::v1::QuerySharedCredentialsResponse());
+  void UploadCertificates(std::string device_id,
+                          std::vector<std::string> certificates,
+                          absl::Duration timeout,
+                          UploadCallback callback) override {
+    static_cast<void>(device_id);
+    static_cast<void>(certificates);
+    static_cast<void>(timeout);
+    callback(absl::UnavailableError("no plugin"));
   }
 
-  void PublishDevice(
-      google::nearby::identity::v1::PublishDeviceRequest request,
-      PublishDeviceCallback callback) override {
-    static_cast<void>(request);
-    callback(google::nearby::identity::v1::PublishDeviceResponse());
-  }
-
-  void GetAccountInfo(
-      google::nearby::identity::v1::GetAccountInfoRequest request,
-      GetAccountInfoCallback callback) override {
-    static_cast<void>(request);
-    callback(google::nearby::identity::v1::GetAccountInfoResponse());
+  void DownloadCertificates(std::string device_id, absl::Duration timeout,
+                            DownloadCallback callback) override {
+    static_cast<void>(device_id);
+    static_cast<void>(timeout);
+    callback(absl::UnavailableError("no plugin"));
   }
 };
 
@@ -75,9 +72,9 @@ class GrpcAsyncClientFactory {
     return std::make_unique<internal::NoOpSharingRpcClient>();
   }
 
-  std::unique_ptr<nearby::sharing::api::IdentityRpcClient>
-  CreateIdentityInstance() {
-    return std::make_unique<internal::NoOpIdentityRpcClient>();
+  std::unique_ptr<nearby::sharing::api::CertTransportClient>
+  CreateCertTransportInstance() {
+    return std::make_unique<internal::NoOpCertTransportClient>();
   }
 };
 

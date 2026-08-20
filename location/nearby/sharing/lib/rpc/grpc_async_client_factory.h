@@ -28,7 +28,6 @@
 #include "absl/status/status.h"
 #include "internal/platform/clock.h"
 #include "location/nearby/sharing/lib/account/account_manager.h"
-#include "location/nearby/sharing/lib/rpc/identity_rpc_wire.h"
 #include "location/nearby/sharing/lib/rpc/sharing_rpc_client.h"
 #include "sharing/analytics/analytics_recorder.h"
 
@@ -45,57 +44,40 @@ class NoOpSharingRpcClient : public nearby::sharing::api::SharingRpcClient {
   }
 };
 
-class NoOpIdentityRpcClient : public nearby::sharing::api::IdentityRpcClient {
+class NoOpCertTransportClient
+    : public nearby::sharing::api::CertTransportClient {
  public:
-  void QuerySharedCredentials(
-      google::nearby::identity::v1::QuerySharedCredentialsRequest request,
-      absl::Duration timeout, QuerySharedCredentialsCallback callback) override {
-    static_cast<void>(request);
+  void UploadCertificates(std::string device_id,
+                          std::vector<std::string> certificates,
+                          absl::Duration timeout,
+                          UploadCallback callback) override {
+    static_cast<void>(device_id);
+    static_cast<void>(certificates);
     static_cast<void>(timeout);
-    callback(google::nearby::identity::v1::QuerySharedCredentialsResponse());
+    callback(absl::UnavailableError("no plugin"));
   }
 
-  void QuerySharedCredentialsWithBindingIds(
-      google::nearby::identity::v1::QuerySharedCredentialsWithBindingIdsRequest
-          request,
-      absl::Duration timeout,
-      QuerySharedCredentialsWithBindingIdsCallback callback) override {
-    static_cast<void>(request);
+  void DownloadCertificates(std::string device_id, absl::Duration timeout,
+                            DownloadCallback callback) override {
+    static_cast<void>(device_id);
     static_cast<void>(timeout);
-    callback(google::nearby::identity::v1::
-                 QuerySharedCredentialsWithBindingIdsResponse());
-  }
-
-  void PublishDevice(
-      google::nearby::identity::v1::PublishDeviceRequest request,
-      absl::Duration timeout, PublishDeviceCallback callback) override {
-    static_cast<void>(request);
-    static_cast<void>(timeout);
-    callback(google::nearby::identity::v1::PublishDeviceResponse());
-  }
-
-  void GetAccountInfo(
-      google::nearby::identity::v1::GetAccountInfoRequest request,
-      absl::Duration timeout, GetAccountInfoCallback callback) override {
-    static_cast<void>(request);
-    static_cast<void>(timeout);
-    callback(google::nearby::identity::v1::GetAccountInfoResponse());
+    callback(absl::UnavailableError("no plugin"));
   }
 };
 
 }  // namespace internal
 
-namespace wire = ::google::nearby::identity::v1::wire;
-
-// Routes the Identity RPCs through the opt-in My-Devices plugin over session
-// D-Bus (dev.scotty.MyDevices1): serialize the request proto, hand the bytes to
-// the plugin (which makes the authenticated gRPC call to Google), and parse the
-// response bytes back. The core links no grpc/token/auth code. Only ever called
-// when an account is present (i.e. the plugin is signed in); with no plugin the
-// cert manager never reaches these paths (GetCurrentAccount() is nullopt).
-class DBusIdentityRpcClient : public nearby::sharing::api::IdentityRpcClient {
+// Routes certificate upload/download through the opt-in My-Devices plugin
+// over session D-Bus (dev.scotty.MyDevices1): hand serialized
+// nearby::sharing::proto::PublicCertificate blobs to the plugin (which makes
+// the authenticated gRPC call to Google) and get blobs back. The core links
+// no grpc/token/auth code. Only ever called when an account is present (i.e.
+// the plugin is signed in); with no plugin the cert manager never reaches
+// these paths (GetCurrentAccount() is nullopt).
+class DBusCertTransportClient
+    : public nearby::sharing::api::CertTransportClient {
  public:
-  DBusIdentityRpcClient() {
+  DBusCertTransportClient() {
     try {
       connection_ = sdbus::createSessionBusConnection();
     } catch (const sdbus::Error&) {
@@ -103,103 +85,60 @@ class DBusIdentityRpcClient : public nearby::sharing::api::IdentityRpcClient {
     }
   }
 
-  void QuerySharedCredentials(
-      google::nearby::identity::v1::QuerySharedCredentialsRequest request,
-      absl::Duration timeout,
-      QuerySharedCredentialsCallback callback) override {
+  void UploadCertificates(std::string device_id,
+                          std::vector<std::string> certificates,
+                          absl::Duration timeout,
+                          UploadCallback callback) override {
     static_cast<void>(timeout);
-    std::string resp;
-    if (absl::Status s = Call("QuerySharedCredentials",
-                              wire::Serialize(request), &resp);
-        !s.ok()) {
-      callback(s);
-      return;
-    }
-    google::nearby::identity::v1::QuerySharedCredentialsResponse out;
-    if (!wire::Parse(resp, &out)) {
-      callback(absl::InternalError("failed to parse QuerySharedCredentials"));
-      return;
-    }
-    callback(out);
-  }
-
-  void QuerySharedCredentialsWithBindingIds(
-      google::nearby::identity::v1::
-          QuerySharedCredentialsWithBindingIdsRequest request,
-      absl::Duration timeout,
-      QuerySharedCredentialsWithBindingIdsCallback callback) override {
-    static_cast<void>(timeout);
-    std::string resp;
-    if (absl::Status s = Call("QuerySharedCredentialsWithBindingIds",
-                              wire::Serialize(request), &resp);
-        !s.ok()) {
-      callback(s);
-      return;
-    }
-    google::nearby::identity::v1::QuerySharedCredentialsWithBindingIdsResponse
-        out;
-    if (!wire::Parse(resp, &out)) {
-      callback(absl::InternalError("failed to parse WithBindingIds response"));
-      return;
-    }
-    callback(out);
-  }
-
-  void PublishDevice(
-      google::nearby::identity::v1::PublishDeviceRequest request,
-      absl::Duration timeout, PublishDeviceCallback callback) override {
-    static_cast<void>(timeout);
-    std::string resp;
-    if (absl::Status s = Call("PublishDevice", wire::Serialize(request), &resp);
-        !s.ok()) {
-      callback(s);
-      return;
-    }
-    google::nearby::identity::v1::PublishDeviceResponse out;
-    if (!wire::Parse(resp, &out)) {
-      callback(absl::InternalError("failed to parse PublishDevice response"));
-      return;
-    }
-    callback(out);
-  }
-
-  void GetAccountInfo(
-      google::nearby::identity::v1::GetAccountInfoRequest request,
-      absl::Duration timeout, GetAccountInfoCallback callback) override {
-    static_cast<void>(request);
-    static_cast<void>(timeout);
-    // The identity-RPC GetAccountInfo (capabilities / advanced protection) is
-    // not needed for publish/download and would collide with the seam's
-    // account-state GetAccountInfo method. Return an empty response; the
-    // capabilities default (advanced protection off) is correct.
-    callback(google::nearby::identity::v1::GetAccountInfoResponse());
-  }
-
- private:
-  // Synchronous D-Bus method call to the plugin: send `request` bytes, receive
-  // response bytes. Blocks on the plugin's gRPC round-trip (background schedule).
-  absl::Status Call(const char* method, const std::string& request,
-                    std::string* response) {
     if (connection_ == nullptr) {
-      return absl::UnavailableError("no session bus for My-Devices plugin");
+      callback(absl::UnavailableError("no session bus for My-Devices plugin"));
+      return;
     }
     try {
       auto proxy = sdbus::createProxy(
           *connection_, sdbus::ServiceName{"dev.scotty.MyDevices1"},
           sdbus::ObjectPath{"/dev/scotty/MyDevices1"});
-      std::vector<uint8_t> in(request.begin(), request.end());
-      std::vector<uint8_t> out;
-      proxy->callMethod(method)
+      std::vector<std::vector<uint8_t>> certs;
+      certs.reserve(certificates.size());
+      for (auto& c : certificates) certs.emplace_back(c.begin(), c.end());
+      bool ok = false;
+      proxy->callMethod("UploadCertificates")
           .onInterface("dev.scotty.MyDevices1")
-          .withArguments(in)
-          .storeResultsTo(out);
-      response->assign(out.begin(), out.end());
-      return absl::OkStatus();
+          .withArguments(device_id, certs)
+          .storeResultsTo(ok);
+      callback(ok ? absl::OkStatus()
+                  : absl::UnavailableError("plugin rejected upload"));
     } catch (const sdbus::Error& e) {
-      return absl::UnavailableError(e.getName() + ": " + e.getMessage());
+      callback(absl::UnavailableError(e.getName() + ": " + e.getMessage()));
     }
   }
 
+  void DownloadCertificates(std::string device_id, absl::Duration timeout,
+                            DownloadCallback callback) override {
+    static_cast<void>(timeout);
+    if (connection_ == nullptr) {
+      callback(absl::UnavailableError("no session bus for My-Devices plugin"));
+      return;
+    }
+    try {
+      auto proxy = sdbus::createProxy(
+          *connection_, sdbus::ServiceName{"dev.scotty.MyDevices1"},
+          sdbus::ObjectPath{"/dev/scotty/MyDevices1"});
+      std::vector<std::vector<uint8_t>> out;
+      proxy->callMethod("DownloadCertificates")
+          .onInterface("dev.scotty.MyDevices1")
+          .withArguments(device_id)
+          .storeResultsTo(out);
+      std::vector<std::string> certs;
+      certs.reserve(out.size());
+      for (auto& c : out) certs.emplace_back(c.begin(), c.end());
+      callback(certs);
+    } catch (const sdbus::Error& e) {
+      callback(absl::UnavailableError(e.getName() + ": " + e.getMessage()));
+    }
+  }
+
+ private:
   std::unique_ptr<sdbus::IConnection> connection_;
 };
 
@@ -216,9 +155,9 @@ class GrpcAsyncClientFactory {
     return std::make_unique<internal::NoOpSharingRpcClient>();
   }
 
-  std::unique_ptr<nearby::sharing::api::IdentityRpcClient>
-  CreateIdentityInstance() {
-    return std::make_unique<DBusIdentityRpcClient>();
+  std::unique_ptr<nearby::sharing::api::CertTransportClient>
+  CreateCertTransportInstance() {
+    return std::make_unique<DBusCertTransportClient>();
   }
 };
 
