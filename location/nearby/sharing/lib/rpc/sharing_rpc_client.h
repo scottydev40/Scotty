@@ -16,10 +16,12 @@
 #define LOCATION_NEARBY_SHARING_LIB_RPC_SHARING_RPC_CLIENT_H_
 
 #include <functional>
+#include <string>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
-#include "location/nearby/sharing/lib/rpc/identity_rpc_types.h"
 #include "sharing/proto/contact_rpc.pb.h"
 
 namespace nearby::sharing::api {
@@ -36,38 +38,28 @@ class SharingRpcClient {
       ListContactPeopleCallback callback) = 0;
 };
 
-class IdentityRpcClient {
+// Trades serialized nearby::sharing::proto::PublicCertificate blobs with the
+// plugin over its dev.scotty.MyDevices1 D-Bus contract.
+class CertTransportClient {
  public:
   static constexpr absl::Duration kTimeout = absl::Seconds(30);
 
-  using QuerySharedCredentialsCallback = std::function<void(
-      const absl::StatusOr<
-          google::nearby::identity::v1::QuerySharedCredentialsResponse>&)>;
-  using QuerySharedCredentialsWithBindingIdsCallback = std::function<void(
-      const absl::StatusOr<google::nearby::identity::v1::
-                               QuerySharedCredentialsWithBindingIdsResponse>&)>;
-  using PublishDeviceCallback = std::function<void(
-      const absl::StatusOr<google::nearby::identity::v1::PublishDeviceResponse>&)>;
-  using GetAccountInfoCallback = std::function<void(
-      const absl::StatusOr<
-          google::nearby::identity::v1::GetAccountInfoResponse>&)>;
+  // Upload serialized nearby::sharing::proto::PublicCertificate blobs for
+  // this device. success=false on any transport/auth failure.
+  using UploadCallback = std::function<void(const absl::Status&)>;
+  // Download serialized PublicCertificate blobs shared with this device.
+  using DownloadCallback =
+      std::function<void(const absl::StatusOr<std::vector<std::string>>&)>;
 
-  virtual ~IdentityRpcClient() = default;
+  virtual ~CertTransportClient() = default;
 
-  virtual void QuerySharedCredentials(
-      google::nearby::identity::v1::QuerySharedCredentialsRequest request,
-      absl::Duration timeout, QuerySharedCredentialsCallback callback) = 0;
-  virtual void QuerySharedCredentialsWithBindingIds(
-      google::nearby::identity::v1::QuerySharedCredentialsWithBindingIdsRequest
-          request,
-      absl::Duration timeout,
-      QuerySharedCredentialsWithBindingIdsCallback callback) = 0;
-  virtual void PublishDevice(
-      google::nearby::identity::v1::PublishDeviceRequest request,
-      absl::Duration timeout, PublishDeviceCallback callback) = 0;
-  virtual void GetAccountInfo(
-      google::nearby::identity::v1::GetAccountInfoRequest request,
-      absl::Duration timeout, GetAccountInfoCallback callback) = 0;
+  virtual void UploadCertificates(std::string device_id,
+                                   std::vector<std::string> certificates,
+                                   absl::Duration timeout,
+                                   UploadCallback callback) = 0;
+  virtual void DownloadCertificates(std::string device_id,
+                                     absl::Duration timeout,
+                                     DownloadCallback callback) = 0;
 };
 
 }  // namespace nearby::sharing::api

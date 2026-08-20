@@ -16,9 +16,12 @@
 #define THIRD_PARTY_NEARBY_SHARING_LINUX_STUBS_SHARING_RPC_CLIENT_H_
 
 #include <functional>
+#include <string>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "sharing/linux/stubs/identity_rpc_types.h"
+#include "absl/time/time.h"
 #include "sharing/proto/contact_rpc.pb.h"
 
 namespace nearby::sharing::api {
@@ -35,30 +38,25 @@ class SharingRpcClient {
       ListContactPeopleCallback callback) = 0;
 };
 
-class IdentityRpcClient {
+// Trades serialized nearby::sharing::proto::PublicCertificate blobs with the
+// plugin over its dev.scotty.MyDevices1 D-Bus contract.
+class CertTransportClient {
  public:
-  using QuerySharedCredentialsCallback = std::function<void(
-      const absl::StatusOr<
-          google::nearby::identity::v1::QuerySharedCredentialsResponse>&)>;
-  using PublishDeviceCallback = std::function<void(
-      const absl::StatusOr<google::nearby::identity::v1::PublishDeviceResponse>&)>;
-  using GetAccountInfoCallback = std::function<void(
-      const absl::StatusOr<
-          google::nearby::identity::v1::GetAccountInfoResponse>&)>;
+  static constexpr absl::Duration kTimeout = absl::Seconds(30);
 
-  virtual ~IdentityRpcClient() = default;
+  using UploadCallback = std::function<void(const absl::Status&)>;
+  using DownloadCallback =
+      std::function<void(const absl::StatusOr<std::vector<std::string>>&)>;
 
-  virtual void QuerySharedCredentials(
-      google::nearby::identity::v1::QuerySharedCredentialsRequest request,
-      QuerySharedCredentialsCallback callback) = 0;
+  virtual ~CertTransportClient() = default;
 
-  virtual void PublishDevice(
-      google::nearby::identity::v1::PublishDeviceRequest request,
-      PublishDeviceCallback callback) = 0;
-
-  virtual void GetAccountInfo(
-      google::nearby::identity::v1::GetAccountInfoRequest request,
-      GetAccountInfoCallback callback) = 0;
+  virtual void UploadCertificates(std::string device_id,
+                                   std::vector<std::string> certificates,
+                                   absl::Duration timeout,
+                                   UploadCallback callback) = 0;
+  virtual void DownloadCertificates(std::string device_id,
+                                     absl::Duration timeout,
+                                     DownloadCallback callback) = 0;
 };
 
 }  // namespace nearby::sharing::api
