@@ -25,13 +25,10 @@
 #include <utility>
 #include <vector>
 
-#include "google/nearby/identity/v1/resources.pb.h"
-#include "google/nearby/identity/v1/rpcs.pb.h"
 #include "location/nearby/sharing/lib/account/account_manager.h"
 #include "location/nearby/sharing/lib/account/fake_account_manager.h"
 #include "location/nearby/sharing/lib/rpc/fake_nearby_share_client.h"
 #include "gmock/gmock.h"
-#include "protobuf-matchers/protocol-buffer-matchers.h"
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -39,7 +36,6 @@
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "third_party/gloop/util/time/protoutil.h"
 #include "internal/flags/nearby_flags.h"
 #include "internal/platform/mac_address.h"
 #include "sharing/certificates/constants.h"
@@ -50,7 +46,6 @@
 #include "sharing/certificates/nearby_share_encrypted_metadata_key.h"
 #include "sharing/certificates/nearby_share_private_certificate.h"
 #include "sharing/certificates/test_util.h"
-#include "sharing/flags/generated/nearby_sharing_feature_flags.h"
 #include "sharing/internal/api/mock_sharing_platform.h"
 #include "sharing/internal/public/pref_names.h"
 #include "sharing/internal/test/fake_bluetooth_adapter.h"
@@ -67,26 +62,15 @@
 
 namespace nearby::sharing {
 namespace {
-using ::google::nearby::identity::v1::Device;
-using ::google::nearby::identity::v1::GetAccountInfoResponse;
-using ::google::nearby::identity::v1::PublishDeviceRequest;
-using ::google::nearby::identity::v1::PublishDeviceResponse;
-using ::google::nearby::identity::v1::QuerySharedCredentialsRequest;
-using ::google::nearby::identity::v1::QuerySharedCredentialsResponse;
-using ::google::nearby::identity::v1::
-    QuerySharedCredentialsWithBindingIdsRequest;
-using ::google::nearby::identity::v1::
-    QuerySharedCredentialsWithBindingIdsResponse;
+using ::nearby::sharing::api::FakeCertTransportClient;
 using ::nearby::sharing::proto::DeviceVisibility;
 using ::nearby::sharing::proto::PublicCertificate;
-using ::protobuf_matchers::EqualsProto;
 using ::testing::Not;
 using ::testing::ReturnRef;
 using ::testing::UnorderedElementsAreArray;
 
 const absl::Time t0 = absl::UnixEpoch() + absl::Hours(365 * 50 * 24);
 
-constexpr char kPageTokenPrefix[] = "page_token_";
 constexpr char kDeviceId[] = "123456789A";
 constexpr char kDefaultDeviceName[] = "Josh's Chromebook";
 
@@ -121,9 +105,9 @@ class NearbyShareCertificateManagerImplTest
             kDefaultDeviceName);
 
     AccountManager::Account account{
+        .email = kTestMetadataAccountName,
         .display_name = GetNearbyShareTestMetadata().full_name(),
         .picture_url = GetNearbyShareTestMetadata().icon_url(),
-        .email = kTestMetadataAccountName,
     };
 
     fake_account_manager_.SetAccount(account);
@@ -150,11 +134,10 @@ class NearbyShareCertificateManagerImplTest
   }
 
   void Initialize() {
-    // Setup Identity API.
     cert_manager_ = NearbyShareCertificateManagerImpl::Factory::Create(
         &fake_context_, mock_sharing_platform_,
         local_device_data_manager_.get(),
-        /*profile_path=*/{}, &identity_client_);
+        /*profile_path=*/{}, &cert_transport_client_);
     cert_manager_->AddObserver(this);
 
     cert_store_ = cert_store_factory_.instances().back();
@@ -176,10 +159,6 @@ class NearbyShareCertificateManagerImplTest
         scheduler_factory_.pref_name_to_periodic_instance()
             .find(PrefNames::kSchedulerDownloadPublicCertificates)
             ->second.fake_scheduler;
-    account_info_update_scheduler_ =
-        scheduler_factory_.pref_name_to_periodic_instance()
-            .find(PrefNames::kSchedulerGetAccountInfo)
-            ->second.fake_scheduler;
 
     PopulatePrivateCertificates();
     PopulatePublicCertificates();
@@ -188,7 +167,6 @@ class NearbyShareCertificateManagerImplTest
     EXPECT_TRUE(public_cert_exp_scheduler_->is_running());
     EXPECT_TRUE(upload_scheduler_->is_running());
     EXPECT_TRUE(download_scheduler_->is_running());
-    EXPECT_TRUE(account_info_update_scheduler_->is_running());
   }
 
   // NearbyShareCertificateManager::Observer:
@@ -243,29 +221,32 @@ class NearbyShareCertificateManagerImplTest
     std::move(callback)(success, std::move(pub_certs));
   }
 
-  void VerifyCertificatesUpload(bool expected_force_update_contacts) {
-    std::vector<PublishDeviceRequest> publish_device_requests =
-        identity_client_.publish_device_requests();
-    ASSERT_FALSE(publish_device_requests.empty());
-    const PublishDeviceRequest& publish_device_request =
-        publish_device_requests.back();
-    EXPECT_EQ(publish_device_request.device().name(),
-              absl::StrCat("devices/", kDeviceId));
-    EXPECT_EQ(publish_device_request.device()
-                  .per_visibility_shared_credentials_size(),
-              2);
-    EXPECT_EQ(publish_device_request.device()
-                  .per_visibility_shared_credentials(0)
-                  .shared_credentials_size(),
-              kNearbyShareNumPrivateCertificates);
-    EXPECT_EQ(publish_device_request.device()
-                  .per_visibility_shared_credentials(1)
-                  .shared_credentials_size(),
-              kNearbyShareNumPrivateCertificates);
-    EXPECT_EQ(publish_device_request.device().contact(),
-              expected_force_update_contacts
-                  ? Device::CONTACT_GOOGLE_CONTACT_LATEST
-                  : Device::CONTACT_GOOGLE_CONTACT);
+  // Verifies the most recent UploadCertificates call: it targets the bare
+  // device id (no "devices/" prefix), carries one serialized
+  // PublicCertificate blob per private certificate, and the blobs split
+  // evenly between self-share and all-contacts visibility.
+  void VerifyCertificatesUpload() {
+    const std::vector<api::FakeCertTransportClient::UploadCall>&
+        upload_calls = cert_transport_client_.upload_calls();
+    ASSERT_FALSE(upload_calls.empty());
+    const auto& upload_call = upload_calls.back();
+    EXPECT_EQ(upload_call.device_id, kDeviceId);
+    EXPECT_EQ(upload_call.certificates.size(),
+              2 * kNearbyShareNumPrivateCertificates);
+
+    int self_share_count = 0;
+    int contacts_count = 0;
+    for (const std::string& blob : upload_call.certificates) {
+      PublicCertificate cert;
+      ASSERT_TRUE(cert.ParseFromString(blob));
+      if (cert.for_self_share()) {
+        ++self_share_count;
+      } else {
+        ++contacts_count;
+      }
+    }
+    EXPECT_EQ(self_share_count, kNearbyShareNumPrivateCertificates);
+    EXPECT_EQ(contacts_count, kNearbyShareNumPrivateCertificates);
   }
 
   void InvokePrivateCertificateRefresh(bool expected_success) {
@@ -279,7 +260,7 @@ class NearbyShareCertificateManagerImplTest
     EXPECT_EQ(0u, upload_scheduler_->num_immediate_requests());
     Sync();
     if (expected_success) {
-      VerifyCertificatesUpload(/*expected_force_update_contacts=*/false);
+      VerifyCertificatesUpload();
     }
   }
 
@@ -331,40 +312,28 @@ class NearbyShareCertificateManagerImplTest
                   kNearbyShareCertificateValidityPeriod);
   }
 
-  void InvokeCertUploadPublishDevice(bool contacts_removed,
-                                     bool publish_device_success) {
-    std::vector<absl::StatusOr<PublishDeviceResponse>> responses;
-    if (contacts_removed) {
-      // When contacts are removed, a second publish device call is scheduled.
-      PublishDeviceResponse response;
-      response.add_contact_updates(
-          PublishDeviceResponse::CONTACT_UPDATE_REMOVED);
-      responses.push_back(response);
-    }
-    PublishDeviceResponse response;
-    response.add_contact_updates(PublishDeviceResponse::CONTACT_UPDATE_ADDED);
-    responses.push_back(response);
-    identity_client_.SetPublishDeviceResponses(std::move(responses));
+  // Scripts the fake CertTransportClient's next UploadCertificates response,
+  // invokes the upload scheduler, and verifies exactly one upload call was
+  // made with the expected blobs and that the scheduler recorded the result.
+  void InvokeCertUpload(bool upload_success) {
+    cert_transport_client_.SetUploadResponse(
+        upload_success ? absl::OkStatus()
+                       : absl::InternalError("upload failed"));
 
     upload_scheduler_->InvokeRequestCallback();
     Sync();
-    // If contacts are removed, a second publish device call is scheduled.
-    if (contacts_removed) {
-      Sync();
-      Sync();
-    }
-    EXPECT_EQ(identity_client_.publish_device_requests().size(),
-              contacts_removed ? 2 : 1);
 
-    VerifyCertificatesUpload(
-        /*expected_force_update_contacts=*/contacts_removed ? false : true);
+    EXPECT_EQ(cert_transport_client_.upload_calls().size(), 1u);
+    VerifyCertificatesUpload();
     EXPECT_EQ(upload_scheduler_->handled_results().size(), 1);
-    EXPECT_EQ(upload_scheduler_->handled_results().back(),
-              publish_device_success);
+    EXPECT_EQ(upload_scheduler_->handled_results().back(), upload_success);
   }
 
-  void QuerySharedCredentialsFlow(size_t num_pages,
-                                  DownloadPublicCertificatesResult result) {
+  // Scripts the fake CertTransportClient's next DownloadCertificates
+  // response (either the canned |public_certificates_| blobs, or an error
+  // for kHttpError), invokes the download scheduler, and verifies the
+  // resulting scheduler/notification/storage state.
+  void DownloadCertificatesFlow(DownloadPublicCertificatesResult result) {
     size_t prev_num_results = download_scheduler_->handled_results().size();
     cert_store_->SetPublicCertificateIds(kPublicCertificateIds);
 
@@ -373,30 +342,25 @@ class NearbyShareCertificateManagerImplTest
     size_t initial_num_public_cert_exp_reschedules =
         public_cert_exp_scheduler_->num_reschedule_calls();
 
-    std::vector<absl::StatusOr<QuerySharedCredentialsResponse>> responses;
-    std::string page_token;
-    for (size_t page_number = 0; page_number < num_pages; ++page_number) {
-      bool last_page = page_number == num_pages - 1;
-      if (last_page && result == DownloadPublicCertificatesResult::kHttpError) {
-        responses.push_back(absl::InternalError(""));
-        break;
+    if (result == DownloadPublicCertificatesResult::kHttpError) {
+      cert_transport_client_.SetDownloadResponse(
+          absl::InternalError("download failed"));
+    } else {
+      std::vector<std::string> blobs;
+      for (const auto& public_certificate : public_certificates_) {
+        blobs.push_back(public_certificate.SerializeAsString());
       }
-      page_token = last_page ? std::string()
-                             : absl::StrCat(kPageTokenPrefix, page_number);
-      responses.push_back(
-          BuildQuerySharedCredentialsResponse(page_number, page_token));
+      cert_transport_client_.SetDownloadResponse(std::move(blobs));
     }
-
-    identity_client_.SetQuerySharedCredentialsResponses(responses);
     cert_store_->SetAddPublicCertificatesResult(
         result != DownloadPublicCertificatesResult::kStorageError);
     download_scheduler_->InvokeRequestCallback();
     Sync();
 
-    std::vector<QuerySharedCredentialsRequest> requests =
-        identity_client_.query_shared_credentials_requests();
-    EXPECT_EQ(requests.size(), num_pages);
-    EXPECT_EQ(requests.back().name(), absl::StrCat("devices/", kDeviceId));
+    std::vector<std::string> requests =
+        cert_transport_client_.download_requests();
+    ASSERT_FALSE(requests.empty());
+    EXPECT_EQ(requests.back(), kDeviceId);
     ASSERT_EQ(download_scheduler_->handled_results().size(),
               prev_num_results + 1);
 
@@ -406,102 +370,6 @@ class NearbyShareCertificateManagerImplTest
               initial_num_notifications + (success ? 1u : 0u));
     EXPECT_EQ(public_cert_exp_scheduler_->num_reschedule_calls(),
               initial_num_public_cert_exp_reschedules + (success ? 1u : 0u));
-  }
-
-  QuerySharedCredentialsResponse BuildQuerySharedCredentialsResponse(
-      size_t page_number, absl::string_view page_token) {
-    QuerySharedCredentialsResponse response;
-    int i = 0;
-    for (auto public_certificate : public_certificates_) {
-      auto* shared_credential = response.add_shared_credentials();
-      shared_credential->set_id(page_number * 100 + i);
-      if (i % 2 == 0) {
-        shared_credential->set_data_type(
-            google::nearby::identity::v1::SharedCredential::
-                DATA_TYPE_PUBLIC_CERTIFICATE);
-      } else {
-        shared_credential->set_data_type(
-            google::nearby::identity::v1::SharedCredential::
-                DATA_TYPE_SHARED_CREDENTIAL);
-      }
-      *shared_credential->mutable_data() =
-          public_certificate.SerializeAsString();
-      i++;
-    }
-    response.set_next_page_token(page_token);
-    return response;
-  }
-
-  void QuerySharedCredentialsWithBindingIdsFlow(
-      size_t num_pages, DownloadPublicCertificatesResult result) {
-    size_t prev_num_results = download_scheduler_->handled_results().size();
-    cert_store_->SetPublicCertificateIds(kPublicCertificateIds);
-
-    size_t initial_num_notifications =
-        num_public_certs_downloaded_notifications_;
-    size_t initial_num_public_cert_exp_reschedules =
-        public_cert_exp_scheduler_->num_reschedule_calls();
-
-    std::vector<absl::StatusOr<QuerySharedCredentialsWithBindingIdsResponse>>
-        responses;
-    std::string page_token;
-    for (size_t page_number = 0; page_number < num_pages; ++page_number) {
-      bool last_page = page_number == num_pages - 1;
-      if (last_page && result == DownloadPublicCertificatesResult::kHttpError) {
-        responses.push_back(absl::InternalError(""));
-        break;
-      }
-      page_token = last_page ? std::string()
-                             : absl::StrCat(kPageTokenPrefix, page_number);
-      responses.push_back(BuildQuerySharedCredentialsWithBindingIdsResponse(
-          page_number, page_token));
-    }
-
-    identity_client_.SetQuerySharedCredentialsWithBindingIdsResponses(
-        responses);
-    cert_store_->SetAddPublicCertificatesResult(
-        result != DownloadPublicCertificatesResult::kStorageError);
-    download_scheduler_->InvokeRequestCallback();
-    Sync();
-
-    std::vector<QuerySharedCredentialsWithBindingIdsRequest> requests =
-        identity_client_.query_shared_credentials_with_binding_ids_requests();
-    EXPECT_EQ(requests.size(), num_pages);
-    EXPECT_EQ(requests.back().name(), absl::StrCat("devices/", kDeviceId));
-    ASSERT_EQ(download_scheduler_->handled_results().size(),
-              prev_num_results + 1);
-
-    bool success = result == DownloadPublicCertificatesResult::kSuccess;
-    EXPECT_EQ(download_scheduler_->handled_results().back(), success);
-    EXPECT_EQ(num_public_certs_downloaded_notifications_,
-              initial_num_notifications + (success ? 1u : 0u));
-    EXPECT_EQ(public_cert_exp_scheduler_->num_reschedule_calls(),
-              initial_num_public_cert_exp_reschedules + (success ? 1u : 0u));
-  }
-
-  QuerySharedCredentialsWithBindingIdsResponse
-  BuildQuerySharedCredentialsWithBindingIdsResponse(
-      size_t page_number, absl::string_view page_token) {
-    QuerySharedCredentialsWithBindingIdsResponse response;
-    int i = 0;
-    for (auto public_certificate : public_certificates_) {
-      auto* shared_credential = response.add_shared_credentials();
-      shared_credential->set_id(page_number * 100 + i);
-      if (i % 2 == 0) {
-        shared_credential->set_data_type(
-            google::nearby::identity::v1::SharedCredential::
-                DATA_TYPE_PUBLIC_CERTIFICATE);
-      } else {
-        shared_credential->set_data_type(
-            google::nearby::identity::v1::SharedCredential::
-                DATA_TYPE_SHARED_CREDENTIAL);
-      }
-      *shared_credential->mutable_data() =
-          public_certificate.SerializeAsString();
-      i++;
-    }
-    response.set_next_page_token(page_token);
-    return response;
   }
 
   void CheckStorageAddCertificates(
@@ -558,7 +426,6 @@ class NearbyShareCertificateManagerImplTest
   FakeNearbyShareScheduler* public_cert_exp_scheduler_ = nullptr;
   FakeNearbyShareScheduler* upload_scheduler_ = nullptr;
   FakeNearbyShareScheduler* download_scheduler_ = nullptr;
-  FakeNearbyShareScheduler* account_info_update_scheduler_ = nullptr;
   MacAddress bluetooth_mac_address_;
   size_t num_public_certs_downloaded_notifications_ = 0;
   size_t num_private_certs_changed_notifications_ = 0;
@@ -567,7 +434,7 @@ class NearbyShareCertificateManagerImplTest
   std::vector<PublicCertificate> public_certificates_;
   std::vector<NearbyShareEncryptedMetadataKey> metadata_encryption_keys_;
 
-  FakeNearbyIdentityClient identity_client_;
+  FakeCertTransportClient cert_transport_client_;
   FakeNearbyShareSchedulerFactory scheduler_factory_;
   FakeNearbyShareCertificateStorage::Factory cert_store_factory_;
   std::unique_ptr<FakeNearbyShareLocalDeviceDataManager>
@@ -793,71 +660,23 @@ TEST_F(NearbyShareCertificateManagerImplTest,
   EXPECT_FALSE(decrypted_pub_cert);
 }
 
-TEST_F(NearbyShareCertificateManagerImplTest, QuerySharedCredentialsSuccess) {
+TEST_F(NearbyShareCertificateManagerImplTest, DownloadCertificatesSuccess) {
   Initialize();
-  ASSERT_NO_FATAL_FAILURE(QuerySharedCredentialsFlow(
-      /*num_pages=*/2, DownloadPublicCertificatesResult::kSuccess));
+  ASSERT_NO_FATAL_FAILURE(
+      DownloadCertificatesFlow(DownloadPublicCertificatesResult::kSuccess));
+}
+
+TEST_F(NearbyShareCertificateManagerImplTest, DownloadCertificatesRPCFailure) {
+  Initialize();
+  ASSERT_NO_FATAL_FAILURE(
+      DownloadCertificatesFlow(DownloadPublicCertificatesResult::kHttpError));
 }
 
 TEST_F(NearbyShareCertificateManagerImplTest,
-       QuerySharedCredentialsRPCFailure) {
+       DownloadCertificatesStorageFailure) {
   Initialize();
-  ASSERT_NO_FATAL_FAILURE(QuerySharedCredentialsFlow(
-      /*num_pages=*/2, DownloadPublicCertificatesResult::kHttpError));
-}
-
-TEST_F(NearbyShareCertificateManagerImplTest,
-       QuerySharedCredentialsWithBindingIdsSuccess) {
-  NearbyFlags::GetInstance().OverrideBoolFlagValue(
-      config_package_nearby::nearby_sharing_feature::kEnableBackup, true);
-  Initialize();
-  ASSERT_NO_FATAL_FAILURE(QuerySharedCredentialsWithBindingIdsFlow(
-      /*num_pages=*/2, DownloadPublicCertificatesResult::kSuccess));
-}
-
-TEST_F(NearbyShareCertificateManagerImplTest,
-       QuerySharedCredentialsWithBindingIdsRPCFailure) {
-  NearbyFlags::GetInstance().OverrideBoolFlagValue(
-      config_package_nearby::nearby_sharing_feature::kEnableBackup, true);
-  Initialize();
-  ASSERT_NO_FATAL_FAILURE(QuerySharedCredentialsWithBindingIdsFlow(
-      /*num_pages=*/2, DownloadPublicCertificatesResult::kHttpError));
-}
-
-TEST_F(NearbyShareCertificateManagerImplTest,
-       QuerySharedCredentialsWithBindingIdsWithJoinTime) {
-  NearbyFlags::GetInstance().OverrideBoolFlagValue(
-      config_package_nearby::nearby_sharing_feature::kEnableBackup, true);
-  Initialize();
-  cert_manager_->SetJoinBindingTime(absl::FromUnixSeconds(123456789),
-                                    absl::Seconds(30));
-  ASSERT_NO_FATAL_FAILURE(QuerySharedCredentialsWithBindingIdsFlow(
-      /*num_pages=*/2, DownloadPublicCertificatesResult::kSuccess));
-  std::vector<QuerySharedCredentialsWithBindingIdsRequest> requests =
-      identity_client_.query_shared_credentials_with_binding_ids_requests();
-  for (const auto& request : requests) {
-    ASSERT_OK_AND_ASSIGN(
-        auto expected_time,
-        util_time::EncodeGoogleApiProto(absl::FromUnixSeconds(123456789)));
-    EXPECT_THAT(request.join_binding_time(), EqualsProto(expected_time));
-  }
-}
-
-TEST_F(NearbyShareCertificateManagerImplTest,
-       QuerySharedCredentialsWithBindingIdsWithJoinTimeExpiration) {
-  NearbyFlags::GetInstance().OverrideBoolFlagValue(
-      config_package_nearby::nearby_sharing_feature::kEnableBackup, true);
-  Initialize();
-  cert_manager_->SetJoinBindingTime(absl::FromUnixSeconds(123456789),
-                                    absl::Seconds(30));
-  FastForward(absl::Seconds(31));
-  ASSERT_NO_FATAL_FAILURE(QuerySharedCredentialsWithBindingIdsFlow(
-      /*num_pages=*/2, DownloadPublicCertificatesResult::kSuccess));
-  std::vector<QuerySharedCredentialsWithBindingIdsRequest> requests =
-      identity_client_.query_shared_credentials_with_binding_ids_requests();
-  for (const auto& request : requests) {
-    EXPECT_FALSE(request.has_join_binding_time());
-  }
+  ASSERT_NO_FATAL_FAILURE(DownloadCertificatesFlow(
+      DownloadPublicCertificatesResult::kStorageError));
 }
 
 TEST_F(NearbyShareCertificateManagerImplTest, ClearPublicCertificates) {
@@ -868,7 +687,7 @@ TEST_F(NearbyShareCertificateManagerImplTest, ClearPublicCertificates) {
 }
 
 TEST_F(NearbyShareCertificateManagerImplTest,
-       RefreshPrivateCertificates_PublishDevice_NoCertificates_UploadSuccess) {
+       RefreshPrivateCertificates_UploadCertificates_NoCertificates_UploadSuccess) {
   Initialize();
   cert_store_->ReplacePrivateCertificates({});
 
@@ -878,7 +697,7 @@ TEST_F(NearbyShareCertificateManagerImplTest,
 }
 
 TEST_F(NearbyShareCertificateManagerImplTest,
-       ForceUploadPrivateCertificates_PublishDevice_Success) {
+       ForceUploadPrivateCertificates_UploadCertificates_Success) {
   Initialize();
   // All private certificates are valid.
   cert_store_->ReplacePrivateCertificates(private_certificates_);
@@ -886,12 +705,11 @@ TEST_F(NearbyShareCertificateManagerImplTest,
   Sync();
 
   EXPECT_EQ(1, upload_scheduler_->num_immediate_requests());
-  InvokeCertUploadPublishDevice(/*contacts_removed=*/false,
-                                /*publish_device_success=*/true);
+  InvokeCertUpload(/*upload_success=*/true);
 }
 
 TEST_F(NearbyShareCertificateManagerImplTest,
-       ForceUploadPrivateCertificates_PublishDevice_ContactsRemoved) {
+       ForceUploadPrivateCertificates_UploadCertificates_Failure) {
   Initialize();
   // All private certificates are valid.
   cert_store_->ReplacePrivateCertificates(private_certificates_);
@@ -899,12 +717,11 @@ TEST_F(NearbyShareCertificateManagerImplTest,
   Sync();
 
   EXPECT_EQ(1, upload_scheduler_->num_immediate_requests());
-  InvokeCertUploadPublishDevice(/*contacts_removed=*/true,
-                                /*publish_device_success=*/true);
+  InvokeCertUpload(/*upload_success=*/false);
 }
 
 TEST_F(NearbyShareCertificateManagerImplTest,
-       ForceUploadPrivateCertificates_NotLoggedIn_DoesNotCallPublishDevice) {
+       ForceUploadPrivateCertificates_NotLoggedIn_DoesNotCallUploadCertificates) {
   Initialize();
   fake_account_manager_.SetAccount(std::nullopt);
   // All private certificates are valid.
@@ -914,7 +731,7 @@ TEST_F(NearbyShareCertificateManagerImplTest,
 
   EXPECT_EQ(0, upload_scheduler_->num_immediate_requests());
   EXPECT_TRUE(cert_store_->GetPrivateCertificates().empty());
-  EXPECT_TRUE(identity_client_.publish_device_requests().empty());
+  EXPECT_TRUE(cert_transport_client_.upload_calls().empty());
 }
 
 TEST_F(NearbyShareCertificateManagerImplTest,
@@ -954,7 +771,7 @@ TEST_F(NearbyShareCertificateManagerImplTest,
 }
 
 TEST_F(NearbyShareCertificateManagerImplTest,
-       RefreshPrivateCertificates_PublishDevice_OnVendorIdChanged) {
+       RefreshPrivateCertificates_UploadCertificates_OnVendorIdChanged) {
   Initialize();
   cert_store_->ReplacePrivateCertificates(private_certificates_);
 
@@ -1002,7 +819,7 @@ TEST_F(NearbyShareCertificateManagerImplTest,
 }
 
 TEST_F(NearbyShareCertificateManagerImplTest,
-       RefreshPrivateCertificates_PublishDevice_ExpiredCertificate) {
+       RefreshPrivateCertificates_UploadCertificates_ExpiredCertificate) {
   Initialize();
   // First certificates are expired;
   FastForward(kNearbyShareCertificateValidityPeriod * 1.5);
@@ -1081,13 +898,13 @@ TEST_F(
 }
 
 TEST_F(NearbyShareCertificateManagerImplTest,
-       UploadCertificates_PublishDevice_NoPrivateCertificates) {
+       UploadCertificates_NoPrivateCertificates) {
   Initialize();
   cert_store_->ReplacePrivateCertificates({});
 
   upload_scheduler_->InvokeRequestCallback();
   Sync();
-  EXPECT_TRUE(identity_client_.publish_device_requests().empty());
+  EXPECT_TRUE(cert_transport_client_.upload_calls().empty());
   EXPECT_EQ(upload_scheduler_->handled_results().size(), 1);
   EXPECT_EQ(upload_scheduler_->handled_results().back(), false);
 }
@@ -1108,69 +925,6 @@ TEST_F(NearbyShareCertificateManagerImplTest, StopScheduledTasks) {
   EXPECT_FALSE(public_cert_exp_scheduler_->is_running());
   EXPECT_FALSE(upload_scheduler_->is_running());
   EXPECT_FALSE(download_scheduler_->is_running());
-  EXPECT_FALSE(account_info_update_scheduler_->is_running());
-}
-
-TEST_F(NearbyShareCertificateManagerImplTest,
-       UpdateAccountInfo_TitanumEnabled) {
-  Initialize();
-  GetAccountInfoResponse response;
-  response.mutable_account_info()->mutable_capabilities()->Add(
-      google::nearby::identity::v1::AccountInfo::CAPABILITY_TITANIUM);
-  identity_client_.SetGetAccountInfoResponse(response);
-
-  account_info_update_scheduler_->InvokeRequestCallback();
-  Sync();
-
-  EXPECT_FALSE(identity_client_.get_account_info_requests().empty());
-  EXPECT_TRUE(preference_manager_.GetBoolean(
-      PrefNames::kAdvancedProtectionEnabled, /*default_value=*/false));
-}
-
-TEST_F(NearbyShareCertificateManagerImplTest,
-       UpdateAccountInfo_TitanumDisabled) {
-  Initialize();
-  preference_manager_.SetBoolean(PrefNames::kAdvancedProtectionEnabled, true);
-  GetAccountInfoResponse response;
-  identity_client_.SetGetAccountInfoResponse(response);
-
-  account_info_update_scheduler_->InvokeRequestCallback();
-  Sync();
-
-  EXPECT_FALSE(identity_client_.get_account_info_requests().empty());
-  EXPECT_FALSE(preference_manager_.GetBoolean(
-      PrefNames::kAdvancedProtectionEnabled, /*default_value=*/false));
-}
-
-TEST_F(NearbyShareCertificateManagerImplTest,
-       UpdateAccountInfo_TitanumUnspecified) {
-  Initialize();
-  preference_manager_.SetBoolean(PrefNames::kAdvancedProtectionEnabled, true);
-  GetAccountInfoResponse response;
-  response.mutable_account_info()->mutable_capabilities()->Add(
-      google::nearby::identity::v1::AccountInfo::CAPABILITY_UNSPECIFIED);
-  identity_client_.SetGetAccountInfoResponse(response);
-
-  account_info_update_scheduler_->InvokeRequestCallback();
-  Sync();
-
-  EXPECT_FALSE(identity_client_.get_account_info_requests().empty());
-  EXPECT_FALSE(preference_manager_.GetBoolean(
-      PrefNames::kAdvancedProtectionEnabled, /*default_value=*/false));
-}
-
-TEST_F(NearbyShareCertificateManagerImplTest,
-       UpdateAccountInfo_RpcFailed) {
-  Initialize();
-  preference_manager_.SetBoolean(PrefNames::kAdvancedProtectionEnabled, true);
-
-  account_info_update_scheduler_->InvokeRequestCallback();
-  Sync();
-
-  // Identity client by default return Status::NotFound.
-  EXPECT_FALSE(identity_client_.get_account_info_requests().empty());
-  EXPECT_TRUE(preference_manager_.GetBoolean(
-      PrefNames::kAdvancedProtectionEnabled, /*default_value=*/false));
 }
 
 }  // namespace nearby::sharing

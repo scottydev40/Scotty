@@ -120,6 +120,7 @@ cc_test(
     deps = [
         ":certificates",
         ":test_support",
+        "//internal/flags:nearby_flags",
         "//internal/platform:mac_address",
         "//internal/platform/implementation:platform_impl",
         "//location/nearby/sharing/lib/account:account_manager",
