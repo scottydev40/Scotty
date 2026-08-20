@@ -486,7 +486,7 @@ class NearbySharingServiceImplTest : public testing::Test {
       std::unique_ptr<FakeTaskRunner> task_runner) {
     return std::make_unique<NearbySharingServiceImpl>(
         std::move(task_runner), &fake_context_, mock_sharing_platform_,
-        &nearby_identity_client_,
+        &nearby_cert_transport_client_,
         absl::WrapUnique(fake_nearby_connections_manager_),
         analytics_recorder_.get(),
         /*supports_file_sync=*/false);
@@ -1289,7 +1289,7 @@ class NearbySharingServiceImplTest : public testing::Test {
       ABSL_GUARDED_BY(connection_output_mutex_);
   std::queue<PayloadInfo> written_payloads_
       ABSL_GUARDED_BY(connection_output_mutex_);
-  FakeNearbyIdentityClient nearby_identity_client_;
+  nearby::sharing::api::FakeCertTransportClient nearby_cert_transport_client_;
 };
 
 struct ValidSendSurfaceTestData {
@@ -5147,8 +5147,8 @@ TEST_F(NearbySharingServiceImplTest, InitiatePairingBindingRpcFailed) {
   absl::Notification pairing_notification;
   NearbySharingServiceImpl::StatusCodes pairing_result;
   EXPECT_CALL(*mock_app_info_, SetActiveFlag());
-  nearby_identity_client_.SetInitiateBindingResponses(
-      {absl::InternalError("Binding RPC failed")});
+  // AsyncInitiateSyncBinding is unconditionally unavailable in this build
+  // (see SyncManager); no response needs to be scripted for it to fail.
   service_->InitiatePairing(
       target_id, service::proto::BindingRequest::FILESYNC,
       [&](NearbySharingServiceImpl::StatusCodes status_code) {
@@ -5165,245 +5165,6 @@ TEST_F(NearbySharingServiceImplTest, InitiatePairingBindingRpcFailed) {
   EXPECT_TRUE(ExpectPairedKeyResultFrame());
   // Wait for the transfer updates.
   EXPECT_TRUE(notification.WaitForNotificationWithTimeout(kWaitTimeout));
-}
-
-TEST_F(NearbySharingServiceImplTest,
-       InitiatePairingPeerBindingResponseTimeout) {
-  MockTransferUpdateCallback transfer_callback;
-  MockShareTargetDiscoveredCallback discovery_callback;
-  int64_t target_id = SetUpOutgoingShareTarget(
-      transfer_callback, discovery_callback, /*for_self_share=*/true);
-  ScopedSendSurface s(service_.get(), &transfer_callback);
-  absl::Notification notification;
-  ExpectTransferUpdates(transfer_callback, target_id,
-                        {TransferMetadata::Status::kConnecting,
-                         TransferMetadata::Status::kAwaitingRemoteAcceptance,
-                         TransferMetadata::Status::kFailed},
-                        [&] { notification.Notify(); });
-
-  absl::Notification pairing_notification;
-  NearbySharingServiceImpl::StatusCodes pairing_result;
-  EXPECT_CALL(*mock_app_info_, SetActiveFlag());
-  constexpr absl::string_view kBindingId = "binding_id";
-  google::nearby::identity::v1::InitiateBindingResponse response;
-  response.set_binding_id(kBindingId);
-  nearby_identity_client_.SetInitiateBindingResponses({response});
-  service_->InitiatePairing(
-      target_id, service::proto::BindingRequest::FILESYNC,
-      [&](NearbySharingServiceImpl::StatusCodes status_code) {
-        pairing_result = status_code;
-        pairing_notification.Notify();
-      });
-  EXPECT_TRUE(
-      pairing_notification.WaitForNotificationWithTimeout(kTaskWaitTimeout));
-  EXPECT_EQ(pairing_result, NearbySharingServiceImpl::StatusCodes::kOk);
-
-  FlushTesting();
-  // Verify data sent to the remote device so far.
-  if (!ExpectPairedKeyEncryptionFrame()) {
-    return;
-  }
-
-  if (!ExpectPairedKeyResultFrame()) {
-    return;
-  }
-  // Check BindingRequest frame sent to the remote device.
-  std::unique_ptr<Frame> frame = GetWrittenFrame();
-  ASSERT_TRUE(frame->has_v1());
-  EXPECT_EQ(frame->v1().type(), service::proto::V1Frame::BINDINGS);
-  EXPECT_EQ(frame->v1().bindings().binding_request().binding_id(), kBindingId);
-  EXPECT_EQ(frame->v1().bindings().binding_request().type(),
-            service::proto::BindingRequest::FILESYNC);
-  EXPECT_EQ(frame->v1().bindings().binding_request().cert_ids_size(), 2);
-
-  // BindingResponse frame timeout.
-  FastForward(absl::Seconds(60));
-  // Wait for the transfer updates.
-  EXPECT_TRUE(notification.WaitForNotificationWithTimeout(kWaitTimeout));
-}
-
-TEST_F(NearbySharingServiceImplTest, InitiatePairingSuccess) {
-  MockTransferUpdateCallback transfer_callback;
-  MockShareTargetDiscoveredCallback discovery_callback;
-  int64_t target_id = SetUpOutgoingShareTarget(
-      transfer_callback, discovery_callback, /*for_self_share=*/true);
-  ScopedSendSurface s(service_.get(), &transfer_callback);
-  absl::Notification notification;
-  ExpectTransferUpdates(transfer_callback, target_id,
-                        {TransferMetadata::Status::kConnecting,
-                         TransferMetadata::Status::kAwaitingRemoteAcceptance,
-                         TransferMetadata::Status::kComplete},
-                        [&] { notification.Notify(); });
-
-  absl::Notification pairing_notification;
-  NearbySharingServiceImpl::StatusCodes pairing_result;
-  EXPECT_CALL(*mock_app_info_, SetActiveFlag());
-  constexpr absl::string_view kBindingId = "binding_id";
-  google::nearby::identity::v1::InitiateBindingResponse response;
-  response.set_binding_id(kBindingId);
-  nearby_identity_client_.SetInitiateBindingResponses({response});
-  service_->InitiatePairing(
-      target_id, service::proto::BindingRequest::FILESYNC,
-      [&](NearbySharingServiceImpl::StatusCodes status_code) {
-        pairing_result = status_code;
-        pairing_notification.Notify();
-      });
-  EXPECT_TRUE(
-      pairing_notification.WaitForNotificationWithTimeout(kTaskWaitTimeout));
-  EXPECT_EQ(pairing_result, NearbySharingServiceImpl::StatusCodes::kOk);
-
-  FlushTesting();
-  // Verify data sent to the remote device so far.
-  EXPECT_TRUE(ExpectPairedKeyEncryptionFrame());
-  EXPECT_TRUE(ExpectPairedKeyResultFrame());
-
-  // Check BindingRequest frame sent to the remote device.
-  std::unique_ptr<Frame> frame = GetWrittenFrame();
-  ASSERT_TRUE(frame->has_v1());
-  EXPECT_EQ(frame->v1().type(), service::proto::V1Frame::BINDINGS);
-  EXPECT_EQ(frame->v1().bindings().binding_request().binding_id(), kBindingId);
-  EXPECT_EQ(frame->v1().bindings().binding_request().type(),
-            service::proto::BindingRequest::FILESYNC);
-
-  FilePath custom_save_path = Files::GetTemporaryDirectory();
-  preference_manager_.SetString(PrefNames::kCustomSavePath,
-                                custom_save_path.ToString());
-  Frame binding_response_frame;
-  binding_response_frame.set_version(Frame::V1);
-  binding_response_frame.mutable_v1()->set_type(
-      service::proto::V1Frame::BINDINGS);
-  binding_response_frame.mutable_v1()
-      ->mutable_bindings()
-      ->mutable_binding_response()
-      ->set_status(service::proto::BindingResponse::SUCCESS);
-  std::vector<uint8_t> result_bytes(binding_response_frame.ByteSizeLong());
-  binding_response_frame.SerializeToArray(result_bytes.data(),
-                                          result_bytes.size());
-  ReceiveMessageFromConnection(std::move(result_bytes));
-
-  // Verify that connection is closed.
-  EXPECT_FALSE(
-      fake_nearby_connections_manager_->connection_endpoint_info(kEndpointId)
-          .has_value());
-  // Once from RegisterSendSurface and once from OnPeerSyncBindingComplete.
-  EXPECT_EQ(certificate_manager()->num_download_public_certificates_calls(), 2);
-
-  std::optional<nearby::sharing::sync::SyncBindingPrefs> binding =
-      preference_manager_.GetSyncBindingValue();
-  ASSERT_TRUE(binding.has_value());
-  EXPECT_EQ(binding->sync_bindings().size(), 1);
-  sync::SyncBinding expected_binding;
-  expected_binding.set_binding_id(kBindingId);
-  expected_binding.set_source_name(kDeviceName);
-  expected_binding.set_destination_directory(
-      FilePath(custom_save_path).append(FilePath(kDeviceName)).ToString());
-  expected_binding.set_source_device_type(
-      sync::SyncBinding::SOURCE_DEVICE_TYPE_PHONE);
-  EXPECT_THAT(binding->sync_bindings(0), EqualsProto(expected_binding));
-}
-
-TEST_F(NearbySharingServiceImplTest,
-       InitiatePairingSuccessCheckUsageAndBindingId) {
-  MockTransferUpdateCallback transfer_callback;
-  MockShareTargetDiscoveredCallback discovery_callback;
-  int64_t target_id = SetUpOutgoingShareTarget(
-      transfer_callback, discovery_callback, /*for_self_share=*/true);
-  ScopedSendSurface s(service_.get(), &transfer_callback);
-  absl::Notification notification;
-
-  constexpr absl::string_view kBindingId = "binding_id";
-
-  EXPECT_CALL(transfer_callback,
-              OnTransferUpdate(testing::_, testing::_, testing::_))
-      .WillOnce([&](const ShareTarget& share_target,
-                    const AttachmentContainer& container,
-                    const TransferMetadata& metadata) {
-        EXPECT_EQ(share_target.id, target_id);
-        EXPECT_EQ(metadata.status(), TransferMetadata::Status::kConnecting);
-        EXPECT_EQ(metadata.usage(), ShareSessionUsage::kUnknown);
-        EXPECT_TRUE(metadata.binding_id().empty());
-      })
-      .WillOnce([&](const ShareTarget& share_target,
-                    const AttachmentContainer& container,
-                    const TransferMetadata& metadata) {
-        EXPECT_EQ(share_target.id, target_id);
-        EXPECT_EQ(metadata.status(),
-                  TransferMetadata::Status::kAwaitingRemoteAcceptance);
-        EXPECT_EQ(metadata.usage(), ShareSessionUsage::kPairing);
-        EXPECT_TRUE(metadata.binding_id().empty());
-      })
-      .WillOnce([&](const ShareTarget& share_target,
-                    const AttachmentContainer& container,
-                    const TransferMetadata& metadata) {
-        EXPECT_EQ(share_target.id, target_id);
-        EXPECT_EQ(metadata.status(), TransferMetadata::Status::kComplete);
-        EXPECT_EQ(metadata.usage(), ShareSessionUsage::kPairing);
-        EXPECT_EQ(metadata.binding_id(), kBindingId);
-        notification.Notify();
-      });
-
-  absl::Notification pairing_notification;
-  NearbySharingServiceImpl::StatusCodes pairing_result;
-  EXPECT_CALL(*mock_app_info_, SetActiveFlag());
-  google::nearby::identity::v1::InitiateBindingResponse response;
-  response.set_binding_id(kBindingId);
-  nearby_identity_client_.SetInitiateBindingResponses({response});
-  service_->InitiatePairing(
-      target_id, service::proto::BindingRequest::FILESYNC,
-      [&](NearbySharingServiceImpl::StatusCodes status_code) {
-        pairing_result = status_code;
-        pairing_notification.Notify();
-      });
-  EXPECT_TRUE(
-      pairing_notification.WaitForNotificationWithTimeout(kTaskWaitTimeout));
-  EXPECT_EQ(pairing_result, NearbySharingServiceImpl::StatusCodes::kOk);
-
-  FlushTesting();
-  // Verify data sent to the remote device so far.
-  EXPECT_TRUE(ExpectPairedKeyEncryptionFrame());
-  EXPECT_TRUE(ExpectPairedKeyResultFrame());
-
-  // Check BindingRequest frame sent to the remote device.
-  std::unique_ptr<Frame> frame = GetWrittenFrame();
-  ASSERT_TRUE(frame->has_v1());
-  EXPECT_EQ(frame->v1().type(), service::proto::V1Frame::BINDINGS);
-  EXPECT_EQ(frame->v1().bindings().binding_request().binding_id(), kBindingId);
-  EXPECT_EQ(frame->v1().bindings().binding_request().type(),
-            service::proto::BindingRequest::FILESYNC);
-
-  FilePath custom_save_path = Files::GetTemporaryDirectory();
-  preference_manager_.SetString(PrefNames::kCustomSavePath,
-                                custom_save_path.ToString());
-  Frame binding_response_frame;
-  binding_response_frame.set_version(Frame::V1);
-  binding_response_frame.mutable_v1()->set_type(
-      service::proto::V1Frame::BINDINGS);
-  binding_response_frame.mutable_v1()
-      ->mutable_bindings()
-      ->mutable_binding_response()
-      ->set_status(service::proto::BindingResponse::SUCCESS);
-  std::vector<uint8_t> result_bytes(binding_response_frame.ByteSizeLong());
-  binding_response_frame.SerializeToArray(result_bytes.data(),
-                                          result_bytes.size());
-  ReceiveMessageFromConnection(std::move(result_bytes));
-
-  // Verify that connection is closed.
-  EXPECT_FALSE(
-      fake_nearby_connections_manager_->connection_endpoint_info(kEndpointId)
-          .has_value());
-
-  std::optional<nearby::sharing::sync::SyncBindingPrefs> binding =
-      preference_manager_.GetSyncBindingValue();
-  ASSERT_TRUE(binding.has_value());
-  EXPECT_EQ(binding->sync_bindings().size(), 1);
-  sync::SyncBinding expected_binding;
-  expected_binding.set_binding_id(kBindingId);
-  expected_binding.set_source_name(kDeviceName);
-  expected_binding.set_destination_directory(
-      FilePath(custom_save_path).append(FilePath(kDeviceName)).ToString());
-  expected_binding.set_source_device_type(
-      sync::SyncBinding::SOURCE_DEVICE_TYPE_PHONE);
-  EXPECT_THAT(binding->sync_bindings(0), EqualsProto(expected_binding));
 }
 
 }  // namespace NearbySharingServiceUnitTests

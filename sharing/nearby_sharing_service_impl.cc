@@ -115,7 +115,6 @@ using ::absl::Milliseconds;
 using ::location::nearby::proto::sharing::OSType;
 using ::location::nearby::proto::sharing::ResponseToIntroduction;
 using ::location::nearby::proto::sharing::SessionStatus;
-using ::nearby::sharing::api::IdentityRpcClient;
 using ::nearby::sharing::api::SharingPlatform;
 using ::nearby::sharing::proto::DataUsage;
 using ::nearby::sharing::proto::DeviceVisibility;
@@ -284,8 +283,8 @@ IntroductionUseCaseToLoggingUseCase(
 NearbySharingServiceImpl::NearbySharingServiceImpl(
     std::unique_ptr<TaskRunner> service_thread, Context* context,
     SharingPlatform& sharing_platform,
-    nearby::sharing::api::IdentityRpcClient* absl_nonnull
-        nearby_identity_client,
+    nearby::sharing::api::CertTransportClient* absl_nonnull
+        cert_transport_client,
     std::unique_ptr<NearbyConnectionsManager> nearby_connections_manager,
     analytics::AnalyticsRecorder* analytics_recorder, bool supports_file_sync)
     : service_thread_(std::move(service_thread)),
@@ -296,7 +295,7 @@ NearbySharingServiceImpl::NearbySharingServiceImpl(
       analytics_recorder_(*analytics_recorder),
       supports_file_sync_(supports_file_sync),
       nearby_connections_manager_(std::move(nearby_connections_manager)),
-      nearby_identity_client_(nearby_identity_client),
+      cert_transport_client_(cert_transport_client),
       local_device_data_manager_(
           NearbyShareLocalDeviceDataManagerImpl::Factory::Create(
               preference_manager_, account_manager_, device_info_)),
@@ -320,7 +319,7 @@ NearbySharingServiceImpl::NearbySharingServiceImpl(
                            this),
           absl::bind_front(&NearbySharingServiceImpl::OnOutgoingTransferUpdate,
                            this)),
-      sync_manager_(nearby_identity_client_, &preference_manager_) {
+      sync_manager_(cert_transport_client_, &preference_manager_) {
   CHECK(nearby_connections_manager_);
   CHECK(analytics_recorder);
 
@@ -330,7 +329,7 @@ NearbySharingServiceImpl::NearbySharingServiceImpl(
 
   certificate_manager_ = NearbyShareCertificateManagerImpl::Factory::Create(
       context_, sharing_platform, local_device_data_manager_.get(),
-      profile_path, nearby_identity_client);
+      profile_path, cert_transport_client);
 
   certificate_manager_->AddObserver(this);
   context_->GetConnectivityManager()->RegisterLanListener(

@@ -34,16 +34,17 @@ namespace nearby::sharing {
 
 class SyncManager {
  public:
-  SyncManager(api::IdentityRpcClient* identity_client,
+  SyncManager(api::CertTransportClient* cert_transport_client,
               api::PreferenceManager* preference_manager)
-      : identity_client_(identity_client), preference_manager_(preference_manager) {}
+      : cert_transport_client_(cert_transport_client),
+        preference_manager_(preference_manager) {}
 
   explicit SyncManager(api::PreferenceManager* preference_manager)
       : SyncManager(nullptr, preference_manager) {}
 
   void AsyncInitiateSyncBinding(
       absl::AnyInvocable<void(absl::StatusOr<std::string>)> callback) {
-    static_cast<void>(identity_client_);
+    static_cast<void>(cert_transport_client_);
     if (callback) {
       std::move(callback)(absl::UnavailableError(
           "Sync binding RPC is not available in this build"));
@@ -135,7 +136,7 @@ class SyncManager {
   }
 
  private:
-  api::IdentityRpcClient* identity_client_;
+  api::CertTransportClient* cert_transport_client_;
   api::PreferenceManager* preference_manager_;
 };
 
