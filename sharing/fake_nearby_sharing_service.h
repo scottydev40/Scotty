@@ -148,8 +148,8 @@ class FakeNearbySharingService : public NearbySharingService {
       absl::AnyInvocable<void(NearbySharingService::StatusCodes)>
           status_codes_callback) override;
 
-  nearby::sharing::api::IdentityRpcClient& fake_identity_rpc_client() {
-    return identity_rpc_client_;
+  nearby::sharing::api::CertTransportClient& fake_cert_transport_client() {
+    return cert_transport_client_;
   }
   nearby::sharing::api::PreferenceManager& fake_preference_manager() {
     return preference_manager_;
@@ -204,7 +204,7 @@ class FakeNearbySharingService : public NearbySharingService {
   FakeNearbyConnectionsManager connections_manager_;
   analytics::AnalyticsRecorderImpl analytics_recorder_;
   FakePreferenceManager preference_manager_;
-  FakeNearbyIdentityClient identity_rpc_client_;
+  nearby::sharing::api::FakeCertTransportClient cert_transport_client_;
   std::unique_ptr<SyncManager> sync_manager_;
   std::unique_ptr<OutgoingTargetsManager> outgoing_targets_manager_;
   absl::flat_hash_map<int64_t,

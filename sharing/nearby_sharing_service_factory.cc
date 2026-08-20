@@ -58,12 +58,12 @@ NearbySharingService* NearbySharingServiceFactory::CreateSharingService(
       std::make_unique<platform::common::GrpcAsyncClientFactory>(
           &sharing_platform.GetAccountManager(), context_->GetClock(),
           analytics_recorder);
-  nearby_identity_client_ =
-      nearby_share_client_factory_->CreateIdentityInstance();
+  cert_transport_client_ =
+      nearby_share_client_factory_->CreateCertTransportInstance();
 
   nearby_sharing_service_ = std::make_unique<NearbySharingServiceImpl>(
       std::move(service_thread), context_.get(), sharing_platform,
-      nearby_identity_client_.get(), std::move(nearby_connections_manager),
+      cert_transport_client_.get(), std::move(nearby_connections_manager),
       analytics_recorder, supports_file_sync);
 
   return nearby_sharing_service_.get();

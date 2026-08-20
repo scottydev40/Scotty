@@ -6,7 +6,6 @@ cc_library(
     name = "rpc",
     hdrs = [
         "grpc_async_client_factory.h",
-        "identity_rpc_types.h",
         "sharing_rpc_client.h",
     ],
     visibility = ["//visibility:public"],
@@ -16,7 +15,7 @@ cc_library(
         "//sharing/proto:share_cc_proto",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_protobuf//:protobuf",
+        "@com_google_absl//absl/time",
     ],
 )
 
