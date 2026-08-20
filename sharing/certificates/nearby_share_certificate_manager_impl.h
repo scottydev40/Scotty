@@ -67,7 +67,8 @@ class NearbyShareCertificateManagerImpl
         nearby::sharing::api::SharingPlatform& sharing_platform,
         NearbyShareLocalDeviceDataManager* local_device_data_manager,
         const FilePath& profile_path,
-        nearby::sharing::api::IdentityRpcClient* absl_nonnull identity_client);
+        nearby::sharing::api::CertTransportClient* absl_nonnull
+            cert_transport_client);
     static void SetFactoryForTesting(Factory* test_factory);
 
    protected:
@@ -76,8 +77,8 @@ class NearbyShareCertificateManagerImpl
         Context* context,
         NearbyShareLocalDeviceDataManager* local_device_data_manager,
         const FilePath& profile_path,
-        nearby::sharing::api::IdentityRpcClient* absl_nonnull
-            identity_client) = 0;
+        nearby::sharing::api::CertTransportClient* absl_nonnull
+            cert_transport_client) = 0;
 
    private:
     static Factory* test_factory_;
@@ -103,34 +104,26 @@ class NearbyShareCertificateManagerImpl
   class CertificateDownloadContext {
    public:
     CertificateDownloadContext(
-        nearby::sharing::api::IdentityRpcClient* absl_nonnull
-            nearby_identity_client,
+        nearby::sharing::api::CertTransportClient* absl_nonnull
+            cert_transport_client,
         std::string device_id,
-        std::optional<absl::Time> join_time,
         absl::AnyInvocable<void(absl::StatusOr<std::vector<
                                     nearby::sharing::proto::PublicCertificate>>
                                     certificates_status) &&>
             download_callback)
-        : nearby_identity_client_(nearby_identity_client),
+        : cert_transport_client_(cert_transport_client),
           device_id_(std::move(device_id)),
-          join_time_(join_time),
           download_callback_(std::move(download_callback)) {}
 
-    // Fetches the next page of certificates by calling Identity API
-    // QuerySharedCredentials.
-    // If |next_page_token_| is empty, it fetches the first page.
-    // On successful download, if  page token in the response is empty, the
-    // |download_success_callback_| is invoked with all downloaded certificates.
-    void QuerySharedCredentialsFetchNextPage();
-    void QuerySharedCredentialsWithBindingIdsFetchNextPage();
+    // Fetches all shared certificates via CertTransportClient::
+    // DownloadCertificates and invokes |download_callback_| with the parsed
+    // PublicCertificate list.
+    void FetchCertificates();
 
    private:
-    nearby::sharing::api::IdentityRpcClient* absl_nonnull const
-        nearby_identity_client_;
+    nearby::sharing::api::CertTransportClient* absl_nonnull const
+        cert_transport_client_;
     const std::string device_id_;
-    const std::optional<absl::Time> join_time_;
-    std::optional<std::string> next_page_token_;
-    int page_number_ = 1;
     std::vector<nearby::sharing::proto::PublicCertificate> certificates_;
     absl::AnyInvocable<void(
         absl::StatusOr<std::vector<nearby::sharing::proto::PublicCertificate>>
@@ -145,7 +138,8 @@ class NearbyShareCertificateManagerImpl
       std::unique_ptr<nearby::sharing::api::PublicCertificateDatabase>
           public_certificate_database,
       NearbyShareLocalDeviceDataManager* local_device_data_manager,
-      nearby::sharing::api::IdentityRpcClient* absl_nonnull identity_client);
+      nearby::sharing::api::CertTransportClient* absl_nonnull
+          cert_transport_client);
 
   // NearbyShareCertificateManager:
   void OnStartScheduledTasks() override;
@@ -190,23 +184,16 @@ class NearbyShareCertificateManagerImpl
       const std::vector<nearby::sharing::proto::PublicCertificate>&
           certificates);
 
-  void AddCertifactesToPublishDeviceRequest(
-      const std::vector<NearbySharePrivateCertificate>& private_certs,
-      google::nearby::identity::v1::PublishDeviceRequest& request);
-
   // Returns the device id use to identify the local device in BE.
   std::string GetId();
-
-  // Calls the GetAccountInfo RPC to update the account info.
-  bool UpdateAccountInfoInExecutor();
 
   Context* const context_;
   AccountManager& account_manager_;
   NearbyShareLocalDeviceDataManager* const local_device_data_manager_;
   nearby::sharing::api::PreferenceManager& preference_manager_;
   int32_t vendor_id_ = 0;  // Defaults to GOOGLE.
-  nearby::sharing::api::IdentityRpcClient* absl_nonnull const
-      nearby_identity_client_;
+  nearby::sharing::api::CertTransportClient* absl_nonnull const
+      cert_transport_client_;
 
   std::shared_ptr<NearbyShareCertificateStorage> certificate_storage_;
   absl_nonnull std::unique_ptr<NearbyShareScheduler>
@@ -217,11 +204,6 @@ class NearbyShareCertificateManagerImpl
       force_contacts_update_scheduler_;
   absl_nonnull std::unique_ptr<NearbyShareScheduler>
       download_public_certificates_scheduler_;
-  // Scheduled task that updates the account info from BE.
-  // Specifically, it will keep fetch the Titanium enrollment state and store in
-  // preferences.
-  absl_nonnull std::unique_ptr<NearbyShareScheduler>
-      account_info_update_scheduler_;
 
   std::unique_ptr<TaskRunner> executor_;
   // Set to the transaction timestamp of the last successful pairing if

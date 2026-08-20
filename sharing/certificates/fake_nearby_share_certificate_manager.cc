@@ -54,7 +54,7 @@ FakeNearbyShareCertificateManager::Factory::CreateInstance(
     nearby::Context* context,
     NearbyShareLocalDeviceDataManager* local_device_data_manager,
    const FilePath& profile_path,
-    nearby::sharing::api::IdentityRpcClient* identity_client) {
+    nearby::sharing::api::CertTransportClient* cert_transport_client) {
   auto instance = std::make_unique<FakeNearbyShareCertificateManager>();
   instances_.push_back(instance.get());
 
