@@ -190,14 +190,14 @@ cc_library(
     ],
     deps = [
     ] + select({
-        "@platforms//os:platform_macos": [
+        "@platforms//os:macos": [
             "//internal/platform/implementation/apple",
         ],
         "@platforms//os:windows": [
             "//internal/platform/implementation/windows",
         ],
         "@platforms//os:linux": [
-            "//internal/platform/implementation/linux:linux_platform_impl",
+            "//internal/platform/implementation/linux",
         ],
         # Add other platforms as needed
         "//conditions:default": [
