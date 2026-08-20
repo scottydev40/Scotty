@@ -247,8 +247,10 @@ void FakePreferenceManager::RemoveDictionaryItem(
 
 void FakePreferenceManager::SetSyncConfigValue(absl::string_view binding_id,
                                                const SyncConfigPrefs& value) {
+  std::string serialized;
+  value.SerializeToString(&serialized);
   SetValue(absl::StrCat(PrefNames::kSyncConfigPrefix, binding_id),
-           value.SerializeAsString());
+           std::move(serialized));
 }
 
 void FakePreferenceManager::RemoveSyncConfigPref(absl::string_view binding_id) {
@@ -257,8 +259,10 @@ void FakePreferenceManager::RemoveSyncConfigPref(absl::string_view binding_id) {
 
 void FakePreferenceManager::SetSyncBindingValue(
     const SyncBindingPrefs& value) {
+  std::string serialized;
+  value.SerializeToString(&serialized);
   SetValue(absl::StrCat(PrefNames::kBindingConfigPrefix, kFileSyncBindingName),
-           value.SerializeAsString());
+           std::move(serialized));
 }
 
 bool FakePreferenceManager::GetBoolean(absl::string_view key,

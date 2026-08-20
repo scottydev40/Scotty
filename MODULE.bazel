@@ -109,7 +109,7 @@ http_archive(
 #   https://github.com/inazarenko/protobuf-matchers
 http_archive(
     name = "com_github_protobuf_matchers",
-    strip_prefix = "protobuf-matchers-master",
+    strip_prefix = "protobuf-matchers-main",
     urls = ["https://github.com/inazarenko/protobuf-matchers/archive/refs/heads/master.zip"],
 )
 
