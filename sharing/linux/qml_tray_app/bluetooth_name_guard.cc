@@ -20,7 +20,7 @@ constexpr char kStashKey[] = "bluetoothAliasStash";
 
 // A Nearby advertisement blob: long, base64/url-safe charset, no spaces. The
 // platform layer writes one of these into the adapter Alias while advertising
-// (base64 endpoint metadata). A genuine adapter name ("laptop", "Harsha's
+// (base64 endpoint metadata). A genuine adapter name ("laptop", "My
 // Laptop") is short or contains spaces, so this only matches the gibberish.
 bool LooksLikeNearbyBlob(const QString& name) {
   if (name.size() < 20) {

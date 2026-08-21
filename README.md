@@ -15,7 +15,7 @@ Quick-Settings tile.
 > ## 🚧 Early days
 > Works end-to-end and moves multi-GB files reliably, but it's actively
 > developed and rough in places. Discovery currently depends on a specific
-> kernel/Bluetooth combination — see [`sharing/linux/ROADMAP.md`](sharing/linux/ROADMAP.md).
+> kernel/Bluetooth combination.
 
 ## What works today
 
@@ -37,33 +37,40 @@ Quick-Settings tile.
 
 ## On the roadmap
 
-A native **AWDL** transport so Scotty also interoperates with Apple **AirDrop** —
-one app that talks to Apple, Google, and Windows devices alike. Plus Google
-contacts / QR pairing, packaging, and wider hardware support. See
-[`sharing/linux/ROADMAP.md`](sharing/linux/ROADMAP.md).
+- **AirDrop** — a native AWDL transport so one app talks to Apple, Google, and
+  Windows devices alike.
+- **Contacts & QR pairing** for easier, trusted connections.
+- **Wider hardware support** — discovery currently needs a specific Bluetooth setup.
 
 ## Install
 
-Scotty is moving to normal Debian/Ubuntu packages during the beta. A local build
-produces independently removable packages for the app, GNOME tile, and system
-transport integration:
+Grab the `.deb` files from the [latest release](../../releases/latest) into a
+folder, then:
 
 ```sh
-dpkg-buildpackage -b -uc -us
-sudo apt install ../scotty_*.deb ../scotty-bluez-compat_*.deb \
-  ../gnome-shell-extension-scotty_*.deb
-gnome-extensions enable quickshare@scottydev40.github.io
+sudo apt install ./scotty_*.deb ./scotty-bluez-compat_*.deb \
+  ./gnome-shell-extension-scotty_*.deb
 ```
 
-The long-term install path is `apt install scotty` from a signed repository.
-The AppImage remains available as a portable build, but it runs in place and no
-longer modifies the host or installs the GNOME tile. See the
-[`packaging` guide](sharing/linux/qml_tray_app/packaging/README.md).
+Account features (Google sign-in, "Your devices", contacts) are an optional,
+separate plugin:
+
+```sh
+sudo apt install ./scotty-mydevices_*.deb
+```
+
+Remove with `sudo apt remove scotty scotty-bluez-compat gnome-shell-extension-scotty`
+(and `scotty-mydevices`). Building from source is under
+[Building](#building); an AppImage portable build is also available.
 
 ## Building
 
-The shared library is Bazel, the Qt app is CMake. Full build/deploy steps and
-architecture notes are in [`sharing/linux/STATUS.md`](sharing/linux/STATUS.md).
+Two build systems: the shared library is **Bazel**, the Qt/QML app is **CMake**.
+The Debian packaging drives both — the simplest way to build the `.deb`s is:
+
+```sh
+dpkg-buildpackage -b -uc -us    # writes the .deb files to the parent directory
+```
 
 ## Credits & lineage
 
@@ -82,14 +89,8 @@ Scotty stands on a lot of other people's work — full list in
 
 ## How this is built
 
-Human in the lead, AI in the loop. The direction, the real-hardware testing
-(phones, tablets, a laptop, a fussy Wi-Fi combo card), the "that explanation is
-hand-wavy — dig until there's a log that proves it" debugging, and every design
-call are human. An AI assistant does much of the actual typing — code, refactors,
-docs — under that direction; the git history shows it (`Co-Authored-By`
-trailers). Nothing here was shipped on a guess: bugs were root-caused against
-live logs and real devices before a fix landed. The history is open — read it
-and judge the work on its merits.
+Human-directed and AI-assisted, tested on real devices. The git history
+(`Co-Authored-By` trailers) shows what was written how.
 
 ## License
 
