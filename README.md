@@ -52,16 +52,9 @@ sudo apt install ./scotty_*.deb ./scotty-bluez-compat_*.deb \
   ./gnome-shell-extension-scotty_*.deb
 ```
 
-Account features (Google sign-in, "Your devices", contacts) are an optional,
-separate plugin:
-
-```sh
-sudo apt install ./scotty-mydevices_*.deb
-```
-
-Remove with `sudo apt remove scotty scotty-bluez-compat gnome-shell-extension-scotty`
-(and `scotty-mydevices`). Building from source is under
-[Building](#building); an AppImage portable build is also available.
+Remove with `sudo apt remove scotty scotty-bluez-compat gnome-shell-extension-scotty`.
+Building from source is under [Building](#building); an AppImage portable build
+is also available.
 
 ## Building
 
