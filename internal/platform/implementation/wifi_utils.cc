@@ -121,8 +121,11 @@ bool WifiUtils::ValidateIPV4(std::string ipv4) {
 std::string WifiUtils::GetHumanReadableIpAddress(
     absl::string_view binary_address) {
   std::vector<std::string> parts;
-  for (unsigned int b : binary_address) {
-    parts.push_back(absl::StrFormat("%d", b));
+  for (char c : binary_address) {
+    // Cast through unsigned char so bytes >= 128 are not sign-extended into a
+    // huge value (e.g. 192 -> 4294967232), which corrupts the dotted-decimal.
+    parts.push_back(absl::StrFormat(
+        "%d", static_cast<unsigned int>(static_cast<unsigned char>(c))));
   }
   return absl::StrJoin(parts, ".");
 }

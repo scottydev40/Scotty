@@ -22,6 +22,7 @@
 #include "internal/platform/implementation/linux/avahi.h"
 #include "internal/platform/implementation/linux/wifi_medium.h"
 #include "internal/platform/implementation/wifi_lan.h"
+#include "internal/platform/implementation/wifi_utils.h"
 #include "internal/platform/nsd_service_info.h"
 
 namespace nearby {
@@ -52,8 +53,13 @@ class WifiLanMedium : public api::WifiLanMedium {
     std::unique_ptr<api::WifiLanSocket> ConnectToService(
         const ServiceAddress &sa,
         CancellationFlag *cancellation_flag) override {
-        return ConnectToService(std::string(sa.address.begin(), sa.address.end()),
-                                sa.port, cancellation_flag);
+        // sa.address holds the raw IP bytes (4 for IPv4). ConnectToService()
+        // expects a dotted-decimal string, so render it — passing the raw
+        // bytes made inet_pton fail and broke every WifiLan bandwidth upgrade.
+        return ConnectToService(
+            WifiUtils::GetHumanReadableIpAddress(
+                std::string(sa.address.begin(), sa.address.end())),
+            sa.port, cancellation_flag);
     };
     std::unique_ptr<api::WifiLanSocket> ConnectToService(
       const std::string &ip_address, int port,
