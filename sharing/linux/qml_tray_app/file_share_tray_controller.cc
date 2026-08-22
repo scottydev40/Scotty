@@ -72,6 +72,11 @@ FileShareTrayController::FileShareTrayController(QObject* parent)
   connect(discovery_watchdog_timer_, &QTimer::timeout, this,
           [this] { onDiscoveryWatchdogTick(); });
 
+  readvertise_timer_ = new QTimer(this);
+  readvertise_timer_->setInterval(kReadvertiseIntervalMs);
+  connect(readvertise_timer_, &QTimer::timeout, this,
+          [this] { onReadvertiseTick(); });
+
   // Collapse the stream of row updates into a single edge whenever a transfer
   // starts or the last active one ends. One place catches every transfersChanged
   // emit site, so callers never have to remember to fire this too.
@@ -864,6 +869,7 @@ void FileShareTrayController::stop() {
   state_.SetRunning(false);
   emit runningChanged();
 
+  readvertise_timer_->stop();
   service_->StopSendMode([](NearbySharingApi::StatusCode) {});
   service_->StopReceiveMode([](NearbySharingApi::StatusCode) {});
 
@@ -875,6 +881,7 @@ void FileShareTrayController::stop() {
 }
 
 void FileShareTrayController::startSendMode() {
+  readvertise_timer_->stop();  // receive-advert self-heal only runs while receiving
   // StopReceiveMode is best-effort: whatever surface state the service is in,
   // we still want to (re)start send discovery. Gating StartSendMode on the stop
   // status left the service idle (and the UI stuck "looking") whenever the stop
@@ -951,7 +958,34 @@ void FileShareTrayController::onDiscoveryWatchdogTick() {
   rescanDevices();
 }
 
+void FileShareTrayController::onReadvertiseTick() {
+  // Only while actively receiving.
+  if (!state_.running() || state_.mode() != QStringLiteral("Receive")) {
+    readvertise_timer_->stop();
+    return;
+  }
+  // "No one" (2) isn't discoverable by design — nothing to refresh.
+  if (visibility_ == 2) {
+    return;
+  }
+  // Never disrupt an in-flight transfer; refresh on the next tick instead.
+  if (state_.HasActiveTransfers()) {
+    return;
+  }
+  // Re-assert the advert. StopReceiveMode + StartReceiveMode re-registers the
+  // BLE advert (and rotates the endpoint id), which kicks a chipset that
+  // silently stopped emitting while the stack still thought it was advertising.
+  // Visibility is unchanged, so this is invisible to the user beyond a brief
+  // re-register. Fires every kReadvertiseIntervalMs.
+  service_->StopReceiveMode([this](NearbySharingApi::StatusCode) {
+    service_->StartReceiveMode([](NearbySharingApi::StatusCode) {});
+  });
+}
+
 void FileShareTrayController::startReceiveMode() {
+  // Keep the discovery advert fresh against chipsets that silently stop
+  // emitting it (see onReadvertiseTick). Restart the interval on each entry.
+  readvertise_timer_->start();
   service_->StopSendMode([this](NearbySharingApi::StatusCode status) {
     if (status == NearbySharingApi::StatusCode::kOk ||
         status == NearbySharingApi::StatusCode::kStatusAlreadyStopped) {

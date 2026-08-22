@@ -233,6 +233,17 @@ class FileShareTrayController : public QObject {
   void startDiscoveryWatchdog();
   void stopDiscoveryWatchdog();
   void onDiscoveryWatchdogTick();
+
+  // Self-heals receive-mode discoverability. Some BLE chipsets (e.g. MT7925)
+  // silently stop emitting the extended advert after a while, while the stack
+  // still believes it is advertising — the phone then can't find us until a
+  // manual visibility toggle. This re-asserts the advert on a conservative
+  // interval (a StopReceiveMode/StartReceiveMode cycle, which re-registers the
+  // BLE advert) while receiving in a discoverable mode with no active transfer.
+  // Upstream never re-advertises the foreground advert; this fills that gap.
+  QTimer* readvertise_timer_ = nullptr;
+  static constexpr int kReadvertiseIntervalMs = 5 * 60 * 1000;  // 5 minutes
+  void onReadvertiseTick();
   // Advertising visibility: 0=Everyone, 1=Contacts, 2=No one, 3=Your devices,
   // 4=Everyone (10 min). Mode 4 advertises Everyone and reverts to
   // pre_temp_visibility_ when temp_visibility_timer_ fires.
