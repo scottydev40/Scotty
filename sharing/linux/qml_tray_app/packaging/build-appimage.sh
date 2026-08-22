@@ -91,7 +91,14 @@ ln -sf "usr/share/applications/$APP_ID.desktop" "$APPDIR/$APP_ID.desktop"
 export QMAKE="$(command -v qmake6 || command -v qmake)"
 # Point the Qt plugin at our QML so it bundles the QtQuick modules we import.
 export QML_SOURCES_PATHS="$APP_DIR_SRC"
-export EXTRA_QT_PLUGINS="platforms;wayland;imageformats"
+# Bundle the Wayland platform plugin (most modern desktops are Wayland) plus its
+# integration plugins, alongside the default xcb. linuxdeploy-plugin-qt takes
+# extra *platform* plugins via EXTRA_PLATFORM_PLUGINS, and other plugin
+# categories via EXTRA_QT_PLUGINS — the previous "platforms;wayland" values were
+# not valid categories, so only xcb got bundled and the AppImage failed to find
+# the wayland platform on Wayland sessions.
+export EXTRA_PLATFORM_PLUGINS="libqwayland.so"
+export EXTRA_QT_PLUGINS="wayland-decoration-client;wayland-graphics-integration-client;wayland-shell-integration;imageformats"
 
 "$LD" --appdir "$APPDIR" \
   --library "$APPDIR/usr/lib/$(basename "$SHARED_LIB")" \
