@@ -81,6 +81,16 @@ cc_library(
 )
 
 cc_library(
+    name = "file_path_sanitize",
+    srcs = ["file_path_sanitize.cc"],
+    hdrs = ["file_path_sanitize.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "files",
     srcs = ["files.cc"],
     hdrs = ["files.h"],

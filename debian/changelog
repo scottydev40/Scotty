@@ -1,3 +1,12 @@
+scotty (0.1.0~beta1-5) unstable; urgency=medium
+
+  * Sanitize the peer device name before using it as the incoming-transfer
+    destination folder (picked up from upstream google/nearby), so a peer
+    cannot use path separators or "../" in its name to escape the save
+    directory. Vendors internal/base/file_path_sanitize.
+
+ -- Scotty Developers <scottydev40@users.noreply.github.com>  Sat, 22 Aug 2026 09:35:00 -0500
+
 scotty (0.1.0~beta1-4) unstable; urgency=medium
 
   * Consume the desktop startup token (xdg-activation / startup-id) passed to
