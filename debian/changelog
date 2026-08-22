@@ -1,3 +1,12 @@
+scotty (0.1.0~beta1-6) unstable; urgency=medium
+
+  * Hide the share QR code. Quick Share's QR is a Google server-relay (files
+    are uploaded to Google and the QR points at a Google-hosted download page);
+    the engine only exposes the upstream placeholder URL, so the code resolved
+    to nothing and a scanning phone stalled. Hidden until a real relay exists.
+
+ -- Scotty Developers <scottydev40@users.noreply.github.com>  Sat, 22 Aug 2026 09:50:00 -0500
+
 scotty (0.1.0~beta1-5) unstable; urgency=medium
 
   * Sanitize the peer device name before using it as the incoming-transfer
