@@ -1,0 +1,33 @@
+#!/bin/sh
+# Stop a running Scotty before its files are removed, the way a desktop
+# uninstaller closes the app first. The per-user systemd unit is stopped for
+# each active session, then any running app instance is asked to quit with a
+# normal SIGTERM so its own shutdown (including Wi-Fi restore) can run.
+set -e
+
+APP_BIN=/usr/bin/scotty
+
+stop_scotty() {
+  for uid in $(loginctl list-users --no-legend 2>/dev/null | awk '{print $1}'); do
+    bus="/run/user/$uid/bus"
+    [ -S "$bus" ] || continue
+    user=$(id -nu "$uid" 2>/dev/null) || continue
+    runuser -u "$user" -- \
+      env DBUS_SESSION_BUS_ADDRESS="unix:path=$bus" \
+      systemctl --user stop scotty.service >/dev/null 2>&1 || true
+  done
+  # Match only our own binary at the start of the command line (it may carry
+  # --background); never a broad pattern. Default TERM lets Scotty clean up.
+  if pgrep -f '^/usr/bin/scotty($| )' >/dev/null 2>&1; then
+    pkill -f '^/usr/bin/scotty($| )' 2>/dev/null || true
+  fi
+}
+
+case "$1" in
+  remove|upgrade|deconfigure|failed-upgrade)
+    stop_scotty
+    ;;
+esac
+
+#DEBHELPER#
+exit 0

@@ -1,3 +1,15 @@
+scotty (0.1.0~beta1-2) unstable; urgency=medium
+
+  * Add maintainer scripts so removal behaves like a desktop uninstall: prerm
+    stops the running app (per-user systemd unit, then a normal SIGTERM so
+    Scotty's own shutdown and Wi-Fi restore can run) before its files are
+    removed; postrm on purge wipes the core's per-user data (cached
+    certificates, log, QML cache, Nearby preferences). Only core paths are
+    touched and the shared "Google Nearby" dir is removed only when empty, so
+    an installed scotty-mydevices plugin's credentials survive.
+
+ -- Scotty Developers <scottydev40@users.noreply.github.com>  Fri, 22 Aug 2026 08:42:00 -0500
+
 scotty (0.1.0~beta1-1) unstable; urgency=medium
 
   * Initial native Debian/Ubuntu beta packaging.
