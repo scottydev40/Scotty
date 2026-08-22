@@ -9,5 +9,8 @@ Terminal=false
 DBusActivatable=true
 Categories=Network;FileTransfer;
 Keywords=share;transfer;nearby;quick share;airdrop;send;files;
-StartupNotify=true
+# Scotty is a single-instance background service: launching hands off to the
+# running copy and exits, so it never completes GNOME's startup-notification
+# handshake. Leaving this true leaves the launch spinner spinning until timeout.
+StartupNotify=false
 StartupWMClass=dev.scotty.Scotty
