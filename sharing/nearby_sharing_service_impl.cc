@@ -48,6 +48,7 @@
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "internal/base/file_path.h"
+#include "internal/base/file_path_sanitize.h"
 #include "internal/flags/nearby_flags.h"
 #include "internal/network/url.h"
 #include "internal/platform/clock.h"
@@ -2871,9 +2872,12 @@ void NearbySharingServiceImpl::OnPeerSyncBindingComplete(
   sync::SyncBinding binding;
   binding.set_binding_id(binding_id);
   binding.set_source_name(session->share_target().device_name);
-  // Set default destination directory to Downloads/`device_name`.
+  // Set default destination directory to Downloads/`device_name`. Even though
+  // the device name is used as a folder name, sanitize it so a peer cannot use
+  // path separators or "../" in its name to escape the save directory.
   FilePath destination_path{settings_->GetCustomSavePath()};
-  destination_path.append(FilePath(session->share_target().device_name));
+  destination_path.append(
+      FilePath(SanitizeFileName(session->share_target().device_name)));
   binding.set_destination_directory(destination_path.ToString());
   binding.set_source_device_type(
       ShareTargetTypeToSourceDeviceType(session->share_target().type));
