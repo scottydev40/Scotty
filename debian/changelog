@@ -1,3 +1,12 @@
+scotty (0.1.0~beta1-3) unstable; urgency=medium
+
+  * Fix the window never appearing from a --background launch (D-Bus activation,
+    autostart): the root window's visible state was a QML binding that, on
+    Wayland, blocked the C++ show path from mapping a window that started
+    hidden. Clicking the launcher now surfaces the window.
+
+ -- Scotty Developers <scottydev40@users.noreply.github.com>  Fri, 22 Aug 2026 09:10:00 -0500
+
 scotty (0.1.0~beta1-2) unstable; urgency=medium
 
   * Add maintainer scripts so removal behaves like a desktop uninstall: prerm
