@@ -1,3 +1,13 @@
+scotty (0.1.0~beta1-7) unstable; urgency=medium
+
+  * Keep the laptop discoverable: re-assert the receive advertisement every 5
+    minutes while receiving. Some BLE chipsets (e.g. MT7925) silently stop
+    emitting the advert while the stack still thinks it is advertising, so the
+    phone could no longer find the laptop until a manual visibility toggle.
+    Skips during an active transfer and while set to "No one".
+
+ -- Scotty Developers <scottydev40@users.noreply.github.com>  Sat, 22 Aug 2026 15:30:00 -0500
+
 scotty (0.1.0~beta1-6) unstable; urgency=medium
 
   * Hide the share QR code. Quick Share's QR is a Google server-relay (files
