@@ -21,14 +21,13 @@ Quick-Settings tile.
 
 - **Discovery + pairing** over Bluetooth LE, the same handshake real devices use.
 - **Transfers** over the fastest available path:
-  - **Wi-Fi LAN** when both devices share a network (~3.5 s for a photo).
+  - **Wi-Fi LAN** when both devices share a network.
   - **Wi-Fi Hotspot** when the peer is off your network — Scotty hosts a SoftAP
     on its own virtual interface so **your Wi-Fi and internet stay up** during
     the transfer.
   - **Bluetooth** as the always-available fallback.
-- **Boost mode** (opt-in): hands the whole radio to the hotspot for maximum
-  throughput (~2.5× faster in testing) at the cost of dropping Wi-Fi for the
-  transfer.
+- **Boost mode** (opt-in): hands the whole radio to the hotspot for higher
+  throughput, at the cost of dropping Wi-Fi for the duration of the transfer.
 - **Runs in the background when you choose**: D-Bus activation starts it on
   demand, and an opt-in user service can keep it ready after login. On GNOME the
   **Quick-Settings tile** is the main surface (a system-tray icon is used on
