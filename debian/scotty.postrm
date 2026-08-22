@@ -1,0 +1,23 @@
+#!/bin/sh
+# On purge, remove the core's per-user data: cached certificates, log, QML
+# cache, and the Nearby preferences dir. Only Scotty-core paths are touched;
+# the account bridge's own "mydevices" credentials belong to the
+# scotty-mydevices package. The shared "Google Nearby" parent is removed only
+# when it is already empty, so an installed plugin's credentials survive.
+set -e
+
+case "$1" in
+  purge)
+    for home in /root /home/*; do
+      [ -d "$home" ] || continue
+      rm -rf "$home/.local/share/scotty" \
+             "$home/.local/state/scotty" \
+             "$home/.cache/Scotty" \
+             "$home/.config/Google Nearby/nearby_sharing_linux.json" 2>/dev/null || true
+      rmdir "$home/.config/Google Nearby" 2>/dev/null || true
+    done
+    ;;
+esac
+
+#DEBHELPER#
+exit 0
