@@ -11,8 +11,14 @@ ApplicationWindow {
     height: 760
     minimumWidth: 820
     minimumHeight: 620
-    // Bound rather than `true` so a --background launch never flashes a window.
-    visible: !startInBackground
+    // Kept as a plain, unbound property so the C++ Show() path (D-Bus Activate,
+    // the single-instance socket, the tray) can imperatively map the window.
+    // A QML binding here (visible: !startInBackground) owns the property and, on
+    // Wayland, stops window->show() from ever mapping a window that started
+    // hidden — a --background launch could then never be surfaced. Instead we
+    // start hidden and, when not backgrounded, show once the scene is built.
+    visible: false
+    Component.onCompleted: if (!startInBackground) root.show()
     title: "Scotty"
 
     // Sitting in the tray shouldn't hold the Bluetooth adapter's name hostage:
