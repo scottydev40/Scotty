@@ -4,7 +4,7 @@ scotty (0.1.0~beta1-4) unstable; urgency=medium
     org.freedesktop.Application, so GNOME's launch spinner cursor clears when
     the window appears instead of spinning to its timeout.
 
- -- Scotty Developers <scottydev40@users.noreply.github.com>  Fri, 22 Aug 2026 09:20:00 -0500
+ -- Scotty Developers <scottydev40@users.noreply.github.com>  Sat, 22 Aug 2026 09:20:00 -0500
 
 scotty (0.1.0~beta1-3) unstable; urgency=medium
 
@@ -13,7 +13,7 @@ scotty (0.1.0~beta1-3) unstable; urgency=medium
     Wayland, blocked the C++ show path from mapping a window that started
     hidden. Clicking the launcher now surfaces the window.
 
- -- Scotty Developers <scottydev40@users.noreply.github.com>  Fri, 22 Aug 2026 09:10:00 -0500
+ -- Scotty Developers <scottydev40@users.noreply.github.com>  Sat, 22 Aug 2026 09:10:00 -0500
 
 scotty (0.1.0~beta1-2) unstable; urgency=medium
 
@@ -25,7 +25,7 @@ scotty (0.1.0~beta1-2) unstable; urgency=medium
     touched and the shared "Google Nearby" dir is removed only when empty, so
     an installed scotty-mydevices plugin's credentials survive.
 
- -- Scotty Developers <scottydev40@users.noreply.github.com>  Fri, 22 Aug 2026 08:42:00 -0500
+ -- Scotty Developers <scottydev40@users.noreply.github.com>  Sat, 22 Aug 2026 08:42:00 -0500
 
 scotty (0.1.0~beta1-1) unstable; urgency=medium
 
