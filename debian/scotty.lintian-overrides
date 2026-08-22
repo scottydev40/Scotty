@@ -1,0 +1,5 @@
+# The prerm stops the per-user scotty.service in each active login session
+# before the binary is removed. dh_installsystemd / deb-systemd-invoke only
+# manage system units, not a user unit in a running session, so prerm calls
+# `systemctl --user stop` directly and deliberately.
+scotty: maintainer-script-calls-systemctl
