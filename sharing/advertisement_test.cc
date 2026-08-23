@@ -72,6 +72,33 @@ TEST(BadAdvertisementTest, TestTlvParsingOnAdvertisement) {
   EXPECT_EQ(*advertisement_from_bytes, *advertisement);
 }
 
+TEST(BadAdvertisementTest, TestTlvParsingSetsHasQrCode) {
+  AdvertisementCapabilities capabilities{};
+  auto advertisement = Advertisement::NewInstance(
+      std::vector<uint8_t>(Advertisement::kSaltSize),
+      std::vector<uint8_t>(Advertisement::kMetadataEncryptionKeyHashByteSize),
+      ShareTargetType::kLaptop, std::nullopt, /*vendor_id=*/1, capabilities);
+  auto bytes = advertisement->ToEndpointInfo();
+  // Add a TLV field for QR code.
+  bytes.insert(bytes.end(), kQrCodeTlvBytes.begin(), kQrCodeTlvBytes.end());
+  auto advertisement_from_bytes = Advertisement::FromEndpointInfo(bytes);
+  ASSERT_NE(advertisement_from_bytes, nullptr);
+  EXPECT_TRUE(advertisement_from_bytes->has_qr_code());
+}
+
+TEST(BadAdvertisementTest, TestNoQrCodeTlvLeavesHasQrCodeFalse) {
+  AdvertisementCapabilities capabilities{};
+  auto advertisement = Advertisement::NewInstance(
+      std::vector<uint8_t>(Advertisement::kSaltSize),
+      std::vector<uint8_t>(Advertisement::kMetadataEncryptionKeyHashByteSize),
+      ShareTargetType::kLaptop, std::nullopt, /*vendor_id=*/1, capabilities);
+  auto bytes = advertisement->ToEndpointInfo();
+  // No QR code TLV appended.
+  auto advertisement_from_bytes = Advertisement::FromEndpointInfo(bytes);
+  ASSERT_NE(advertisement_from_bytes, nullptr);
+  EXPECT_FALSE(advertisement_from_bytes->has_qr_code());
+}
+
 INSTANTIATE_TEST_SUITE_P(
     ShareTargetTypes, AdvertisementTest,
     testing::Values(

@@ -169,6 +169,25 @@ void FileShareTrayController::updateTargetFromInfo(
       QStringLiteral("Unknown device"));
   state_.AddOrUpdateTarget(info.id, name, info.is_incoming, info.device_type);
   emit discoveredTargetsChanged();
+
+  MaybeAutoSendToQrPeer(info, name);
+}
+
+void FileShareTrayController::MaybeAutoSendToQrPeer(
+    const NearbySharingApi::ShareTargetInfo& info, const QString& name) {
+  // A device that scanned our "share via QR code" QR surfaces as an unnamed
+  // outgoing peer that the engine labels "Quick Share device" (see
+  // NearbySharingServiceImpl::CreateShareTarget). Scanning the QR is the intent
+  // to receive, so send to it immediately instead of waiting for a tap.
+  // (Keep this string in sync with the engine placeholder.)
+  if (info.is_incoming) return;
+  if (name != QStringLiteral("Quick Share device")) return;
+  if (state_.pendingSendFilePaths().isEmpty()) return;
+  if (transferActive()) return;
+  if (auto_sent_qr_targets_.contains(info.id)) return;
+
+  auto_sent_qr_targets_.insert(info.id);
+  sendPendingFileToTarget(info.id);
 }
 
 void FileShareTrayController::handleTransferUpdate(
