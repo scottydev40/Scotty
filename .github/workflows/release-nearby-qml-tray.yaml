@@ -102,12 +102,10 @@ jobs:
           install -d "$STAGING/share/applications"
           install -d "$STAGING/share/icons/hicolor/256x256/apps"
           install -d "$STAGING/include/sharing/linux"
-          install -m 0755 sharing/linux/qml_tray_app/install_nearby_file_share.sh \
-            "$STAGING/install_nearby_file_share.sh"
-          install -m 0644 sharing/linux/qml_tray_app/nearby-file-share.desktop \
-            "$STAGING/share/applications/nearby-file-share.desktop"
+          install -m 0644 sharing/linux/qml_tray_app/packaging/dev.scotty.Scotty.desktop \
+            "$STAGING/share/applications/dev.scotty.Scotty.desktop"
           install -m 0644 sharing/linux/qml_tray_app/nearby-linux-desktop.png \
-            "$STAGING/share/icons/hicolor/256x256/apps/nearby-file-share.png"
+            "$STAGING/share/icons/hicolor/256x256/apps/dev.scotty.Scotty.png"
           install -m 0644 sharing/linux/nearby_sharing_api.h \
             "$STAGING/include/sharing/linux/nearby_sharing_api.h"
 
