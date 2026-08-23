@@ -333,4 +333,24 @@ TEST(ECPrivateKeyUnitTest, LoadOldOpenSSLKeyTest) {
   EXPECT_TRUE(keypair_openssl);
 }
 
+TEST(ECPrivateKeyTest, ExportCompressedPublicKeyMatchesUncompressed) {
+  std::unique_ptr<crypto::ECPrivateKey> key = crypto::ECPrivateKey::Create();
+  ASSERT_TRUE(key);
+
+  std::string uncompressed;
+  ASSERT_TRUE(key->ExportRawPublicKey(&uncompressed));
+  ASSERT_EQ(uncompressed.size(), 65u);
+  ASSERT_EQ(static_cast<uint8_t>(uncompressed[0]), 0x04);
+
+  std::string compressed;
+  ASSERT_TRUE(key->ExportCompressedPublicKey(&compressed));
+  ASSERT_EQ(compressed.size(), 33u);
+
+  // Prefix encodes the parity of Y (last byte of the uncompressed point).
+  uint8_t y_is_odd = static_cast<uint8_t>(uncompressed[64]) & 0x1;
+  EXPECT_EQ(static_cast<uint8_t>(compressed[0]), y_is_odd ? 0x03 : 0x02);
+  // X is bytes [1..33) of the uncompressed point, unchanged.
+  EXPECT_EQ(compressed.substr(1), uncompressed.substr(1, 32));
+}
+
 }  // namespace nearby

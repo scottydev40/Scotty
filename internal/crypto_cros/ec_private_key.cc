@@ -184,6 +184,22 @@ bool ECPrivateKey::ExportRawPublicKey(std::string* output) const {
   return true;
 }
 
+bool ECPrivateKey::ExportCompressedPublicKey(std::string* output) const {
+  OpenSSLErrStackTracer err_tracer;
+
+  std::array<uint8_t, 33> buf;
+  EC_KEY* ec_key = EVP_PKEY_get0_EC_KEY(key_.get());
+  if (!EC_POINT_point2oct(EC_KEY_get0_group(ec_key),
+                          EC_KEY_get0_public_key(ec_key),
+                          POINT_CONVERSION_COMPRESSED, buf.data(), buf.size(),
+                          /*ctx=*/nullptr)) {
+    return false;
+  }
+
+  output->assign(buf.begin(), buf.end());
+  return true;
+}
+
 ECPrivateKey::ECPrivateKey() = default;
 
 }  // namespace nearby::crypto
