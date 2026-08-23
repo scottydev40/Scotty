@@ -3060,7 +3060,16 @@ std::optional<ShareTarget> NearbySharingServiceImpl::CreateShareTarget(
     absl::string_view endpoint_id, const Advertisement& advertisement,
     const std::optional<NearbyShareDecryptedPublicCertificate>& certificate,
     bool is_incoming) {
-  if (!advertisement.device_name() && !certificate.has_value()) {
+  // A remote device receiving via a scanned "share via QR code" session
+  // advertises with the QR-code TLV but no plaintext name, and — across
+  // accounts — no certificate we can decrypt. Such a peer would normally be
+  // dropped here; for an outgoing QR share we instead target it with a
+  // placeholder name so the standard connect path can reach it (the peer
+  // authorizes because it scanned our QR).
+  const bool is_qr_peer =
+      !is_incoming && advertisement.has_qr_code() && !certificate.has_value();
+
+  if (!advertisement.device_name() && !certificate.has_value() && !is_qr_peer) {
     VLOG(1) << __func__
             << ": Failed to retrieve public certificate for contact "
                "only advertisement.";
@@ -3070,9 +3079,13 @@ std::optional<ShareTarget> NearbySharingServiceImpl::CreateShareTarget(
   std::optional<std::string> device_name =
       GetDeviceName(advertisement, certificate);
   if (!device_name.has_value()) {
-    VLOG(1) << __func__
-            << ": Failed to retrieve device name for advertisement.";
-    return std::nullopt;
+    if (is_qr_peer) {
+      device_name = "Quick Share device";
+    } else {
+      VLOG(1) << __func__
+              << ": Failed to retrieve device name for advertisement.";
+      return std::nullopt;
+    }
   }
 
   ShareTarget target;

@@ -74,6 +74,13 @@ class Advertisement {
   bool HasDeviceName() const { return device_name_.has_value(); }
   uint8_t vendor_id() const { return vendor_id_; }
 
+  // True when the advertisement carried a QR-code TLV, i.e. the remote device
+  // is receiving via a scanned "share via QR code" session. Set by
+  // FromEndpointInfo; used by the outgoing path to target an otherwise
+  // unidentifiable (no plaintext name, no shared certificate) QR peer.
+  bool has_qr_code() const { return has_qr_code_; }
+  void set_has_qr_code(bool value) { has_qr_code_ = value; }
+
   static std::unique_ptr<Advertisement> FromEndpointInfo(
       absl::Span<const uint8_t> endpoint_info);
 
@@ -103,6 +110,9 @@ class Advertisement {
   const uint8_t vendor_id_;
 
   const AdvertisementCapabilities capabilities_;
+
+  // Whether a QR-code TLV was present in the parsed advertisement.
+  bool has_qr_code_ = false;
 };
 
 }  // namespace nearby::sharing

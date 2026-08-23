@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QHash>
+#include <QSet>
 #include <memory>
 
 #include "file_share_state.h"
@@ -180,6 +181,9 @@ class FileShareTrayController : public QObject {
   QString resolveSavePath(const QString& raw) const;
   
   void updateTargetFromInfo(const NearbySharingApi::ShareTargetInfo& info);
+  // Auto-send the pending file(s) to a peer that scanned our QR code.
+  void MaybeAutoSendToQrPeer(const NearbySharingApi::ShareTargetInfo& info,
+                             const QString& name);
   void handleTransferUpdate(const NearbySharingApi::TransferUpdateInfo& update);
   void handleTransferComplete(const NearbySharingApi::TransferUpdateInfo& update);
   void handleIncomingTransferComplete(const NearbySharingApi::TransferUpdateInfo& update,
@@ -210,6 +214,9 @@ class FileShareTrayController : public QObject {
   QString signed_in_photo_path_;
   bool mydevices_available_ = false;
   FileShareState state_;
+  // Outgoing QR peers we've already auto-sent to, so a re-advertised/updated
+  // target doesn't trigger a duplicate send.
+  QSet<qlonglong> auto_sent_qr_targets_;
   // Per-target throughput tracking: last observed byte count + timestamp, and
   // the smoothed rate we report. Keyed by share_target_id.
   struct SpeedSample {

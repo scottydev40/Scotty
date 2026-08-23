@@ -256,6 +256,7 @@ std::unique_ptr<Advertisement> Advertisement::FromEndpointInfo(
 
   uint8_t vendor_id = static_cast<uint8_t>(BlockedVendorId::kNone);
   AdvertisementCapabilities capabilities{};
+  bool has_qr_code = false;
   while (endpoint_info.end() - iter >= kTlvMinimumLength) {
     // We will parse a TLV element now.
     TlvTypes type = static_cast<TlvTypes>(*iter++);
@@ -274,7 +275,9 @@ std::unique_ptr<Advertisement> Advertisement::FromEndpointInfo(
         break;
       case TlvTypes::kQrCode:
         LOG(INFO) << "Found QR code data, skipping.";
-        // TODO: b/341984671 - Implement handling for this TLV type.
+        // The QR-code TLV payload itself is not consumed here, but its presence
+        // marks the remote device as receiving via a scanned QR session.
+        has_qr_code = true;
         iter += value_len;
         break;
       case TlvTypes::kCapabilities:
@@ -289,9 +292,13 @@ std::unique_ptr<Advertisement> Advertisement::FromEndpointInfo(
     }
   }
 
-  return Advertisement::NewInstance(
+  std::unique_ptr<Advertisement> advertisement = Advertisement::NewInstance(
       std::move(salt), std::move(encrypted_metadata_key), device_type,
       std::move(optional_device_name), vendor_id, std::move(capabilities));
+  if (advertisement != nullptr) {
+    advertisement->set_has_qr_code(has_qr_code);
+  }
+  return advertisement;
   // LINT.ThenChange(//depot/google3/third_party/nearby/connections/implementation/mediums/advertisements/advertisement_util.cc)
 }
 
