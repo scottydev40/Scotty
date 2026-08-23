@@ -84,6 +84,10 @@ class CRYPTO_EXPORT ECPrivateKey {
   // includes the leading 0x04 byte.
   bool ExportRawPublicKey(std::string* output) const;
 
+  // Exports the public key as an EC point in X9.62 compressed form: a 33-byte
+  // string, [0x02|0x03] || X(32). The prefix is 0x03 when Y is odd.
+  bool ExportCompressedPublicKey(std::string* output) const;
+
  private:
   // Constructor is private. Use one of the Create*() methods above instead.
   ECPrivateKey();
