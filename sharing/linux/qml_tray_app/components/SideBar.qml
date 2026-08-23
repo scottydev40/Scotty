@@ -369,15 +369,11 @@ Item {
                 color: textMuted
             }
 
-            // QR hidden: Quick Share's QR is a Google web-relay (files are
-            // uploaded to Google's servers and the QR points at a Google-hosted
-            // download page). The engine only ever exposes the upstream
-            // placeholder URL, so the code resolves to nothing — a phone opens
-            // Quick Share and stalls. Nothing local can populate it without
-            // Google's upload backend, so keep it hidden rather than ship a
-            // dead-looking code. Re-enable if a real relay is ever wired up.
+            // "Scan to connect" QR: carries this device's ephemeral session
+            // public key so a phone can start a local Quick Share QR session
+            // (no Google cloud relay). Rendered from fileShareController.qrCodeUrl.
             SendUrlPanel {
-                visible: false
+                visible: true
                 Layout.topMargin: 14
                 Layout.leftMargin: 12
                 Layout.alignment: Qt.AlignHCenter

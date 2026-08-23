@@ -15,21 +15,35 @@
 #ifndef THIRD_PARTY_NEARBY_SHARING_NEARBY_SHARING_SERVICE_EXTENSION_H_
 #define THIRD_PARTY_NEARBY_SHARING_NEARBY_SHARING_SERVICE_EXTENSION_H_
 
+#include <memory>
 #include <string>
+
+#include "internal/crypto_cros/ec_private_key.h"
 
 namespace nearby {
 namespace sharing {
 
 class NearbySharingServiceExtension {
  public:
-  NearbySharingServiceExtension() = default;
+  NearbySharingServiceExtension();
 
-  // Returns the QR Code Url.
+  // Returns the QR Code URL for the current session (carries the sender public
+  // key as a base64url compressed EC P-256 point).
   std::string GetQrCodeUrl() const { return qr_code_url_; }
 
+  // Rotates to a fresh ephemeral key + URL.
+  void RefreshQrCodeSession();
+
+  // The retained ephemeral private key for the current QR session, or nullptr
+  // if key generation failed. Used to prove key possession during the QR
+  // handshake (Phase B).
+  const crypto::ECPrivateKey* qr_code_private_key() const {
+    return qr_code_private_key_.get();
+  }
+
  private:
-  // The qr code url for the current session containing the Sender Public Key.
-  std::string qr_code_url_ = "https://near.by/qrcode";
+  std::unique_ptr<crypto::ECPrivateKey> qr_code_private_key_;
+  std::string qr_code_url_;
 };
 
 }  // namespace sharing
