@@ -143,65 +143,6 @@ float NormalizeFacadeProgress(float progress) {
   return progress / 100.0f;
 }
 
-std::string GenerateQrCodeUrl() {
-  auto ec_key = nearby::crypto::ECPrivateKey::Create();
-  if (!ec_key) {
-    return {};
-  }
-
-  const EC_KEY* raw_ec_key = EVP_PKEY_get0_EC_KEY(ec_key->key());
-  if (!raw_ec_key) {
-    return {};
-  }
-
-  const EC_GROUP* group = EC_KEY_get0_group(raw_ec_key);
-  const EC_POINT* public_key = EC_KEY_get0_public_key(raw_ec_key);
-  if (!group || !public_key) {
-    return {};
-  }
-
-  BIGNUM* x = BN_new();
-  BIGNUM* y = BN_new();
-  if (!x || !y) {
-    BN_free(x);
-    BN_free(y);
-    return {};
-  }
-
-  if (!EC_POINT_get_affine_coordinates_GFp(group, public_key, x, y, nullptr)) {
-    BN_free(x);
-    BN_free(y);
-    return {};
-  }
-
-  std::vector<uint8_t> x_bytes(32, 0);
-  const int x_len = BN_num_bytes(x);
-  if (x_len > static_cast<int>(x_bytes.size())) {
-    BN_free(x);
-    BN_free(y);
-    return {};
-  }
-  BN_bn2bin(x, x_bytes.data() + (x_bytes.size() - x_len));
-
-  const uint8_t prefix = BN_is_odd(y) ? 0x03 : 0x02;
-  BN_free(x);
-  BN_free(y);
-
-  std::vector<uint8_t> key_data;
-  key_data.reserve(35);
-  key_data.push_back(0x00);
-  key_data.push_back(0x00);
-  key_data.push_back(prefix);
-  key_data.insert(key_data.end(), x_bytes.begin(), x_bytes.end());
-
-  std::string encoded;
-  absl::WebSafeBase64Escape(
-      std::string(reinterpret_cast<const char*>(key_data.data()),
-                  key_data.size()),
-      &encoded);
-  return "https://quickshare.google/qrcode#key=" + encoded;
-}
-
 }  // namespace
 
 class NearbySharingApi::Impl : public nearby::sharing::ShareTargetDiscoveredCallback,
@@ -334,7 +275,6 @@ class NearbySharingApi::Impl : public nearby::sharing::ShareTargetDiscoveredCall
   // App-facing advertising visibility (see ToProtoVisibility): 0=Everyone,
   // 1=Contacts, 2=No one, 3=Your devices, 4=Everyone(10 min).
   int visibility_mode = 0;
-  std::string qr_code_url;
   std::mutex listener_mutex;
   NearbySharingApi::Listener listener;
 };
@@ -756,10 +696,13 @@ void NearbySharingApi::Shutdown(std::function<void(StatusCode)> callback) {
 }
 
 std::string NearbySharingApi::GetQrCodeUrl() const {
-  if (impl_->qr_code_url.empty()) {
-    impl_->qr_code_url = GenerateQrCodeUrl();
+  // The QR key must be the one the engine matches a scanning peer against
+  // (NearbySharingServiceImpl's retained ephemeral session key), not a separate
+  // one minted here — otherwise the displayed QR never matches what we verify.
+  if (impl_->service == nullptr) {
+    return {};
   }
-  return impl_->qr_code_url;
+  return impl_->service->GetQrCodeUrl();
 }
 
 std::string NearbySharingApi::StatusCodeToString(StatusCode status) {
