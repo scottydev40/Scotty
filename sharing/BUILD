@@ -110,6 +110,31 @@ cc_library(
 )
 
 cc_library(
+    name = "qr_code_session_crypto",
+    srcs = ["qr_code_session_crypto.cc"],
+    hdrs = ["qr_code_session_crypto.h"],
+    visibility = [
+        "//sharing:__subpackages__",
+    ],
+    deps = [
+        "@boringssl//:crypto",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "qr_code_session_crypto_test",
+    srcs = ["qr_code_session_crypto_test.cc"],
+    deps = [
+        ":qr_code_session_crypto",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "share_session_usage",
     hdrs = ["share_session_usage.h"],
     visibility = [
@@ -382,6 +407,7 @@ cc_library(
         ":nearby_connection_impl",
         ":nearby_sharing_decoder",
         ":nearby_sharing_util",
+        ":qr_code_session_crypto",
         ":outgoing_targets_manager",
         ":paired_key_verification_runner",
         ":share_session",

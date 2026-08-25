@@ -93,6 +93,7 @@
 #include "sharing/nearby_sharing_settings.h"
 #include "sharing/nearby_sharing_util.h"
 #include "sharing/outgoing_share_session.h"
+#include "sharing/qr_code_session_crypto.h"
 #include "sharing/paired_key_verification_runner.h"
 #include "sharing/proto/encrypted_metadata.pb.h"
 #include "sharing/proto/enums.pb.h"
@@ -3062,12 +3063,22 @@ std::optional<ShareTarget> NearbySharingServiceImpl::CreateShareTarget(
     bool is_incoming) {
   // A remote device receiving via a scanned "share via QR code" session
   // advertises with the QR-code TLV but no plaintext name, and — across
-  // accounts — no certificate we can decrypt. Such a peer would normally be
-  // dropped here; for an outgoing QR share we instead target it with a
-  // placeholder name so the standard connect path can reach it (the peer
-  // authorizes because it scanned our QR).
-  const bool is_qr_peer =
-      !is_incoming && advertisement.has_qr_code() && !certificate.has_value();
+  // accounts — no certificate we can decrypt. Confirm the peer scanned *our* QR
+  // by matching its advertised token against the current session's public blob
+  // (this also recovers the device name the token carries); on a match we
+  // target it so the standard connect path can reach it (the peer authorizes
+  // because it scanned our QR).
+  bool is_qr_peer = false;
+  std::optional<std::string> qr_device_name;
+  if (!is_incoming && advertisement.has_qr_code() && !certificate.has_value()) {
+    const std::string& blob = service_extension_->qr_code_public_blob();
+    QrCodeMatchResult qr = MatchQrCodeToken(
+        absl::MakeConstSpan(reinterpret_cast<const uint8_t*>(blob.data()),
+                            blob.size()),
+        absl::MakeConstSpan(advertisement.qr_code_token()));
+    is_qr_peer = qr.matched;
+    qr_device_name = std::move(qr.device_name);
+  }
 
   if (!advertisement.device_name() && !certificate.has_value() && !is_qr_peer) {
     VLOG(1) << __func__
@@ -3080,7 +3091,9 @@ std::optional<ShareTarget> NearbySharingServiceImpl::CreateShareTarget(
       GetDeviceName(advertisement, certificate);
   if (!device_name.has_value()) {
     if (is_qr_peer) {
-      device_name = "Quick Share device";
+      device_name = qr_device_name.has_value()
+                        ? std::move(qr_device_name)
+                        : std::optional<std::string>("Quick Share device");
     } else {
       VLOG(1) << __func__
               << ": Failed to retrieve device name for advertisement.";

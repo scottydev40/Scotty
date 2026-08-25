@@ -41,9 +41,18 @@ class NearbySharingServiceExtension {
     return qr_code_private_key_.get();
   }
 
+  // The 35-byte QR public blob for the current session ([0x00,0x00,0x02|0x03,
+  // X(32)]) carried in the QR URL. This is the exact ikm a scanning peer uses
+  // to derive its advertising token, so MatchQrCodeToken keys off it. Empty if
+  // key generation failed.
+  const std::string& qr_code_public_blob() const {
+    return qr_code_public_blob_;
+  }
+
  private:
   std::unique_ptr<crypto::ECPrivateKey> qr_code_private_key_;
   std::string qr_code_url_;
+  std::string qr_code_public_blob_;
 };
 
 }  // namespace sharing
