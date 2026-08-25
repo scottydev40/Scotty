@@ -62,6 +62,10 @@ struct ShareTarget {
   uint8_t vendor_id = 0;
   // True if the share target is not ready for receiving.
   bool receive_disabled = false;
+  // True if this outgoing target is a device that scanned our "share via QR
+  // code" QR (verified via MatchQrCodeToken). Such a target is not shown in the
+  // send sheet; scanning is the intent to receive, so we send to it directly.
+  bool is_qr_code_peer = false;
 };
 
 }  // namespace sharing

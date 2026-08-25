@@ -60,6 +60,9 @@ class __attribute__((visibility("default"))) NearbySharingApi {
     std::string device_name;
     bool is_incoming = false;
     int device_type = 0;
+    // True if this outgoing target scanned our QR code (verified). The UI sends
+    // to it directly instead of listing it in the send sheet.
+    bool is_qr_code_peer = false;
   };
 
   struct TextAttachmentInfo {
