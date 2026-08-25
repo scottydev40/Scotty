@@ -34,6 +34,33 @@ Quick-Settings tile.
   desktops that have a tray). Light/dark theme following, "Send with Scotty"
   from the file manager, live transfer speed and per-file progress.
 
+## How Scotty compares
+
+The closest tools are **Packet** and **rquickshare** — they also speak Quick
+Share, so a stock Android phone transfers to them with nothing extra installed.
+**LocalSend**, **KDE Connect** and **Warpinator** are their own protocols: great
+apps, but they need their own app running on *both* ends. Where Scotty pulls
+ahead is off-network transport and the Google-account features (self-share and
+contacts) that the other Quick Share clients don't implement.
+
+| | Scotty | Packet | rquickshare | LocalSend | KDE Connect |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Talks to **stock Quick Share** (no app on the phone) | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Works with the phone **off your Wi-Fi network** | ✅ | ⚠️ ¹ | ❌ | ❌ | ❌ |
+| **Keeps your Wi-Fi + internet up** during an off-network transfer | ✅ ² | ❌ | ❌ | — | — |
+| **Bluetooth** fallback when there's no Wi-Fi at all | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **"My Devices"** — your own signed-in devices, no accept prompt | ✅ | ❌ | ❌ | ❌ | — |
+| **Contacts** visibility — share to named people, not just "Everyone" | ✅ | ❌ | ❌ | ❌ | — |
+| Send by **scanning a QR code** | ✅ ³ | ❌ | ❌ | ❌ | ❌ |
+| **Receive with the screen locked** | ✅ | — | — | — | — |
+| Native Linux packaging (**.deb + AppImage + GNOME tile**) | ✅ | ⚠️ ⁴ | ⚠️ ⁴ | ✅ | ✅ |
+
+<sub>¹ Packet uses Wi-Fi Direct, which takes over the radio. ² Scotty hosts a
+SoftAP on a virtual interface, so your normal Wi-Fi and internet stay connected
+(Boost mode trades that for speed). ³ On-network today; off-network QR is in
+progress. ⁴ Distributed mainly as Flatpak. Compiled from each project's docs as
+of August 2026 — corrections welcome via an issue.</sub>
+
 ## On the roadmap
 
 - **AirDrop** — a native AWDL transport so one app talks to Apple, Google, and

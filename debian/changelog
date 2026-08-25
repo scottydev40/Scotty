@@ -1,3 +1,12 @@
+scotty (0.1.0~beta1-9) unstable; urgency=medium
+
+  * Quick Share via QR code: verify the scanned session token cryptographically,
+    show the engine's own session key so a scanned peer matches, and send
+    straight to the scanned device instead of listing it in the sheet.
+  * README: add a comparison table vs Packet, rquickshare, LocalSend and others.
+
+ -- Scotty Developers <scottydev40@users.noreply.github.com>  Tue, 25 Aug 2026 18:00:00 -0500
+
 scotty (0.1.0~beta1-8) unstable; urgency=medium
 
   * Quick Share via QR code: generate a scannable code, discover and
