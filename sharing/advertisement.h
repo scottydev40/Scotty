@@ -81,6 +81,15 @@ class Advertisement {
   bool has_qr_code() const { return has_qr_code_; }
   void set_has_qr_code(bool value) { has_qr_code_ = value; }
 
+  // The raw value of the QR-code TLV, when present. For a QR receive session
+  // this is the advertising token bound to the shower's QR key: either the
+  // 16-byte match-tag, or IV||AES-128-GCM||tag encrypting the device name. Used
+  // by MatchQrCodeToken to confirm the peer scanned our QR and recover its name.
+  const std::vector<uint8_t>& qr_code_token() const { return qr_code_token_; }
+  void set_qr_code_token(std::vector<uint8_t> token) {
+    qr_code_token_ = std::move(token);
+  }
+
   static std::unique_ptr<Advertisement> FromEndpointInfo(
       absl::Span<const uint8_t> endpoint_info);
 
@@ -113,6 +122,9 @@ class Advertisement {
 
   // Whether a QR-code TLV was present in the parsed advertisement.
   bool has_qr_code_ = false;
+
+  // The raw QR-code TLV value, when present (see qr_code_token()).
+  std::vector<uint8_t> qr_code_token_ = {};
 };
 
 }  // namespace nearby::sharing
