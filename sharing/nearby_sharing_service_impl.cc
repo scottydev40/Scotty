@@ -3107,6 +3107,7 @@ std::optional<ShareTarget> NearbySharingServiceImpl::CreateShareTarget(
   target.is_incoming = is_incoming;
   target.device_id = GetDeviceId(endpoint_id, certificate);
   target.vendor_id = advertisement.vendor_id();
+  target.is_qr_code_peer = is_qr_peer;
   if (certificate.has_value()) {
     target.for_self_share = certificate->for_self_share();
 

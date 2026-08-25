@@ -167,21 +167,26 @@ void FileShareTrayController::updateTargetFromInfo(
   const QString name = StringUtils::TrimmedOrFallback(
       StringUtils::FromStdString(info.device_name),
       QStringLiteral("Unknown device"));
+
+  // A device that scanned our QR is not a pick-from-a-list target: scanning is
+  // the intent to receive, so send to it directly and keep it out of the sheet.
+  if (info.is_qr_code_peer && !info.is_incoming) {
+    MaybeAutoSendToQrPeer(info, name);
+    return;
+  }
+
   state_.AddOrUpdateTarget(info.id, name, info.is_incoming, info.device_type);
   emit discoveredTargetsChanged();
-
-  MaybeAutoSendToQrPeer(info, name);
 }
 
 void FileShareTrayController::MaybeAutoSendToQrPeer(
     const NearbySharingApi::ShareTargetInfo& info, const QString& name) {
-  // A device that scanned our "share via QR code" QR surfaces as an unnamed
-  // outgoing peer that the engine labels "Quick Share device" (see
-  // NearbySharingServiceImpl::CreateShareTarget). Scanning the QR is the intent
-  // to receive, so send to it immediately instead of waiting for a tap.
-  // (Keep this string in sync with the engine placeholder.)
+  // A device that scanned our "share via QR code" QR is verified by the engine
+  // (MatchQrCodeToken) and flagged is_qr_code_peer. Scanning is the intent to
+  // receive, so send to it immediately instead of waiting for a tap. (The name
+  // is now the peer's real decrypted name, so gate on the flag, not the name.)
   if (info.is_incoming) return;
-  if (name != QStringLiteral("Quick Share device")) return;
+  if (!info.is_qr_code_peer) return;
   if (state_.pendingSendFilePaths().isEmpty()) return;
   if (transferActive()) return;
   if (auto_sent_qr_targets_.contains(info.id)) return;
