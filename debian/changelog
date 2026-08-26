@@ -1,3 +1,11 @@
+scotty (0.1.0~beta1-10) unstable; urgency=medium
+
+  * Off-network QR now transfers: enable the BLE L2CAP medium so a scanned
+    peer with no shared Wi-Fi connects over BLE and upgrades to Wi-Fi
+    Hotspot/Direct. On-network (Wi-Fi LAN) transfers are unchanged.
+
+ -- Scotty Developers <scottydev40@users.noreply.github.com>  Tue, 25 Aug 2026 23:05:00 -0500
+
 scotty (0.1.0~beta1-9) unstable; urgency=medium
 
   * Quick Share via QR code: verify the scanned session token cryptographically,
