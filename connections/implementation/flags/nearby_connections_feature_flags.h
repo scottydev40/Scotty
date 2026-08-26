@@ -38,8 +38,11 @@ constexpr auto kEnableAdvertisingForInstantOnLost =
 constexpr auto kEnableAwdl =
     flags::Flag<bool>(kConfigPackage, "45690762", false);
 // Disable/Enable BLE L2CAP in Nearby Connections SDK.
+// EXPERIMENT (off-wifi QR): flipped to true to enable the BLE L2CAP
+// listen/connect path. kRefactorBleL2cap stays false (its refactor breaks
+// non-l2cap mediums per base_endpoint_channel.cc).
 constexpr auto kEnableBleL2cap =
-    flags::Flag<bool>(kConfigPackage, "45685706", false);
+    flags::Flag<bool>(kConfigPackage, "45685706", true);
 // Enable/Disable BLE medium injection.
 constexpr auto kEnableBleMediumInjection =
     flags::Flag<bool>(kConfigPackage, "45743128", false);
