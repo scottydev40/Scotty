@@ -18,6 +18,7 @@
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
+#include "internal/platform/implementation/linux/dbus.h"
 #include "internal/platform/implementation/linux/device_info.h"
 #include "internal/platform/implementation/linux/test_utils.h"
 
@@ -28,9 +29,12 @@ std::wstring StringToWideString(const std::string& s) {
 }
 
 std::string GetPayloadPath(nearby::PayloadId payload_id) {
+  // fork-local: DeviceInfo now requires a system bus and GetDownloadPath()
+  // returns a FilePath (no longer an optional).
   std::filesystem::path path =
-      nearby::linux::DeviceInfo().GetDownloadPath().value_or(
-          std::string(getenv("HOME")).append("Downloads"));
+      nearby::linux::DeviceInfo(nearby::linux::getSystemBusConnection())
+          .GetDownloadPath()
+          .GetPath();
 
   return path.string();
 }
