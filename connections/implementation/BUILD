@@ -321,7 +321,7 @@ cc_library(
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@com_google_googletest//:gtest_for_library_testonly",
+        "@com_google_googletest//:gtest",
     ],
 )
 
