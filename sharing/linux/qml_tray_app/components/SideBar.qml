@@ -26,17 +26,19 @@ Item {
     function visibilityDesc(v) {
         if (!fileShareController.running)
             return "The service is not running. Start it to discover or receive files."
+        // Subtitles say WHO can find you; how transfers are accepted lives in
+        // Settings (auto-accept).
         switch (v) {
         case 2:
-            return "No one — you won't appear to nearby devices. Active sessions still work."
+            return "You won't appear to nearby devices. Active transfers still finish."
         case 3:
             return "Only your own devices signed in to the same account can find you — they share without a prompt."
         case 1:
-            return "Your contacts can find you and share files. You'll be notified and must approve each transfer."
+            return "Your contacts can find you and share files with you."
         case 4:
-            return "Visible to everyone for 10 minutes, then automatically switches back."
+            return "Visible to everyone for 10 minutes, then switches back automatically."
         default:
-            return "Nearby devices can share files with you. You'll be notified and must approve each transfer."
+            return "Any nearby device can find you and share files with you."
         }
     }
 

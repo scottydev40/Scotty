@@ -440,7 +440,7 @@ void FileShareTrayController::loadSettings() {
   }
 
   const bool stored_auto_accept =
-      settings.value(QStringLiteral("autoAcceptIncoming"), true).toBool();
+      settings.value(QStringLiteral("autoAcceptIncoming"), false).toBool();
   state_.SetAutoAcceptIncoming(stored_auto_accept);
 
   const bool stored_enable_5ghz_hotspot =
@@ -778,9 +778,20 @@ void FileShareTrayController::setRunAtStartup(bool enabled) {
 }
 
 void FileShareTrayController::refreshAutostartFile() {
-  // Rewrite in place so entries written by an older build (no --background, or
-  // the earlier --hidden spelling, or an unquoted Exec path) pick up the
-  // current format.
+  QSettings settings(QStringLiteral("Nearby"), QStringLiteral("QmlFileTrayApp"));
+  // Run at startup defaults ON: on the first launch, enable it once. The
+  // autostart entry passes --background, so nothing pops on login. The guard
+  // key makes this a one-time default — if the user later turns it off, it
+  // stays off.
+  if (!settings.value(QStringLiteral("runAtStartupInitialized"), false)
+           .toBool()) {
+    WriteAutostartFile();
+    settings.setValue(QStringLiteral("runAtStartupInitialized"), true);
+    return;
+  }
+  // Otherwise rewrite in place so entries written by an older build (no
+  // --background, the earlier --hidden spelling, or an unquoted Exec path) pick
+  // up the current format.
   if (runAtStartup()) {
     WriteAutostartFile();
   }
@@ -1017,9 +1028,10 @@ void FileShareTrayController::startReceiveMode() {
         QMetaObject::invokeMethod(
             this,
             [this, status]() {
-              setStatus(QStringLiteral("StartReceiveMode: %1")
-                            .arg(StatusMapper::ApiStatusToString(status)));
-              if (status != NearbySharingApi::StatusCode::kOk) {
+              if (status == NearbySharingApi::StatusCode::kOk) {
+                setStatus(QStringLiteral("Ready to receive"));
+              } else {
+                setStatus(QStringLiteral("Couldn't start receiving"));
                 state_.SetRunning(false);
                 emit runningChanged();
               }

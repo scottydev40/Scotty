@@ -26,6 +26,7 @@
 #include "notification_manager.h"
 #include "quick_share_dbus.h"
 #include "theme_controller.h"
+#include "update_checker.h"
 
 namespace {
 
@@ -173,6 +174,7 @@ int main(int argc, char* argv[]) {
 
   FileShareTrayController controller;
   ThemeController theme;
+  UpdateChecker update_checker;
 
   // Start with no window. Advertising visibility is untouched — this is only
   // about the window, so avoid the word "hidden", which already names a
@@ -186,6 +188,7 @@ int main(int argc, char* argv[]) {
   QQmlApplicationEngine engine;
   engine.rootContext()->setContextProperty("fileShareController", &controller);
   engine.rootContext()->setContextProperty("Theme", &theme);
+  engine.rootContext()->setContextProperty("updateChecker", &update_checker);
   engine.rootContext()->setContextProperty("startInBackground",
                                            start_in_background);
   engine.load(QUrl(QStringLiteral("qrc:/qml/FileShareTray.qml")));
