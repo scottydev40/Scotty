@@ -23,7 +23,7 @@ cc_library(
     name = "base85",
     srcs = ["base85.cc"],
     hdrs = ["base85.h"],
-    compatible_with = ["//buildenv/target:non_prod"],
+    # fork-local: dropped //buildenv prod gating (test enablement)
     deps = [
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",

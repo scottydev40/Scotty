@@ -68,7 +68,7 @@ cc_library(
     hdrs = [
         "fake_device_provider.h",
     ],
-    compatible_with = ["//buildenv/target:non_prod"],
+    # fork-local: dropped //buildenv prod gating (test enablement)
     visibility = [
         "//third_party/nearby/presence:__subpackages__",
     ],
