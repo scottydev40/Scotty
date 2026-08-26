@@ -327,6 +327,9 @@ cc_library(
 
 cc_test(
     name = "bwu_test",
+    # fork-local: static link under --copt=-fvisibility=hidden (avoids undefined
+    # refs to symbols hidden in .so deps at the default dynamic link mode).
+    linkstatic = True,
     srcs = [
         "base_bwu_handler_test.cc",
         "bwu_manager_test.cc",
@@ -359,6 +362,9 @@ cc_test(
 
 cc_test(
     name = "pcp_manager_test",
+    # fork-local: static link under --copt=-fvisibility=hidden (avoids undefined
+    # refs to symbols hidden in .so deps at the default dynamic link mode).
+    linkstatic = True,
     srcs = ["pcp_manager_test.cc"],
     deps = [
         ":endpoint_channel",
@@ -378,6 +384,9 @@ cc_test(
 
 cc_test(
     name = "pcp_handler_test",
+    # fork-local: static link under --copt=-fvisibility=hidden (avoids undefined
+    # refs to symbols hidden in .so deps at the default dynamic link mode).
+    linkstatic = True,
     timeout = "moderate",
     srcs = [
         "base_pcp_handler_test.cc",
@@ -543,6 +552,9 @@ cc_test(
 
 cc_test(
     name = "endpoint_channel_test",
+    # fork-local: static link under --copt=-fvisibility=hidden (avoids undefined
+    # refs to symbols hidden in .so deps at the default dynamic link mode).
+    linkstatic = True,
     srcs = [
         "base_endpoint_channel_test.cc",
         "endpoint_channel_manager_test.cc",

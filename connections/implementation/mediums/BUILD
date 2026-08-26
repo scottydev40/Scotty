@@ -193,6 +193,9 @@ cc_library(
 
 cc_test(
     name = "core_internal_mediums_test",
+    # fork-local: static link under --copt=-fvisibility=hidden (avoids undefined
+    # refs to symbols hidden in .so deps at the default dynamic link mode).
+    linkstatic = True,
     size = "small",
     srcs = [
         "awdl_test.cc",
@@ -234,6 +237,9 @@ cc_test(
 
 cc_test(
     name = "bwu_handler_test",
+    # fork-local: static link under --copt=-fvisibility=hidden (avoids undefined
+    # refs to symbols hidden in .so deps at the default dynamic link mode).
+    linkstatic = True,
     size = "small",
     srcs = [
         "awdl_bwu_handler_test.cc",
