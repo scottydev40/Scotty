@@ -84,7 +84,7 @@ cc_library(
         "//internal/platform:error_code_recorder",
         "//proto:connections_enums_cc_proto",
         "@com_google_absl//absl/time",
-        "@com_google_googletest//:gtest_for_library_testonly",
+        "@com_google_googletest//:gtest",
     ],
 )
 

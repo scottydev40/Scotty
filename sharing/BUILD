@@ -537,7 +537,7 @@ cc_library(
     hdrs = ["transfer_metadata_matchers.h"],
     deps = [
         ":transfer_metadata",
-        "@com_google_googletest//:gtest_for_library_testonly",
+        "@com_google_googletest//:gtest",
     ],
 )
 
