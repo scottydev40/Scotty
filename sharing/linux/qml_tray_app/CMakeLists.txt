@@ -6,8 +6,32 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Qml Quick QuickControls2 DBus)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Qml Quick QuickControls2 DBus Network)
 include(GNUInstallDirs)
+
+# --- Version stamp for the in-app update checker ---------------------------
+# Resolve this build's release tag from git (falls back to the project version
+# for source-tarball builds with no git). The update checker compares it against
+# GitHub release tags.
+find_package(Git QUIET)
+set(SCOTTY_VERSION_TAG "v${PROJECT_VERSION}")
+if(GIT_FOUND)
+  execute_process(
+    COMMAND "${GIT_EXECUTABLE}" describe --tags --always
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    OUTPUT_VARIABLE _scotty_git_describe
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET)
+  if(_scotty_git_describe)
+    set(SCOTTY_VERSION_TAG "${_scotty_git_describe}")
+  endif()
+endif()
+set(SCOTTY_UPDATE_REPO "scottydev40/Scotty")
+set(SCOTTY_APPIMAGE_ASSET "Scotty-x86_64.AppImage")
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/scotty_version.h.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/scotty_version.h"
+  @ONLY)
 
 # Where the Bazel-built Nearby .so and header were installed
 set(NEARBY_PREFIX "/usr/local" CACHE PATH "Install prefix for the Nearby shared library")
@@ -33,6 +57,10 @@ qt_add_executable(nearby_qml_file_tray_app
   app_paths.h
   theme_controller.cc
   theme_controller.h
+  update_checker.cc
+  update_checker.h
+  version_compare.cc
+  version_compare.h
   bluetooth_name_guard.cc
   bluetooth_name_guard.h
   quick_share_dbus.cc
@@ -53,13 +81,28 @@ qt_add_executable(nearby_qml_file_tray_app
   resources_file_share.qrc
 )
 
-target_include_directories(nearby_qml_file_tray_app PRIVATE "${NEARBY_SHARING_INCLUDE}")
+target_include_directories(nearby_qml_file_tray_app PRIVATE
+  "${NEARBY_SHARING_INCLUDE}"
+  "${CMAKE_CURRENT_BINARY_DIR}"  # generated scotty_version.h
+)
 
 target_link_libraries(nearby_qml_file_tray_app PRIVATE
-  Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::DBus
+  Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::DBus Qt6::Network
   "${QRENCODE_LIB}"
   "${NEARBY_SHARING_LIB}"
 )
+
+# --- Unit tests (comparator is pure std C++; no Qt/Nearby needed) ----------
+# Build with -DBUILD_TESTING=OFF to skip (e.g. minimal AppImage build hosts).
+option(BUILD_TESTING "Build unit tests" ON)
+if(BUILD_TESTING)
+  enable_testing()
+  add_executable(version_compare_test
+    version_compare_test.cc
+    version_compare.cc
+    version_compare.h)
+  add_test(NAME version_compare_test COMMAND version_compare_test)
+endif()
 
 set_target_properties(nearby_qml_file_tray_app PROPERTIES
   OUTPUT_NAME scotty

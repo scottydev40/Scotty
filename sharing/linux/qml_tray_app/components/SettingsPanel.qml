@@ -129,12 +129,36 @@ Popup {
                         anchors.margins: 12
                         spacing: 12
 
-                        Label {
+                        FolderDialog {
+                            id: saveFolderDialog
+                            title: "Choose save folder for received files"
+                            onAccepted: {
+                                fileShareController.savePath =
+                                    selectedFolder.toString().replace(/^file:\/\//, "")
+                            }
+                        }
+
+                        RowLayout {
                             Layout.fillWidth: true
-                            wrapMode: Text.WordWrap
-                            font.pixelSize: 12
-                            color: root.textMuted
-                            text: "Nearby Sharing uses built-in transport and discovery settings."
+                            spacing: 10
+                            Label {
+                                text: "Save folder"
+                                font.pixelSize: 13
+                                color: root.textMuted
+                                Layout.preferredWidth: 110
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                elide: Text.ElideMiddle
+                                font.pixelSize: 11
+                                color: root.textPrimary
+                                text: fileShareController.savePath.length > 0
+                                      ? fileShareController.savePath
+                                      : "Default (~/Downloads)"
+                            }
+                            BrowseButton {
+                                onClicked: saveFolderDialog.open()
+                            }
                         }
 
                         RowLayout {
@@ -173,21 +197,6 @@ Popup {
                                 Layout.alignment: Qt.AlignVCenter
                                 checked: fileShareController.runAtStartup
                                 onToggled: fileShareController.runAtStartup = checked
-                            }
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 10
-                            Label {
-                                Layout.fillWidth: true
-                                color: root.textPrimary
-                                font.pixelSize: 13
-                                text: "Enable 5 GHz hotspot"
-                            }
-                            ThemedToggle {
-                                checked: fileShareController.enable5GhzHotspot
-                                onToggled: fileShareController.enable5GhzHotspot = checked
                             }
                         }
 
@@ -307,6 +316,146 @@ Popup {
                     }
                 }
 
+                // ── About & software updates ──────────────────────────────
+                SectionLabel { text: "ABOUT" }
+                SectionCard {
+                    width: settingsCol.width
+
+                    ColumnLayout {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 12
+                        spacing: 12
+
+                        // Current version.
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+                            Label {
+                                Layout.fillWidth: true
+                                color: root.textPrimary
+                                font.pixelSize: 13
+                                text: "Version"
+                            }
+                            Label {
+                                color: root.textMuted
+                                font.pixelSize: 13
+                                text: updateChecker.currentVersion
+                            }
+                        }
+
+                        // Beta channel opt-in (persisted).
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 1
+                                Label {
+                                    color: root.textPrimary
+                                    font.pixelSize: 13
+                                    text: "Beta updates"
+                                }
+                                Label {
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.WordWrap
+                                    color: root.textMuted
+                                    font.pixelSize: 11
+                                    text: "Include pre-release (beta) builds when checking."
+                                }
+                            }
+                            ThemedToggle {
+                                Layout.alignment: Qt.AlignVCenter
+                                checked: updateChecker.betaChannel
+                                onToggled: updateChecker.betaChannel = checked
+                            }
+                        }
+
+                        // Status line (checking / up to date / available / error).
+                        Label {
+                            Layout.fillWidth: true
+                            visible: updateChecker.statusText.length > 0
+                            wrapMode: Text.WordWrap
+                            font.pixelSize: 12
+                            color: root.textMuted
+                            text: updateChecker.statusText
+                        }
+
+                        // Download progress.
+                        ProgressBar {
+                            Layout.fillWidth: true
+                            visible: updateChecker.downloadProgress >= 0
+                            from: 0
+                            to: 100
+                            value: updateChecker.downloadProgress
+                        }
+
+                        // Action buttons.
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+
+                            // Check for updates.
+                            Rectangle {
+                                id: checkBtn
+                                Layout.preferredHeight: 34
+                                Layout.preferredWidth: checkLabel.implicitWidth + 28
+                                radius: 8
+                                color: checkArea.containsMouse ? root.accentLight
+                                                               : "transparent"
+                                border.color: root.borderColor
+                                border.width: 1
+                                Label {
+                                    id: checkLabel
+                                    anchors.centerIn: parent
+                                    text: "Check for updates"
+                                    font.pixelSize: 13
+                                    color: root.textPrimary
+                                }
+                                MouseArea {
+                                    id: checkArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: updateChecker.checkForUpdates()
+                                }
+                            }
+
+                            Item { Layout.fillWidth: true }
+
+                            // Install / open release — only when an update was found.
+                            Rectangle {
+                                id: installBtn
+                                visible: updateChecker.availableVersion.length > 0
+                                Layout.preferredHeight: 34
+                                Layout.preferredWidth: installLabel.implicitWidth + 28
+                                radius: 8
+                                color: installArea.containsMouse
+                                       ? Qt.darker(root.accent, 1.1) : root.accent
+                                Label {
+                                    id: installLabel
+                                    anchors.centerIn: parent
+                                    text: updateChecker.canSelfUpdate
+                                          ? "Download & install" : "Open release page"
+                                    font.pixelSize: 13
+                                    font.weight: Font.Medium
+                                    color: "#ffffff"
+                                }
+                                MouseArea {
+                                    id: installArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: updateChecker.canSelfUpdate
+                                               ? updateChecker.downloadAndInstall()
+                                               : updateChecker.openReleasePage()
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // ── Developer-only settings (experimental) ────────────────
                 SectionLabel {
                     text: "DEVELOPER"
@@ -328,7 +477,7 @@ Popup {
                             wrapMode: Text.WordWrap
                             font.pixelSize: 12
                             color: root.textMuted
-                            text: "Experimental. Save folder for received files (blank = default). QR/WebRTC sharing is not supported on Linux."
+                            text: "Advanced options for tuning transport and diagnostics. Change these only if you know what they do."
                         }
 
                         // Boost: full-bandwidth hotspot at the cost of Wi-Fi.
@@ -358,35 +507,34 @@ Popup {
                             }
                         }
 
-                        FolderDialog {
-                            id: saveFolderDialog
-                            title: "Choose save folder for received files"
-                            onAccepted: {
-                                fileShareController.savePath =
-                                    selectedFolder.toString().replace(/^file:\/\//, "")
-                            }
-                        }
-
+                        // Force the hotspot onto 2.4 GHz. Off by default: the
+                        // engine already auto-picks the best band (5/6 GHz when
+                        // the card supports it). This is only a compatibility
+                        // fallback for peers or regulatory setups that can't join
+                        // a 5/6 GHz AP.
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 10
-                            Label {
-                                text: "Save folder"
-                                font.pixelSize: 13
-                                color: root.textMuted
-                                Layout.preferredWidth: 110
-                            }
-                            Label {
+                            ColumnLayout {
                                 Layout.fillWidth: true
-                                elide: Text.ElideMiddle
-                                font.pixelSize: 11
-                                color: root.textPrimary
-                                text: fileShareController.savePath.length > 0
-                                      ? fileShareController.savePath
-                                      : "Default (~/Downloads)"
+                                spacing: 2
+                                Label {
+                                    Layout.fillWidth: true
+                                    color: root.textPrimary
+                                    font.pixelSize: 13
+                                    text: "Allow 5/6 GHz hotspot"
+                                }
+                                Label {
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.WordWrap
+                                    font.pixelSize: 11
+                                    color: root.textMuted
+                                    text: "On: auto-use the fastest band the Wi-Fi card supports. Off: force 2.4 GHz for older/incompatible peers."
+                                }
                             }
-                            BrowseButton {
-                                onClicked: saveFolderDialog.open()
+                            ThemedToggle {
+                                checked: fileShareController.enable5GhzHotspot
+                                onToggled: fileShareController.enable5GhzHotspot = checked
                             }
                         }
 
