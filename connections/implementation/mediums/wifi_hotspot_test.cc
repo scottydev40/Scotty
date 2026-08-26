@@ -115,7 +115,9 @@ TEST_P(WifiHotspotTest, CanStartHotspotThatOtherConnect) {
   EXPECT_FALSE(socket_client.IsValid());
 
   ServiceAddress service_address = {
-    .address = {123, 234, 23, 1},
+    // fork-local: address is std::vector<char>; 234 needs an explicit cast to
+    // avoid a -Wnarrowing error under C++20 braced-init.
+    .address = {123, static_cast<char>(234), 23, 1},
     .port = 20,
   };
   CancellationFlag flag;
