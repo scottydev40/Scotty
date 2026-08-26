@@ -1,3 +1,17 @@
+scotty (0.1.0~beta1-11) unstable; urgency=medium
+
+  * In-app update checker: check GitHub for a newer release from Settings, opt
+    into a beta channel, and one-click self-update the AppImage (sha256
+    verified). A .deb install opens the release page instead.
+  * Settings cleanup: auto-accept now defaults off, and run-at-startup defaults
+    on (launches in the background, so no window pops on login). Save folder
+    moved into the Sharing section. Clearer visibility descriptions. The 5/6 GHz
+    hotspot toggle is now an advanced compatibility option (the engine already
+    auto-picks the fastest band the card supports, including 6 GHz).
+  * Replace the internal "StartReceiveMode: Ok" status with "Ready to receive".
+
+ -- Scotty Developers <scottydev40@users.noreply.github.com>  Wed, 26 Aug 2026 17:35:19 -0500
+
 scotty (0.1.0~beta1-10) unstable; urgency=medium
 
   * Off-network QR now transfers: enable the BLE L2CAP medium so a scanned
