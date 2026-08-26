@@ -72,7 +72,6 @@
 #include "internal/platform/output_stream.h"
 #include "internal/platform/pipe.h"
 #include "proto/connections_enums.pb.h"
-#include "proto/connections_enums.proto.h"
 
 namespace nearby::connections {
 namespace {
@@ -200,8 +199,8 @@ class MockPcpHandler : public BasePcpHandler {
       : BasePcpHandler(m, em, ecm, bwu, Pcp::kP2pCluster) {}
 
   // Expose protected inner types of a base type for mocking.
+  // DiscoveredEndpoint is already aliased above.
   using BasePcpHandler::ConnectImplResult;
-  using BasePcpHandler::DiscoveredEndpoint;
   using BasePcpHandler::StartOperationResult;
 
   MOCK_METHOD(Strategy, GetStrategy, (), (const, override));

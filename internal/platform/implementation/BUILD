@@ -93,7 +93,7 @@ cc_library(
         "webrtc.h",
         "webrtc_platform.h",
     ],
-    compatible_with = ["//buildenv/target:non_prod"],
+    # fork-local: dropped //buildenv prod gating (test enablement)
     visibility = [
         "//:__subpackages__",
     ],

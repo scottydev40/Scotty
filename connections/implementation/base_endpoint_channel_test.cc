@@ -56,13 +56,47 @@ constexpr size_t kChunkSize = 64 * 1024;
 class TestEndpointChannel : public BaseEndpointChannel {
  public:
   explicit TestEndpointChannel(InputStream* input, OutputStream* output)
-      : BaseEndpointChannel("service_id", "channel", input, output) {}
+      : BaseEndpointChannel("service_id", "channel", input, output),
+        input_(input),
+        output_(output) {}
 
   using BaseEndpointChannel::EncodeMessageForTests;
 
   MOCK_METHOD(ExceptionOr<ByteArray>, DispatchPacket, (), (override));
   MOCK_METHOD(Medium, GetMedium, (), (const, override));
   MOCK_METHOD(void, CloseImpl, (), (override));
+
+  // fork-local: the base class leaves these L2CAP length-framing hooks
+  // unimplemented (WritePayloadLength fails, ReadPayloadLength returns 0).
+  // Provide a self-consistent 4-byte big-endian framing so the
+  // kRefactorBleL2cap read/write path (which production gates on the
+  // BLE_L2CAP medium) is exercisable end-to-end in tests.
+  Exception WritePayloadLength(int payload_length) override {
+    const char buf[4] = {
+        static_cast<char>((payload_length >> 24) & 0xff),
+        static_cast<char>((payload_length >> 16) & 0xff),
+        static_cast<char>((payload_length >> 8) & 0xff),
+        static_cast<char>(payload_length & 0xff)};
+    return output_->Write(absl::string_view(buf, 4));
+  }
+
+  ExceptionOr<std::int32_t> ReadPayloadLength() override {
+    ExceptionOr<ByteArray> bytes = input_->ReadExactly(4);
+    if (!bytes.ok()) {
+      return ExceptionOr<std::int32_t>(bytes.exception());
+    }
+    const unsigned char* d =
+        reinterpret_cast<const unsigned char*>(bytes.result().data());
+    std::int32_t len = (static_cast<std::int32_t>(d[0]) << 24) |
+                       (static_cast<std::int32_t>(d[1]) << 16) |
+                       (static_cast<std::int32_t>(d[2]) << 8) |
+                       (static_cast<std::int32_t>(d[3]));
+    return ExceptionOr<std::int32_t>(len);
+  }
+
+ private:
+  InputStream* input_;
+  OutputStream* output_;
 };
 
 std::function<void()> MakeDataPump(
@@ -206,6 +240,17 @@ TEST_F(BaseEndpointChannelTest, ReadCallsDispatchPacketWhenFlagEnabled) {
   TestEndpointChannel channel_a(pipe_b.first.get(), pipe_a.second.get());
   TestEndpointChannel channel_b(pipe_a.first.get(), pipe_b.second.get());
 
+  // fork-local: production only takes the DispatchPacket / L2CAP-framed read
+  // path when the medium is BLE_L2CAP (see base_endpoint_channel.cc Read() and
+  // Write()). Both channels must report that medium so the writer uses
+  // WritePayloadLength framing that the reader's ReadPayloadLength can parse.
+  ON_CALL(channel_a, GetMedium).WillByDefault([]() {
+    return Medium::BLE_L2CAP;
+  });
+  ON_CALL(channel_b, GetMedium).WillByDefault([]() {
+    return Medium::BLE_L2CAP;
+  });
+
   EXPECT_CALL(channel_b, DispatchPacket)
       .WillOnce(::testing::Return(
           ExceptionOr<ByteArray>(ByteArray(std::string(kTestData)))));
@@ -227,6 +272,11 @@ TEST_F(BaseEndpointChannelTest,
   auto pipe_b = CreatePipe();  // channel_b writes to pipe_b, reads from pipe_a.
   TestEndpointChannel channel_a(pipe_b.first.get(), pipe_a.second.get());
   TestEndpointChannel channel_b(pipe_a.first.get(), pipe_b.second.get());
+
+  // fork-local: DispatchPacket path is gated on the BLE_L2CAP medium.
+  ON_CALL(channel_b, GetMedium).WillByDefault([]() {
+    return Medium::BLE_L2CAP;
+  });
 
   EXPECT_CALL(channel_b, DispatchPacket)
       .WillOnce(::testing::Return(ExceptionOr<ByteArray>(Exception::kIo)));

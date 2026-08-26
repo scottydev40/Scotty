@@ -21,6 +21,7 @@
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"  // fork-local: server_sockets_ map
 #include "absl/synchronization/mutex.h"
 #include "internal/platform/implementation/g3/socket_base.h"
 #include "internal/platform/implementation/wifi_hotspot.h"

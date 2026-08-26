@@ -76,7 +76,7 @@ cc_library(
     hdrs = [
         "mock_analytics_recorder.h",
     ],
-    compatible_with = ["//buildenv/target:non_prod"],
+    # fork-local: dropped //buildenv prod gating (test enablement)
     visibility = ["//connections:__subpackages__"],
     deps = [
         ":analytics",
@@ -84,7 +84,7 @@ cc_library(
         "//internal/platform:error_code_recorder",
         "//proto:connections_enums_cc_proto",
         "@com_google_absl//absl/time",
-        "@com_google_googletest//:gtest_for_library_testonly",
+        "@com_google_googletest//:gtest",
     ],
 )
 

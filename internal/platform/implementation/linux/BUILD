@@ -300,6 +300,7 @@ cc_library(
         "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
     ],
     deps = [
+        ":comm",  # fork-local: dbus.h (getSystemBusConnection) for DeviceInfo ctor
         ":types",
         "//internal/platform:base",
         "@nlohmann_json//:json",

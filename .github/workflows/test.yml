@@ -1,0 +1,45 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  FORCE_COLOR: true
+
+jobs:
+  bazel-test:
+    name: Curated bazel test suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Set up Bazelisk
+        uses: bazel-contrib/setup-bazel@0.18.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            clang \
+            pkg-config \
+            libssl-dev \
+            libsystemd-dev \
+            libcurlpp-dev \
+            libbluetooth-dev \
+            libunistring-dev
+
+      - name: Run curated test suite
+        run: ./scripts/run-tests.sh

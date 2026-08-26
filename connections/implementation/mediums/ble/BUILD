@@ -75,6 +75,9 @@ cc_library(
 
 cc_test(
     name = "ble_socket_test",
+    # fork-local: static link under --copt=-fvisibility=hidden (avoids undefined
+    # refs to symbols hidden in .so deps at the default dynamic link mode).
+    linkstatic = True,
     srcs = ["ble_socket_test.cc"],
     deps = [
         ":ble",
@@ -155,6 +158,9 @@ cc_library(
 
 cc_test(
     name = "ble_test",
+    # fork-local: static link under --copt=-fvisibility=hidden (avoids undefined
+    # refs to symbols hidden in .so deps at the default dynamic link mode).
+    linkstatic = True,
     srcs = [
         "advertisement_read_result_test.cc",
         "ble_advertisement_header_test.cc",

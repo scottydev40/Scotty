@@ -350,7 +350,11 @@ TEST_F(WifiLanBwuHandlerTest, InitializeUpgradedMediumForEndpoint_Success) {
   EXPECT_FALSE(result.empty());
   OfflineFrame result_frame;
   EXPECT_TRUE(result_frame.ParseFromString(result));
-  EXPECT_THAT(result_frame, EqualsProto(expected_frame));
+  // fork-local: OfflineFrame is LITE_RUNTIME, which protobuf-matchers'
+  // EqualsProto (reflection-based, needs full Message) cannot handle. Compare
+  // serialized bytes instead.
+  EXPECT_EQ(result_frame.SerializeAsString(),
+            expected_frame.SerializeAsString());
 }
 
 TEST_F(WifiLanBwuHandlerTest,
