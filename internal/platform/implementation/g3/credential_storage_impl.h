@@ -75,8 +75,9 @@ class CredentialStorageImpl : public api::CredentialStorage {
  private:
   LocalCredentialKey CreateLocalCredentialKey(
       absl::string_view manager_app_id, absl::string_view account_name) {
-    return std::make_tuple(std::string(manager_app_id),
-                           std::string(account_name));
+    // fork-local: LocalCredentialKey is a std::pair, not a std::tuple.
+    return std::make_pair(std::string(manager_app_id),
+                          std::string(account_name));
   }
   PublicCredentialKey CreatePublicCredentialKey(
       absl::string_view manager_app_id, absl::string_view account_name,
