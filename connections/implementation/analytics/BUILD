@@ -76,7 +76,7 @@ cc_library(
     hdrs = [
         "mock_analytics_recorder.h",
     ],
-    compatible_with = ["//buildenv/target:non_prod"],
+    # fork-local: dropped //buildenv prod gating (test enablement)
     visibility = ["//connections:__subpackages__"],
     deps = [
         ":analytics",
