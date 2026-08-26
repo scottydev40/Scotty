@@ -45,6 +45,7 @@ cc_library(
         "preferences_manager.h",
         "scheduled_executor.h",
         "single_thread_executor.h",
+        "thread_pool.h",
         "timer.h",
     ],
     visibility = ["//visibility:private"],
@@ -69,7 +70,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
-        "@com_google_nisaba//nisaba/port:thread_pool",
+        # fork-local: dropped @com_google_nisaba thread_pool (see thread_pool.h)
         "@com_google_protobuf//:protobuf",
         "@com_google_protobuf//:json",
         "@nlohmann_json//:json",
