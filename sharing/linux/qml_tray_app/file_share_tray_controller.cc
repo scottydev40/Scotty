@@ -91,20 +91,38 @@ FileShareTrayController::FileShareTrayController(QObject* parent)
 
 FileShareTrayController::~FileShareTrayController() {
   stop();
-  if (service_) {
-    // Shutdown() is asynchronous: it posts a task to the service thread that
-    // still dereferences the platform/context (e.g. StopFastInitiationAdvertising
-    // -> GetFastInitiationManager). If we let service_ (and the platform it owns)
-    // destruct before that task runs, the task makes a pure-virtual call on the
-    // half-destroyed platform and aborts. Block until the shutdown callback fires
-    // (bounded) so teardown is ordered.
-    std::promise<void> shutdown_done;
-    std::future<void> done = shutdown_done.get_future();
-    service_->Shutdown([&shutdown_done](NearbySharingApi::StatusCode) {
-      shutdown_done.set_value();
-    });
-    done.wait_for(std::chrono::seconds(5));
+  shutdownServiceBlocking();
+}
+
+void FileShareTrayController::shutdownServiceBlocking() {
+  if (!service_) {
+    return;
   }
+  // Shutdown() is asynchronous: it posts a task to the service thread that still
+  // dereferences the platform/context (e.g. StopFastInitiationAdvertising ->
+  // GetFastInitiationManager). If service_ (and the platform it owns) destructs
+  // before that task runs, the task makes a pure-virtual call on the
+  // half-destroyed platform and aborts. Block until the shutdown callback fires
+  // (bounded) so teardown is ordered.
+  std::promise<void> shutdown_done;
+  std::future<void> done = shutdown_done.get_future();
+  service_->Shutdown([&shutdown_done](NearbySharingApi::StatusCode) {
+    shutdown_done.set_value();
+  });
+  done.wait_for(std::chrono::seconds(5));
+}
+
+void FileShareTrayController::rebuildService() {
+  // Ordered teardown before rebuilding: stop the surfaces, wait for the engine
+  // to finish shutting down, THEN replace it (initializeService destroys the old
+  // service). Without the blocking wait this races a pending shutdown task and
+  // aborts — see shutdownServiceBlocking().
+  if (state_.running()) {
+    stop();
+  }
+  shutdownServiceBlocking();
+  initializeService();
+  start();
 }
 
 void FileShareTrayController::initializeService() {
@@ -508,9 +526,9 @@ void FileShareTrayController::setDeviceName(const QString& device_name) {
   emit deviceNameChanged();
 
   if (state_.running()) {
-    stop();
-    initializeService();
-    start();
+    // Rebuild through the ordered path so the rename can't race the old engine's
+    // shutdown against its destruction (same crash hardReset hit).
+    rebuildService();
   }
 }
 
@@ -949,6 +967,19 @@ void FileShareTrayController::rescanDevices() {
     return;  // never disturb an in-flight transfer
   }
   startSendMode();
+}
+
+void FileShareTrayController::hardReset() {
+  // The nuclear "unstick": tear down and rebuild the whole engine. Replacing the
+  // service object destroys the old one, which drops every active connection
+  // (a wedged transfer included) and re-registers the radios/mediums from
+  // scratch, then re-advertises with a fresh endpoint id and QR code. This is
+  // the same teardown/rebuild a device-name change already performs. Unlike
+  // rescanDevices it deliberately does NOT spare an in-flight transfer — a stuck
+  // transfer is exactly what this button is for.
+  setStatus(QStringLiteral("Resetting connection…"));
+  rebuildService();
+  setStatus(QStringLiteral("Connection reset — ready to receive."));
 }
 
 void FileShareTrayController::startDiscoveryWatchdog() {

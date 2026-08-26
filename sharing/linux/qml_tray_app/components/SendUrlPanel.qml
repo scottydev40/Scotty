@@ -11,10 +11,12 @@ ColumnLayout {
     property string fileName: fileShareController.pendingSendFileName
     readonly property color panelTint: Theme.rowFill
     readonly property color panelBorder: Theme.rowFillHover
-    // QR paper/ink stay high-contrast light regardless of theme so the code
-    // remains scannable in dark mode.
-    readonly property color qrPaper: "#fffdf7"
-    readonly property color qrInk: "#14532d"
+    // Standard black-on-white QR (theme-independent) so any phone camera reads
+    // it reliably. The translucent gradient frame around it still follows the
+    // theme.
+    readonly property color qrPaper: "#ffffff"
+    readonly property color qrInk: "#101010"
+    readonly property color qrEdge: Theme.border
     readonly property color accentSoft: Theme.rowFill
     readonly property color accentStrong: Theme.accentColor
     property real qrFrameSize: 360
@@ -45,23 +47,12 @@ ColumnLayout {
         border.width: 1
 
         Rectangle {
-            width: parent.width * 0.52
-            height: width
-            radius: width / 2
-            x: parent.width - width * 0.72
-            y: -width * 0.22
-            color: "#ffffff"
-            opacity: 0.35
-        }
-
-
-        Rectangle {
             anchors.centerIn: parent
             width: root.qrInnerSize
             height: width
             radius: compact ? 18 : 24
             color: root.qrPaper
-            border.color: "#dcfce7"
+            border.color: root.qrEdge
             border.width: 1
 
             Canvas {

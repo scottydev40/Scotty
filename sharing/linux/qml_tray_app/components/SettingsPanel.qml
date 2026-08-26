@@ -570,6 +570,51 @@ Popup {
                                 onClicked: logFileDialog.open()
                             }
                         }
+
+                        // Hard reset — the "unstick" button.
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.topMargin: 4
+                            spacing: 6
+                            Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                font.pixelSize: 11
+                                color: root.textMuted
+                                text: "Kills all active connections and transfers, then rebuilds the radios and re-advertises. Use only if something is stuck."
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 38
+                                radius: 10
+                                color: hardResetArea.containsMouse ? Theme.dangerSoft
+                                                                   : "transparent"
+                                border.color: Theme.danger
+                                border.width: 1
+                                Label {
+                                    anchors.centerIn: parent
+                                    text: "Hard reset connection"
+                                    font.pixelSize: 13
+                                    font.weight: Font.Medium
+                                    color: Theme.danger
+                                }
+                                MouseArea {
+                                    id: hardResetArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        // hardReset() is synchronous; when it
+                                        // returns the rebuild is done. Drop back
+                                        // to the home page, where the status blob
+                                        // shows "Connection reset — ready to
+                                        // receive." as confirmation.
+                                        fileShareController.hardReset()
+                                        root.close()
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
