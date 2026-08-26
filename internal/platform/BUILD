@@ -331,6 +331,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log:check",  # fork-local: wifi.h uses CHECK()
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -404,7 +405,7 @@ cc_library(
         "//internal/platform/implementation:comm",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:optional",
-        "@com_google_googletest//:gtest_for_library_testonly",
+        "@com_google_googletest//:gtest",
     ],
 )
 

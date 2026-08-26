@@ -282,7 +282,10 @@ TEST_F(AwdlBwuHandlerTest, InitializeUpgradedMediumForEndpoint_Success) {
                                        .awdl_credentials()
                                        .password());
 
-    EXPECT_THAT(result_frame, EqualsProto(expected_frame));
+    // fork-local: OfflineFrame is LITE_RUNTIME; EqualsProto needs full Message
+    // reflection. Compare serialized bytes instead.
+    EXPECT_EQ(result_frame.SerializeAsString(),
+              expected_frame.SerializeAsString());
 
     handler_.RevertInitiatorState();
   }
