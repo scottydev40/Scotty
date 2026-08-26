@@ -104,6 +104,26 @@ export EXTRA_QT_PLUGINS="wayland-decoration-client;wayland-graphics-integration-
   --library "$APPDIR/usr/lib/$(basename "$SHARED_LIB")" \
   --plugin qt
 
+# linuxdeploy-plugin-qt reliably bundles the wayland *platform* plugin
+# (libqwayland.so) but drops the wayland integration plugins that EXTRA_QT_PLUGINS
+# asks for. Without the client-buffer integration Qt cannot present a surface on
+# Wayland ("Failed to load client buffer integration: wayland-egl" -> RHI/EGL
+# init fails -> the app crashes at window creation). Copy those plugin dirs in by
+# hand from system Qt; their Qt dep (libQt6WaylandClient) is already bundled with
+# the platform plugin, and libwayland-egl/libEGL come from the host.
+QT_PLUGIN_DIR="$(qmake6 -query QT_INSTALL_PLUGINS 2>/dev/null \
+  || qmake -query QT_INSTALL_PLUGINS 2>/dev/null \
+  || echo /usr/lib/x86_64-linux-gnu/qt6/plugins)"
+for cat in wayland-graphics-integration-client \
+           wayland-shell-integration \
+           wayland-decoration-client; do
+  if [[ -d "$QT_PLUGIN_DIR/$cat" ]]; then
+    mkdir -p "$APPDIR/usr/plugins/$cat"
+    cp -a "$QT_PLUGIN_DIR/$cat/." "$APPDIR/usr/plugins/$cat/"
+    echo "Bundled Qt wayland integration plugins: $cat"
+  fi
+done
+
 # linuxdeploy writes its own AppRun; restore ours (sets QML paths + Wayland).
 install -m 0755 "$SCRIPT_DIR/AppRun" "$APPDIR/AppRun"
 
