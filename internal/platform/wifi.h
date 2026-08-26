@@ -14,6 +14,7 @@
 
 #include <string>
 
+#include "absl/log/check.h"  // fork-local: CHECK() used below needs this include
 #include "internal/platform/implementation/platform.h"
 #include "internal/platform/implementation/wifi.h"
 
