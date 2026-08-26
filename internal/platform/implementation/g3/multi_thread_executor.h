@@ -20,7 +20,9 @@
 #include "absl/time/clock.h"
 #include "internal/platform/implementation/submittable_executor.h"
 #include "internal/platform/implementation/shared/count_down_latch.h"
-#include "nisaba/port/thread_pool.h"
+// fork-local: nisaba/port/thread_pool.h swapped for an in-tree equivalent
+// (Nisaba's OSS archive pulls unvendored bazel rules that do not resolve).
+#include "internal/platform/implementation/g3/thread_pool.h"
 
 namespace nearby {
 namespace g3 {
