@@ -365,7 +365,7 @@ Item {
                 Layout.leftMargin: 12
                 Layout.topMargin: 12
                 Layout.rightMargin: 12
-                text: "Make sure both devices are unlocked, close together, and have Bluetooth turned on."
+                text: "Scan this with your phone to connect. Works best with both devices on the same Wi-Fi."
                 wrapMode: Text.WordWrap
                 font.pixelSize: 12
                 color: textMuted

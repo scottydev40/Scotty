@@ -108,6 +108,9 @@ class FileShareTrayController : public QObject {
   // Force a fresh discovery cycle in send mode (re-registers the send surface)
   // when a target went stale and the list stopped updating.
   Q_INVOKABLE void rescanDevices();
+  // Nuclear "unstick": destroy and rebuild the engine, dropping every active
+  // connection (a wedged transfer included) and re-registering the mediums.
+  Q_INVOKABLE void hardReset();
   Q_INVOKABLE void copyTextToClipboard(const QString& text);
   Q_INVOKABLE void openFileLocation(const QString& file_path);
   Q_INVOKABLE void clearTransfers();
@@ -164,6 +167,13 @@ class FileShareTrayController : public QObject {
 
  private:
   void initializeService();
+  // Blocks until the engine's asynchronous Shutdown() callback fires (bounded),
+  // so the old service is fully quiesced before it is destroyed. Skipping this
+  // races the destructor against a pending shutdown task and aborts.
+  void shutdownServiceBlocking();
+  // Ordered teardown + rebuild of the engine: stop, block on shutdown, recreate
+  // the service, start. Used by hardReset() and a device-name change.
+  void rebuildService();
   // Keeps an existing autostart entry in sync with the current format.
   void refreshAutostartFile();
   void attachServiceListeners();
