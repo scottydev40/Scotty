@@ -1,8 +1,4 @@
-load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
-
-cc_library(
-
-)
+load("@rules_cc//cc:defs.bzl", "cc_test")
 
 cc_test(
     name = "linux_connections_test",
