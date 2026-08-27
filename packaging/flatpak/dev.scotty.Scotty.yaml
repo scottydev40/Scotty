@@ -1,0 +1,60 @@
+app-id: dev.scotty.Scotty
+runtime: org.kde.Platform
+runtime-version: '6.9'
+sdk: org.kde.Sdk
+command: scotty
+finish-args:
+  - --allow=bluetooth
+  - --device=all
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --system-talk-name=org.bluez
+  - --system-talk-name=org.freedesktop.NetworkManager
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=dev.scotty.MyDevices1
+  - --filesystem=xdg-download
+modules:
+  - name: nearby-engine
+    buildsystem: simple
+    build-commands:
+      - mkdir -p .home .bo
+      - >-
+        HOME="$(pwd)/.home" USER=builder ./bazel-9.2.0
+        --output_base="$(pwd)/.bo" build
+        --vendor_dir="$(pwd)/vendor" --repository_cache=
+        --check_visibility=false --spawn_strategy=standalone
+        --cxxopt=-std=c++20 --host_cxxopt=-std=c++20
+        --@com_google_protobuf//bazel/toolchains:prefer_prebuilt_protoc=true
+        --copt=-fvisibility=hidden --cxxopt=-fvisibility-inlines-hidden
+        //sharing/linux:nearby_sharing_api_shared
+      - install -Dm644 bazel-bin/sharing/linux/libnearby_sharing_api_shared.so /app/lib/libnearby_sharing_api_shared.so
+      - install -Dm644 sharing/linux/nearby_sharing_api.h /app/include/sharing/linux/nearby_sharing_api.h
+      # bazel + rules_foreign_cc leave read-only output dirs; make the build tree
+      # writable so flatpak-builder can clean it up afterwards.
+      - "$(pwd)/bazel-9.2.0 --output_base=$(pwd)/.bo shutdown || true"
+      - chmod -R u+w . || true
+    sources:
+      - type: archive
+        path: scotty-src.tar
+        strip-components: 1
+      - type: archive
+        path: vendor.tar
+        strip-components: 0
+      - type: file
+        path: bazel-9.2.0
+  - name: scotty-tray
+    buildsystem: cmake-ninja
+    subdir: sharing/linux/qml_tray_app
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DNEARBY_PREFIX=/app
+      - -DCMAKE_PREFIX_PATH=/app
+      - -DBUILD_TESTING=OFF
+    post-install:
+      - ln -sf nearby_qml_file_tray_app /app/bin/scotty
+    sources:
+      - type: archive
+        path: scotty-src.tar
+        strip-components: 1
