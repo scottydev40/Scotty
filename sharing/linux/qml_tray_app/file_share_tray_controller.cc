@@ -341,6 +341,15 @@ void FileShareTrayController::handleTransferComplete(
       }
     });
   }
+
+  // The blob now reads e.g. "Complete (Pixel)". Revert it to the idle "Ready to
+  // receive" a few seconds later, unless another transfer became active in the
+  // meantime.
+  QTimer::singleShot(4000, this, [this]() {
+    if (state_.running() && !state_.HasActiveTransfers()) {
+      setStatus(QStringLiteral("Ready to receive"));
+    }
+  });
 }
 
 void FileShareTrayController::handleIncomingTransferComplete(
