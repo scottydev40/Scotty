@@ -305,12 +305,12 @@ void PairedKeyVerificationRunner::SendPairedKeyEncryptionFrame() {
     if (qr_signature.has_value() && !qr_signature->empty()) {
       encryption_frame->set_qr_code_handshake_data(qr_signature->data(),
                                                    qr_signature->size());
-      VLOG(1) << __func__
-              << ": Attached QR-code handshake signature (" << qr_signature->size()
-              << " bytes) for silent auto-accept.";
+      LOG(INFO) << "[QR] Attached qr_code_handshake_data ("
+                << qr_signature->size() << " bytes) over auth token of "
+                << raw_token_.size() << " bytes; incoming="
+                << share_target_is_incoming_ << " for silent auto-accept.";
     } else {
-      LOG(WARNING) << __func__
-                   << ": QR-code handshake signing failed; peer will prompt.";
+      LOG(WARNING) << "[QR] handshake signing failed; peer will prompt.";
     }
   }
 

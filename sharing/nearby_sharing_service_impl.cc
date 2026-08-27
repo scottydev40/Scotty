@@ -2403,10 +2403,20 @@ void NearbySharingServiceImpl::OnOutgoingConnection(
         absl::Span<const uint8_t>)>
         qr_handshake_signer = nullptr;
     if (session->share_target().is_qr_code_peer) {
-      qr_handshake_signer =
-          [ext = service_extension_.get()](absl::Span<const uint8_t> token) {
-            return ext->SignQrHandshakeToken(token);
-          };
+      // Diagnostic escape hatch: SCOTTY_NO_QR_HANDSHAKE=1 disables Phase B
+      // signing at runtime so off-wifi behaviour can be A/B tested without a
+      // rebuild.
+      if (::getenv("SCOTTY_NO_QR_HANDSHAKE") != nullptr) {
+        LOG(INFO) << "[QR] SCOTTY_NO_QR_HANDSHAKE set; skipping handshake signer "
+                     "for endpoint " << endpoint_id;
+      } else {
+        LOG(INFO) << "[QR] outgoing QR peer; attaching handshake signer for "
+                     "endpoint " << endpoint_id;
+        qr_handshake_signer =
+            [ext = service_extension_.get()](absl::Span<const uint8_t> token) {
+              return ext->SignQrHandshakeToken(token);
+            };
+      }
     }
     session->RunPairedKeyVerification(
         ToProtoOsType(device_info_.GetOsType()),
@@ -3093,7 +3103,22 @@ std::optional<ShareTarget> NearbySharingServiceImpl::CreateShareTarget(
     qr_device_name = std::move(qr.device_name);
   }
 
+  if (advertisement.has_qr_code() || is_qr_peer) {
+    LOG(INFO) << "[QR] CreateShareTarget endpoint=" << endpoint_id
+              << " is_incoming=" << is_incoming
+              << " has_qr_code=" << advertisement.has_qr_code()
+              << " has_cert=" << certificate.has_value()
+              << " qr_token_bytes=" << advertisement.qr_code_token().size()
+              << " blob_bytes=" << service_extension_->qr_code_public_blob().size()
+              << " matched=" << is_qr_peer << " qr_name="
+              << (qr_device_name.has_value() ? *qr_device_name : "<none>");
+  }
+
   if (!advertisement.device_name() && !certificate.has_value() && !is_qr_peer) {
+    if (advertisement.has_qr_code()) {
+      LOG(INFO) << "[QR] Dropping QR advertisement endpoint=" << endpoint_id
+                << ": token did not match current QR session.";
+    }
     VLOG(1) << __func__
             << ": Failed to retrieve public certificate for contact "
                "only advertisement.";
