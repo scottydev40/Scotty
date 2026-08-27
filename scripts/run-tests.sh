@@ -44,6 +44,9 @@ TARGETS=(
   //internal/platform/implementation/linux:impl_test
   //internal/platform/implementation/linux/tests:linux_connections_test
   //sharing:advertisement_test
+  # QR-code send + Phase-B silent auto-accept (qr_code_handshake_data signing)
+  //sharing:paired_key_verification_runner_test
+  //sharing:nearby_sharing_service_extension_test
 )
 
 echo ">> Scotty test suite (${#TARGETS[@]} targets + pcp_handler_test)"

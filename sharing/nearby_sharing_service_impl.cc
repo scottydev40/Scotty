@@ -2396,6 +2396,18 @@ void NearbySharingServiceImpl::OnOutgoingConnection(
     });
   }
   if (session->OnConnectResult(connection, status)) {
+    // For a QR-code peer (Scotty showed the QR, so it holds the ephemeral
+    // private key), sign the UKEY2 auth token so the scanning peer silently
+    // auto-accepts (Phase B). Empty for all other peers.
+    absl::AnyInvocable<std::optional<std::vector<uint8_t>>(
+        absl::Span<const uint8_t>)>
+        qr_handshake_signer = nullptr;
+    if (session->share_target().is_qr_code_peer) {
+      qr_handshake_signer =
+          [ext = service_extension_.get()](absl::Span<const uint8_t> token) {
+            return ext->SignQrHandshakeToken(token);
+          };
+    }
     session->RunPairedKeyVerification(
         ToProtoOsType(device_info_.GetOsType()),
         {
@@ -2407,7 +2419,8 @@ void NearbySharingServiceImpl::OnOutgoingConnection(
         GetCertificateManager(),
         absl::bind_front(
             &NearbySharingServiceImpl::OnOutgoingConnectionKeyVerificationDone,
-            this, share_target_id));
+            this, share_target_id),
+        std::move(qr_handshake_signer));
   }
 }
 

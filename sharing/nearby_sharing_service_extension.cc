@@ -14,11 +14,16 @@
 
 #include "sharing/nearby_sharing_service_extension.h"
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "absl/strings/escaping.h"
+#include "absl/types/span.h"
 #include "internal/crypto_cros/ec_private_key.h"
+#include "internal/crypto_cros/ec_signature_creator.h"
 
 namespace nearby {
 namespace sharing {
@@ -51,6 +56,30 @@ void NearbySharingServiceExtension::RefreshQrCodeSession() {
   qr_code_public_blob_.append(compressed);
   qr_code_url_ = std::string(kQrCodeUrlPrefix) +
                  absl::WebSafeBase64Escape(qr_code_public_blob_);
+}
+
+std::optional<std::vector<uint8_t>>
+NearbySharingServiceExtension::SignQrHandshakeToken(
+    absl::Span<const uint8_t> ukey2_auth_token) const {
+  if (qr_code_private_key_ == nullptr) {
+    return std::nullopt;
+  }
+  std::unique_ptr<crypto::ECSignatureCreator> signer =
+      crypto::ECSignatureCreator::Create(qr_code_private_key_.get());
+  if (signer == nullptr) {
+    return std::nullopt;
+  }
+  // ECSignatureCreator::Sign emits a DER-encoded ECDSA-Sig-Value (SHA-256);
+  // DecodeSignature converts it to the raw R||S (IEEE-P1363) the wire wants.
+  std::vector<uint8_t> der_signature;
+  if (!signer->Sign(ukey2_auth_token, &der_signature)) {
+    return std::nullopt;
+  }
+  std::vector<uint8_t> p1363_signature;
+  if (!signer->DecodeSignature(der_signature, &p1363_signature)) {
+    return std::nullopt;
+  }
+  return p1363_signature;
 }
 
 }  // namespace sharing

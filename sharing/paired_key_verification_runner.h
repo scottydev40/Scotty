@@ -25,6 +25,7 @@
 #include "absl/base/nullability.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "internal/platform/clock.h"
 #include "proto/sharing_enums.pb.h"
 #include "sharing/certificates/nearby_share_certificate_manager.h"
@@ -67,7 +68,16 @@ class PairedKeyVerificationRunner
       const std::optional<NearbyShareDecryptedPublicCertificate>& certificate,
       NearbyShareCertificateManager* absl_nonnull certificate_manager,
       IncomingFramesReader* absl_nonnull frames_reader,
-      absl::Duration read_frame_timeout);
+      absl::Duration read_frame_timeout,
+      // QR-code silent auto-accept (Phase B). When set (QR-shower sessions
+      // only), the sent PairedKeyEncryptionFrame carries a qr_code_handshake_data
+      // = ECDSA signature (IEEE-P1363, 64 bytes) of the UKEY2 auth token, made
+      // with the QR ephemeral private key. The scanning peer verifies it against
+      // the QR public key and skips its accept prompt. Empty on all other
+      // sessions. See grishka NearDrop PROTOCOL.md, QR-code session.
+      absl::AnyInvocable<std::optional<std::vector<uint8_t>>(
+          absl::Span<const uint8_t> ukey2_auth_token)>
+          qr_handshake_signer = nullptr);
 
   ~PairedKeyVerificationRunner();
 
@@ -109,6 +119,9 @@ class PairedKeyVerificationRunner
   std::vector<uint8_t> raw_token_;
   absl::AnyInvocable<void(const nearby::sharing::service::proto::Frame& frame)>
       frame_writer_;
+  absl::AnyInvocable<std::optional<std::vector<uint8_t>>(
+      absl::Span<const uint8_t>)>
+      qr_handshake_signer_;
   std::function<void(PairedKeyVerificationResult,
                      ::location::nearby::proto::sharing::OSType)>
       callback_;

@@ -97,7 +97,10 @@ PairedKeyVerificationRunner::PairedKeyVerificationRunner(
     const std::optional<NearbyShareDecryptedPublicCertificate>& certificate,
     NearbyShareCertificateManager* absl_nonnull certificate_manager,
     IncomingFramesReader* absl_nonnull frames_reader,
-    absl::Duration read_frame_timeout)
+    absl::Duration read_frame_timeout,
+    absl::AnyInvocable<std::optional<std::vector<uint8_t>>(
+        absl::Span<const uint8_t>)>
+        qr_handshake_signer)
     : clock_(*clock),
       certificate_manager_(*certificate_manager),
       frames_reader_(*frames_reader),
@@ -107,7 +110,8 @@ PairedKeyVerificationRunner::PairedKeyVerificationRunner(
       certificate_(certificate),
       read_frame_timeout_(read_frame_timeout),
       raw_token_(token),
-      frame_writer_(std::move(frame_writer)) {}
+      frame_writer_(std::move(frame_writer)),
+      qr_handshake_signer_(std::move(qr_handshake_signer)) {}
 
 PairedKeyVerificationRunner::~PairedKeyVerificationRunner() = default;
 
@@ -291,6 +295,24 @@ void PairedKeyVerificationRunner::SendPairedKeyEncryptionFrame() {
   }
   encryption_frame->set_secret_id_hash(certificate_id_hash.data(),
                                        certificate_id_hash.size());
+
+  // QR-code silent auto-accept (Phase B): prove possession of the QR ephemeral
+  // private key by signing the UKEY2 auth token. The scanning peer verifies this
+  // against the public key it read from the QR and skips its accept prompt.
+  if (qr_handshake_signer_) {
+    std::optional<std::vector<uint8_t>> qr_signature =
+        qr_handshake_signer_(raw_token_);
+    if (qr_signature.has_value() && !qr_signature->empty()) {
+      encryption_frame->set_qr_code_handshake_data(qr_signature->data(),
+                                                   qr_signature->size());
+      VLOG(1) << __func__
+              << ": Attached QR-code handshake signature (" << qr_signature->size()
+              << " bytes) for silent auto-accept.";
+    } else {
+      LOG(WARNING) << __func__
+                   << ": QR-code handshake signing failed; peer will prompt.";
+    }
+  }
 
   frame_writer_(frame);
 }

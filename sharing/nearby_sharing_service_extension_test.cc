@@ -14,11 +14,22 @@
 
 #include "sharing/nearby_sharing_service_extension.h"
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
+#include <vector>
 
+#include <openssl/base.h>
+#include <openssl/bn.h>
+#include <openssl/ecdsa.h>
+#include <openssl/mem.h>
 #include "gtest/gtest.h"
 #include "absl/strings/escaping.h"
+#include "absl/types/span.h"
+#include "internal/crypto_cros/ec_private_key.h"
+#include "internal/crypto_cros/nearby_base.h"
+#include "internal/crypto_cros/signature_verifier.h"
 
 namespace nearby {
 namespace sharing {
@@ -63,6 +74,66 @@ TEST_F(NearbySharingServiceExtensionTest, RefreshQrCodeSessionRotatesKey) {
   service_extension()->RefreshQrCodeSession();
   const std::string second = service_extension()->GetQrCodeUrl();
   EXPECT_NE(first, second);
+}
+
+namespace {
+// Converts an IEEE-P1363 (raw R||S, 64 bytes) P-256 signature to the DER
+// ECDSA-Sig-Value that SignatureVerifier expects.
+std::vector<uint8_t> P1363ToDer(absl::Span<const uint8_t> p1363) {
+  bssl::UniquePtr<BIGNUM> r(BN_bin2bn(p1363.data(), 32, nullptr));
+  bssl::UniquePtr<BIGNUM> s(BN_bin2bn(p1363.data() + 32, 32, nullptr));
+  bssl::UniquePtr<ECDSA_SIG> sig(ECDSA_SIG_new());
+  ECDSA_SIG_set0(sig.get(), r.release(), s.release());
+  uint8_t* der = nullptr;
+  size_t der_len = 0;
+  ECDSA_SIG_to_bytes(&der, &der_len, sig.get());
+  std::vector<uint8_t> out(der, der + der_len);
+  OPENSSL_free(der);
+  return out;
+}
+}  // namespace
+
+TEST_F(NearbySharingServiceExtensionTest,
+       SignQrHandshakeTokenVerifiesUnderQrPublicKey) {
+  const std::vector<uint8_t> token = {0x00, 0x01, 0x02, 0x03,
+                                      0x04, 0x05, 0x06, 0x07};
+
+  std::optional<std::vector<uint8_t>> signature =
+      service_extension()->SignQrHandshakeToken(token);
+  ASSERT_TRUE(signature.has_value());
+  // P-256 IEEE-P1363 signature is exactly 64 bytes (raw R||S).
+  ASSERT_EQ(signature->size(), 64u);
+
+  // The scanning peer verifies this against the public key it read from the QR.
+  std::vector<uint8_t> public_key_info;
+  ASSERT_TRUE(service_extension()->qr_code_private_key()->ExportPublicKey(
+      &public_key_info));
+
+  crypto::SignatureVerifier verifier;
+  ASSERT_TRUE(verifier.VerifyInit(crypto::SignatureVerifier::ECDSA_SHA256,
+                                  P1363ToDer(*signature), public_key_info));
+  verifier.VerifyUpdate(token);
+  EXPECT_TRUE(verifier.VerifyFinal());
+}
+
+TEST_F(NearbySharingServiceExtensionTest,
+       SignQrHandshakeTokenRejectsWrongToken) {
+  const std::vector<uint8_t> token = {0x10, 0x11, 0x12, 0x13};
+  const std::vector<uint8_t> other_token = {0x20, 0x21, 0x22, 0x23};
+
+  std::optional<std::vector<uint8_t>> signature =
+      service_extension()->SignQrHandshakeToken(token);
+  ASSERT_TRUE(signature.has_value());
+
+  std::vector<uint8_t> public_key_info;
+  ASSERT_TRUE(service_extension()->qr_code_private_key()->ExportPublicKey(
+      &public_key_info));
+
+  crypto::SignatureVerifier verifier;
+  ASSERT_TRUE(verifier.VerifyInit(crypto::SignatureVerifier::ECDSA_SHA256,
+                                  P1363ToDer(*signature), public_key_info));
+  verifier.VerifyUpdate(other_token);
+  EXPECT_FALSE(verifier.VerifyFinal());
 }
 
 }  // namespace

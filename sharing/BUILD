@@ -228,6 +228,7 @@ cc_library(
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -520,6 +521,31 @@ cc_library(
     ],
 )
 
+# Narrow fake for tests that only need the connections manager, without dragging
+# in fake_nearby_sharing_service.cc's analytics/rpc/sync deps (which are trimmed
+# from this fork). Keeps the paired-key/QR tests buildable in the curated suite.
+cc_library(
+    name = "fake_connections_manager",
+    testonly = True,
+    srcs = ["fake_nearby_connections_manager.cc"],
+    hdrs = ["fake_nearby_connections_manager.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":connection_types",
+        ":types",
+        "//internal/base:file_path",
+        "//internal/platform:types",
+        "//sharing/common:enum",
+        "//sharing/internal/public:logging",
+        "//sharing/proto:enums_cc_proto",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
 cc_library(
     name = "attachment_compare",
     testonly = True,
@@ -572,7 +598,7 @@ cc_test(
         ":incoming_frame_reader",
         ":nearby_connection_impl",
         ":paired_key_verification_runner",
-        ":test_support",
+        ":fake_connections_manager",
         ":types",
         "//internal/platform:types",
         "//internal/platform/implementation:platform_impl",
@@ -781,8 +807,10 @@ cc_test(
         "//sharing/internal/test:nearby_test",
         "//sharing/local_device_data:test_support",
         "//sharing/proto:wire_format_cc_proto",
+        "@boringssl//:crypto",
         "@com_github_protobuf_matchers//protobuf-matchers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )

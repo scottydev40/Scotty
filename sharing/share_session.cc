@@ -189,7 +189,10 @@ void ShareSession::RunPairedKeyVerification(
     NearbyShareCertificateManager* certificate_manager,
     std::function<void(PairedKeyVerificationRunner::PairedKeyVerificationResult,
                        OSType)>
-        callback) {
+        callback,
+    absl::AnyInvocable<std::optional<std::vector<uint8_t>>(
+        absl::Span<const uint8_t>)>
+        qr_handshake_signer) {
   std::optional<std::vector<uint8_t>> token =
       connections_manager_.GetRawAuthenticationToken(endpoint_id());
   if (!token.has_value()) {
@@ -202,7 +205,7 @@ void ShareSession::RunPairedKeyVerification(
       &clock_, os_type, IsIncoming(), visibility_history, *token,
       absl::bind_front(&ShareSession::WriteFrame, this),
       certificate_, certificate_manager, frames_reader_.get(),
-      kReadFramesTimeout);
+      kReadFramesTimeout, std::move(qr_handshake_signer));
   key_verification_runner_->Run(std::move(callback));
 }
 
