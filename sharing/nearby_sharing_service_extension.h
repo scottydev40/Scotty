@@ -15,9 +15,13 @@
 #ifndef THIRD_PARTY_NEARBY_SHARING_NEARBY_SHARING_SERVICE_EXTENSION_H_
 #define THIRD_PARTY_NEARBY_SHARING_NEARBY_SHARING_SERVICE_EXTENSION_H_
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
+#include <vector>
 
+#include "absl/types/span.h"
 #include "internal/crypto_cros/ec_private_key.h"
 
 namespace nearby {
@@ -48,6 +52,14 @@ class NearbySharingServiceExtension {
   const std::string& qr_code_public_blob() const {
     return qr_code_public_blob_;
   }
+
+  // Signs the UKEY2 authentication token with the current QR ephemeral private
+  // key and returns the signature as IEEE-P1363 (raw R||S, 64 bytes for P-256).
+  // This is the qr_code_handshake_data that lets a scanning peer skip its accept
+  // prompt (Phase B silent auto-accept). Returns nullopt if there is no QR key
+  // or signing fails. See grishka NearDrop PROTOCOL.md, QR-code session.
+  std::optional<std::vector<uint8_t>> SignQrHandshakeToken(
+      absl::Span<const uint8_t> ukey2_auth_token) const;
 
  private:
   std::unique_ptr<crypto::ECPrivateKey> qr_code_private_key_;

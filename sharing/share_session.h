@@ -21,10 +21,12 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "internal/platform/clock.h"
 #include "internal/platform/task_runner.h"
 #include "proto/sharing_enums.pb.h"
@@ -122,7 +124,13 @@ class ShareSession {
       std::function<
           void(PairedKeyVerificationRunner::PairedKeyVerificationResult,
                location::nearby::proto::sharing::OSType)>
-          callback);
+          callback,
+      // QR-code silent auto-accept signer (Phase B). Set only for outgoing
+      // QR-shower sessions; signs the UKEY2 auth token with the QR ephemeral
+      // private key. Empty otherwise.
+      absl::AnyInvocable<std::optional<std::vector<uint8_t>>(
+          absl::Span<const uint8_t>)>
+          qr_handshake_signer = nullptr);
   // Processes the PairedKeyVerificationResult.
   // Returns true if verification was successful.
   bool ProcessKeyVerificationResult(

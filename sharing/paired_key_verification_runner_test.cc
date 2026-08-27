@@ -30,6 +30,7 @@
 #include "gtest/gtest.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "internal/platform/task_runner.h"
 #include "internal/test/fake_clock.h"
 #include "internal/test/fake_device_info.h"
@@ -214,7 +215,10 @@ class PairedKeyVerificationRunnerTest : public testing::Test {
       bool is_incoming, bool use_valid_public_certificate,
       const PairedKeyVerificationRunner::VisibilityHistory& visibility_history,
       PairedKeyVerificationRunner::PairedKeyVerificationResult expected_result,
-      OSType expected_os_type = OSType::UNKNOWN_OS_TYPE) {
+      OSType expected_os_type = OSType::UNKNOWN_OS_TYPE,
+      absl::AnyInvocable<std::optional<std::vector<uint8_t>>(
+          absl::Span<const uint8_t>)>
+          qr_handshake_signer = nullptr) {
     std::optional<NearbyShareDecryptedPublicCertificate> public_certificate =
         use_valid_public_certificate
             ? std::make_optional<NearbyShareDecryptedPublicCertificate>(
@@ -228,7 +232,7 @@ class PairedKeyVerificationRunnerTest : public testing::Test {
           frames_data_.push(std::make_unique<Frame>(frame));
         },
         std::move(public_certificate), &certificate_manager_, &frames_reader_,
-        kTimeout);
+        kTimeout, std::move(qr_handshake_signer));
 
     runner->Run(
         [&, expected_result, expected_os_type](
@@ -335,6 +339,18 @@ class PairedKeyVerificationRunnerTest : public testing::Test {
     std::unique_ptr<Frame> frame = GetWrittenFrame();
     ASSERT_TRUE(frame->has_v1());
     ASSERT_TRUE(frame->v1().has_paired_key_encryption());
+  }
+
+  // Pops and returns the qr_code_handshake_data of the next written encryption
+  // frame (or nullopt if the field is absent).
+  std::optional<std::string> GetSentQrCodeHandshakeData() {
+    std::unique_ptr<Frame> frame = GetWrittenFrame();
+    EXPECT_TRUE(frame->v1().has_paired_key_encryption());
+    const auto& encryption = frame->v1().paired_key_encryption();
+    if (!encryption.has_qr_code_handshake_data()) {
+      return std::nullopt;
+    }
+    return encryption.qr_code_handshake_data();
   }
 
   void ExpectPairedKeyResultFrameSent(PairedKeyResultFrame::Status status) {
@@ -570,6 +586,74 @@ TEST_P(ParameterisedPairedKeyVerificationRunnerTest,
   }
 
   ExpectPairedKeyResultFrameSent(PairedKeyResultFrame::SUCCESS);
+}
+
+// Phase B: an outgoing QR-shower session attaches the signer's output as
+// qr_code_handshake_data on the sent PairedKeyEncryptionFrame (the scanning peer
+// verifies it against the QR public key and skips its accept prompt).
+TEST_F(PairedKeyVerificationRunnerTest,
+       Outgoing_QrCodeSigner_AttachesHandshakeData) {
+  SetUpPairedKeyEncryptionFrame(ReturnFrameType::kEmpty);
+  SetUpPairedKeyResultFrame(ReturnFrameType::kValid);
+
+  const std::vector<uint8_t> kSignature(64, 0xAB);
+  std::vector<uint8_t> signed_token;
+  RunVerification(
+      /*is_incoming=*/false,
+      /*use_valid_public_certificate=*/false,
+      {.visibility = DeviceVisibility::DEVICE_VISIBILITY_ALL_CONTACTS,
+       .last_visibility = DeviceVisibility::DEVICE_VISIBILITY_ALL_CONTACTS,
+       .last_visibility_time = GetFakeClock()->Now()},
+      /*expected_result=*/PairedKeyVerificationResult::kUnable,
+      /*expected_os_type=*/OSType::UNKNOWN_OS_TYPE,
+      [&](absl::Span<const uint8_t> token) {
+        signed_token.assign(token.begin(), token.end());
+        return kSignature;
+      });
+
+  // The signer must be invoked with the raw UKEY2 auth token.
+  EXPECT_EQ(signed_token, GetAuthToken());
+  std::optional<std::string> handshake = GetSentQrCodeHandshakeData();
+  ASSERT_TRUE(handshake.has_value());
+  EXPECT_EQ(*handshake,
+            std::string(kSignature.begin(), kSignature.end()));
+}
+
+// Without a signer (all non-QR sessions), no qr_code_handshake_data is attached.
+TEST_F(PairedKeyVerificationRunnerTest,
+       Outgoing_NoQrSigner_NoHandshakeData) {
+  SetUpPairedKeyEncryptionFrame(ReturnFrameType::kEmpty);
+  SetUpPairedKeyResultFrame(ReturnFrameType::kValid);
+
+  RunVerification(
+      /*is_incoming=*/false,
+      /*use_valid_public_certificate=*/false,
+      {.visibility = DeviceVisibility::DEVICE_VISIBILITY_ALL_CONTACTS,
+       .last_visibility = DeviceVisibility::DEVICE_VISIBILITY_ALL_CONTACTS,
+       .last_visibility_time = GetFakeClock()->Now()},
+      /*expected_result=*/PairedKeyVerificationResult::kUnable);
+
+  EXPECT_FALSE(GetSentQrCodeHandshakeData().has_value());
+}
+
+// A signer that declines (returns nullopt) leaves the field unset rather than
+// attaching empty data.
+TEST_F(PairedKeyVerificationRunnerTest,
+       Outgoing_QrCodeSignerDeclines_NoHandshakeData) {
+  SetUpPairedKeyEncryptionFrame(ReturnFrameType::kEmpty);
+  SetUpPairedKeyResultFrame(ReturnFrameType::kValid);
+
+  RunVerification(
+      /*is_incoming=*/false,
+      /*use_valid_public_certificate=*/false,
+      {.visibility = DeviceVisibility::DEVICE_VISIBILITY_ALL_CONTACTS,
+       .last_visibility = DeviceVisibility::DEVICE_VISIBILITY_ALL_CONTACTS,
+       .last_visibility_time = GetFakeClock()->Now()},
+      /*expected_result=*/PairedKeyVerificationResult::kUnable,
+      /*expected_os_type=*/OSType::UNKNOWN_OS_TYPE,
+      [](absl::Span<const uint8_t>) { return std::nullopt; });
+
+  EXPECT_FALSE(GetSentQrCodeHandshakeData().has_value());
 }
 
 INSTANTIATE_TEST_SUITE_P(
