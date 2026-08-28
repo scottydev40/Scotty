@@ -47,7 +47,17 @@ cp "$HERE/dev.scotty.Scotty.yaml" "$OUT/"
 # to guarantee the rebuild picks up new commits. (The Flathub manifest uses
 # url+sha256 sources, which are content-addressed, so this trap is local-only.)
 rm -rf "$OUT/.flatpak-builder"
-( cd "$OUT" && flatpak-builder --force-clean --disable-rofiles-fuse --user --install \
-    build-dir dev.scotty.Scotty.yaml )
-
-echo ">> done — run:  flatpak run dev.scotty.Scotty"
+# Default: build + install locally. Publish mode (SCOTTY_FLATPAK_REPO set):
+# build + export the signed app into an OSTree repo for a self-hosted remote.
+if [ -n "${SCOTTY_FLATPAK_REPO:-}" ]; then
+  : "${SCOTTY_GPG_KEY:?set SCOTTY_GPG_KEY (signing key id) with SCOTTY_FLATPAK_REPO}"
+  ( cd "$OUT" && flatpak-builder --force-clean --disable-rofiles-fuse \
+      --repo="$SCOTTY_FLATPAK_REPO" --gpg-sign="$SCOTTY_GPG_KEY" \
+      build-dir dev.scotty.Scotty.yaml )
+  flatpak build-update-repo --gpg-sign="$SCOTTY_GPG_KEY" --prune "$SCOTTY_FLATPAK_REPO"
+  echo ">> exported + signed into $SCOTTY_FLATPAK_REPO"
+else
+  ( cd "$OUT" && flatpak-builder --force-clean --disable-rofiles-fuse --user --install \
+      build-dir dev.scotty.Scotty.yaml )
+  echo ">> done — run:  flatpak run dev.scotty.Scotty"
+fi
