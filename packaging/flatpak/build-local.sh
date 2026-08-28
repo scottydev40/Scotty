@@ -40,6 +40,13 @@ fi
 
 echo ">> 4/4  flatpak-builder (build runs offline)"
 cp "$HERE/dev.scotty.Scotty.yaml" "$OUT/"
+# The two big sources are local unchecksummed archives (a fresh `git archive`
+# each run). flatpak-builder does not re-hash those, so it will "Cache hit,
+# skipping build" and ship a STALE binary even after the code changed. `--force-clean`
+# only wipes the output dir, not the `.flatpak-builder` cache — so drop the cache
+# to guarantee the rebuild picks up new commits. (The Flathub manifest uses
+# url+sha256 sources, which are content-addressed, so this trap is local-only.)
+rm -rf "$OUT/.flatpak-builder"
 ( cd "$OUT" && flatpak-builder --force-clean --disable-rofiles-fuse --user --install \
     build-dir dev.scotty.Scotty.yaml )
 
