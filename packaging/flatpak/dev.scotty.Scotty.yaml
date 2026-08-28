@@ -52,8 +52,6 @@ modules:
       - -DNEARBY_PREFIX=/app
       - -DCMAKE_PREFIX_PATH=/app
       - -DBUILD_TESTING=OFF
-    post-install:
-      - ln -sf nearby_qml_file_tray_app /app/bin/scotty
     sources:
       - type: archive
         path: scotty-src.tar
