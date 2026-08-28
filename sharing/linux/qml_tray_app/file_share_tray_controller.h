@@ -210,6 +210,11 @@ class FileShareTrayController : public QObject {
   void refreshMyDevicesAvailability();
   void refreshMyDevicesAccount();
   void refreshMyDevicesProfile();
+  // Fetches the profile photo as bytes over the bus and caches it in our own
+  // config dir, then points signedInPhotoPath at that local copy. The plugin's
+  // photo lives in its ~/.config, which the flatpak sandbox cannot read, so a
+  // returned path would not resolve — bytes do.
+  void refreshMyDevicesPhoto();
   void setSignedInEmail(const QString& email);
 
  private slots:

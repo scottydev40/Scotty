@@ -92,6 +92,9 @@ Item {
                 id: avatarPhoto
                 anchors.fill: parent
                 visible: false
+                // Cached photo path is constant; disable QML's URL cache so a
+                // re-fetch (e.g. account switch) shows the new bytes, not stale.
+                cache: false
                 source: fileShareController.signedInPhotoPath.length > 0
                         ? "file://" + encodeURI(fileShareController.signedInPhotoPath) : ""
                 fillMode: Image.PreserveAspectCrop
@@ -155,6 +158,7 @@ Item {
                                 id: menuAvatarPhoto
                                 anchors.fill: parent
                                 visible: false
+                                cache: false
                                 source: fileShareController.signedInPhotoPath.length > 0
                                         ? "file://" + encodeURI(fileShareController.signedInPhotoPath) : ""
                                 fillMode: Image.PreserveAspectCrop

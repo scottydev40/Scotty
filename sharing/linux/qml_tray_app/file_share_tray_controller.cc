@@ -681,13 +681,54 @@ void FileShareTrayController::refreshMyDevicesProfile() {
           [this, plugin](QDBusPendingCallWatcher* w) {
             QDBusPendingReply<QString, QString> reply = *w;
             if (reply.isValid()) {
+              // GetProfile also returns the photo *path*, but that path is in
+              // the plugin's ~/.config and is unreadable from the flatpak
+              // sandbox. Take only the name here; fetch the photo as bytes.
               const QString name = reply.argumentAt<0>();
-              const QString photo = reply.argumentAt<1>();
               if (name != signed_in_name_) {
                 signed_in_name_ = name; emit signedInNameChanged();
               }
-              if (photo != signed_in_photo_path_) {
-                signed_in_photo_path_ = photo; emit signedInPhotoPathChanged();
+            }
+            w->deleteLater();
+            plugin->deleteLater();
+          });
+  refreshMyDevicesPhoto();
+}
+
+void FileShareTrayController::refreshMyDevicesPhoto() {
+  auto* plugin = new QDBusInterface(
+      QLatin1String(kMyDevicesService), QLatin1String(kMyDevicesPath),
+      QLatin1String(kMyDevicesIface), QDBusConnection::sessionBus(), this);
+  QDBusPendingCall pending =
+      plugin->asyncCall(QStringLiteral("GetProfilePhoto"));
+  auto* watcher = new QDBusPendingCallWatcher(pending, this);
+  connect(watcher, &QDBusPendingCallWatcher::finished, this,
+          [this, plugin](QDBusPendingCallWatcher* w) {
+            QDBusPendingReply<QByteArray> reply = *w;
+            if (reply.isValid()) {
+              // Cache the bytes in our own config dir (a distinct filename from
+              // the plugin's, so a shared-home .deb install never collides) and
+              // point the UI at that local copy.
+              const QByteArray bytes = reply.argumentAt<0>();
+              const QString cache =
+                  QStandardPaths::writableLocation(
+                      QStandardPaths::GenericConfigLocation) +
+                  QStringLiteral("/Scotty/mydevices-photo.jpg");
+              QString path;
+              if (!bytes.isEmpty()) {
+                QDir().mkpath(QFileInfo(cache).absolutePath());
+                QFile file(cache);
+                if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                  file.write(bytes);
+                  file.close();
+                  path = cache;
+                }
+              } else {
+                QFile::remove(cache);  // signed in, no photo
+              }
+              if (path != signed_in_photo_path_) {
+                signed_in_photo_path_ = path;
+                emit signedInPhotoPathChanged();
               }
             }
             w->deleteLater();
