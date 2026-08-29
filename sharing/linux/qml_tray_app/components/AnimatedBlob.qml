@@ -252,7 +252,10 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 48
+        // When idle, statusMessage is also "Ready to receive", which the heading
+        // above already shows; hide this echo so it doesn't print twice.
         visible: !isSendMode
+                 && fileShareController.statusMessage !== "Ready to receive"
         text: fileShareController.statusMessage
         font.pixelSize: 13
         color: textMuted
