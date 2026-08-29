@@ -760,6 +760,12 @@ std::string NearbySharingServiceImpl::GetQrCodeUrl() const {
   return service_extension_->GetQrCodeUrl();
 }
 
+void NearbySharingServiceImpl::RefreshQrCodeSession() {
+  // The extension guards its QR state with its own mutex, so this is safe to
+  // call from the caller's (UI) thread without hopping to the service thread.
+  service_extension_->RefreshQrCodeSession();
+}
+
 void NearbySharingServiceImpl::SendAttachments(
     int64_t share_target_id,
     std::unique_ptr<AttachmentContainer> attachment_container,
@@ -3094,7 +3100,7 @@ std::optional<ShareTarget> NearbySharingServiceImpl::CreateShareTarget(
   bool is_qr_peer = false;
   std::optional<std::string> qr_device_name;
   if (!is_incoming && advertisement.has_qr_code() && !certificate.has_value()) {
-    const std::string& blob = service_extension_->qr_code_public_blob();
+    const std::string blob = service_extension_->qr_code_public_blob();
     QrCodeMatchResult qr = MatchQrCodeToken(
         absl::MakeConstSpan(reinterpret_cast<const uint8_t*>(blob.data()),
                             blob.size()),

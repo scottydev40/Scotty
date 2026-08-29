@@ -130,6 +130,8 @@ class FakeNearbySharingService : public NearbySharingService {
   bool IsExtendedAdvertisingSupported() const override { return true; }
   bool IsLanConnected() const override { return true; }
   std::string GetQrCodeUrl() const override { return ""; }
+
+  void RefreshQrCodeSession() override {}
   void SetVisibility(
       proto::DeviceVisibility visibility, absl::Duration expiration,
       absl::AnyInvocable<void(StatusCodes status_code) &&> callback) override {}

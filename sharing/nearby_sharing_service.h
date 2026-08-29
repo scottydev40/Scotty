@@ -185,6 +185,11 @@ class NearbySharingService {
   // Returns the QR Code Url.
   virtual std::string GetQrCodeUrl() const = 0;
 
+  // Rotates the "share via QR code" session to a fresh ephemeral key, so any
+  // previously shown/photographed QR stops matching. Call each time a fresh QR
+  // is presented and again when it is dismissed.
+  virtual void RefreshQrCodeSession() = 0;
+
   // Sends |attachments| to the remote |share_target|.
   virtual void SendAttachments(
       int64_t share_target_id,

@@ -32,10 +32,26 @@ constexpr char kQrCodeUrlPrefix[] = "https://quickshare.google/qrcode#key=";
 }  // namespace
 
 NearbySharingServiceExtension::NearbySharingServiceExtension() {
-  RefreshQrCodeSession();
+  absl::MutexLock lock(&mu_);
+  RefreshQrCodeSessionLocked();
+}
+
+std::string NearbySharingServiceExtension::GetQrCodeUrl() const {
+  absl::MutexLock lock(&mu_);
+  return qr_code_url_;
+}
+
+std::string NearbySharingServiceExtension::qr_code_public_blob() const {
+  absl::MutexLock lock(&mu_);
+  return qr_code_public_blob_;
 }
 
 void NearbySharingServiceExtension::RefreshQrCodeSession() {
+  absl::MutexLock lock(&mu_);
+  RefreshQrCodeSessionLocked();
+}
+
+void NearbySharingServiceExtension::RefreshQrCodeSessionLocked() {
   qr_code_private_key_ = crypto::ECPrivateKey::Create();
   std::string compressed;
   if (qr_code_private_key_ == nullptr ||
@@ -61,6 +77,7 @@ void NearbySharingServiceExtension::RefreshQrCodeSession() {
 std::optional<std::vector<uint8_t>>
 NearbySharingServiceExtension::SignQrHandshakeToken(
     absl::Span<const uint8_t> ukey2_auth_token) const {
+  absl::MutexLock lock(&mu_);
   if (qr_code_private_key_ == nullptr) {
     return std::nullopt;
   }

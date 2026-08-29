@@ -710,6 +710,13 @@ std::string NearbySharingApi::GetQrCodeUrl() const {
   return impl_->service->GetQrCodeUrl();
 }
 
+void NearbySharingApi::RefreshQrCodeSession() {
+  if (impl_->service == nullptr) {
+    return;
+  }
+  impl_->service->RefreshQrCodeSession();
+}
+
 std::string NearbySharingApi::StatusCodeToString(StatusCode status) {
   switch (status) {
     case StatusCode::kOk:

@@ -32,6 +32,9 @@ class FileShareTrayController : public QObject {
   Q_PROPERTY(QString qrCodeUrl READ qrCodeUrl NOTIFY qrCodeUrlChanged)
   Q_PROPERTY(QStringList qrCodeRows READ qrCodeRows NOTIFY qrCodeChanged)
   Q_PROPERTY(int qrCodeSize READ qrCodeSize NOTIFY qrCodeChanged)
+  // The "share via QR" code is shown on demand and freshly minted each time —
+  // false until showQrCode(). See showQrCode()/hideQrCode().
+  Q_PROPERTY(bool qrVisible READ qrVisible NOTIFY qrVisibleChanged)
   Q_PROPERTY(QString logPath READ logPath WRITE setLogPath NOTIFY logPathChanged)
   Q_PROPERTY(QString savePath READ savePath WRITE setSavePath NOTIFY savePathChanged)
   Q_PROPERTY(bool developerMode READ developerMode WRITE setDeveloperMode NOTIFY developerModeChanged)
@@ -71,6 +74,7 @@ class FileShareTrayController : public QObject {
   QString qrCodeUrl() const { return state_.qrCodeUrl(); }
   QStringList qrCodeRows() const { return state_.qrCodeRows(); }
   int qrCodeSize() const { return state_.qrCodeSize(); }
+  bool qrVisible() const { return qr_visible_; }
   QString logPath() const { return state_.logPath(); }
   QString savePath() const { return state_.savePath(); }
   bool developerMode() const { return state_.developerMode(); }
@@ -97,6 +101,12 @@ class FileShareTrayController : public QObject {
   // Quit the whole application (ordered shutdown runs via aboutToQuit->stop()).
   Q_INVOKABLE void quitApplication();
   Q_INVOKABLE void switchToReceiveMode();
+  // Mint a fresh QR session and reveal the code. Each call rotates the key, so a
+  // previously shown / photographed QR stops working.
+  Q_INVOKABLE void showQrCode();
+  // Hide the QR and burn its key (rotate), so the code that was on screen no
+  // longer authorizes anyone. Called on dismiss and when leaving send mode.
+  Q_INVOKABLE void hideQrCode();
   Q_INVOKABLE void switchToSendModeWithFile(const QString& file_path);
   Q_INVOKABLE void switchToSendModeWithFiles(const QStringList& file_paths);
   Q_INVOKABLE void sendPendingFileToTarget(qlonglong share_target_id);
@@ -144,6 +154,7 @@ class FileShareTrayController : public QObject {
   void hotspotBoostChanged();
   void qrCodeUrlChanged();
   void qrCodeChanged();
+  void qrVisibleChanged();
   void logPathChanged();
   void savePathChanged();
   void developerModeChanged();
@@ -246,6 +257,8 @@ class FileShareTrayController : public QObject {
   // Outgoing QR peers we've already auto-sent to, so a re-advertised/updated
   // target doesn't trigger a duplicate send.
   QSet<qlonglong> auto_sent_qr_targets_;
+  // Whether the on-demand QR panel is currently revealed (drives qrVisible).
+  bool qr_visible_ = false;
 
   // The peer's stable device_id per discovered share_target id. The id/endpoint
   // rotate as the peer re-advertises; device_id does not, so it lets a failed

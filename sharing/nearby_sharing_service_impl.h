@@ -142,6 +142,7 @@ class NearbySharingServiceImpl
   bool IsExtendedAdvertisingSupported() const override;
   bool IsLanConnected() const override;
   std::string GetQrCodeUrl() const override;
+  void RefreshQrCodeSession() override;
   void SendAttachments(
       int64_t share_target_id,
       std::unique_ptr<AttachmentContainer> attachment_container,
