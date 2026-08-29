@@ -72,3 +72,5 @@ sharing/linux/dist/
 /PROJECT.md
 /.agents/
 /skills-lock.json
+packaging/flatpak/_build/
+scotty-src.tar

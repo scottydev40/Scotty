@@ -18,7 +18,8 @@
 #include <QDesktopServices>
 #include <QDebug>
 #include <QDir>
-#include <QDirIterator>
+#include <QProcess>
+#include <QSharedPointer>
 #include <QFileInfo>
 #include <QCoreApplication>
 #include <QDateTime>
@@ -1168,41 +1169,11 @@ static bool IsSendableFile(const QFileInfo& info) {
   return info.exists() && info.isFile() && info.size() > 0;
 }
 
-// Desktop cruft nobody means to share. Dotfiles and hidden directories are
-// already excluded by the iterator's filters; these are the ones that are not
-// hidden on Linux (Windows marks them hidden by attribute instead) plus editor
-// backups. Only applied when expanding a folder — explicitly selecting one of
-// these files still sends it.
-static bool IsJunkFile(const QString& name) {
-  static const QStringList kJunk = {
-      QStringLiteral("thumbs.db"),    QStringLiteral("ehthumbs.db"),
-      QStringLiteral("desktop.ini"),  QStringLiteral(".ds_store"),
-      QStringLiteral(".directory"),
-  };
-  return name.endsWith(QLatin1Char('~')) || kJunk.contains(name.toLower());
-}
-
-// Quick Share has no folder attachment type, so a selected folder contributes
-// the files inside it — the same thing Android does when you share a folder.
-// Directory structure is not preserved; the receiver gets a flat set.
-static void CollectSendableFiles(const QString& root, QStringList* out) {
-  // No QDir::Hidden: dotfiles are skipped, and the iterator will not descend
-  // into hidden directories either, so .git/.cache never get walked.
-  // Symlinked directories are not followed — they can form cycles.
-  QDirIterator it(root, QDir::Files | QDir::NoDotAndDotDot | QDir::Readable,
-                  QDirIterator::Subdirectories);
-  while (it.hasNext()) {
-    it.next();
-    if (IsSendableFile(it.fileInfo()) && !IsJunkFile(it.fileName())) {
-      out->append(it.fileInfo().absoluteFilePath());
-    }
-  }
-}
-
 void FileShareTrayController::switchToSendModeWithFiles(
     const QStringList& file_paths) {
   QStringList paths;
   QStringList names;
+  QStringList dirs;
   int skipped_empty = 0;
   for (const QString& raw : file_paths) {
     const QString trimmed_path = raw.trimmed();
@@ -1215,12 +1186,10 @@ void FileShareTrayController::switchToSendModeWithFiles(
     }
 
     if (info.isDir()) {
-      QStringList expanded;
-      CollectSendableFiles(info.absoluteFilePath(), &expanded);
-      for (const QString& path : expanded) {
-        paths.append(path);
-        names.append(QFileInfo(path).fileName());
-      }
+      // Quick Share has no folder attachment type; the desktop clients (Quick
+      // Share for Windows/ChromeOS) compress a shared folder into one archive.
+      // Collect directories and zip each below before entering send mode.
+      dirs.append(info.absoluteFilePath());
       continue;
     }
 
@@ -1234,6 +1203,86 @@ void FileShareTrayController::switchToSendModeWithFiles(
     names.append(info.fileName());
   }
 
+  if (dirs.isEmpty()) {
+    beginSendWithFiles(paths, names, skipped_empty);
+    return;
+  }
+
+  // Compress each selected folder into a single .zip and send that. Zipping
+  // runs as async QProcesses so the UI never freezes; when they all finish we
+  // continue into send mode with the archives added to any plain files.
+  setStatus(dirs.size() == 1 ? QStringLiteral("Compressing folder…")
+                             : QStringLiteral("Compressing folders…"));
+
+  auto batch = QSharedPointer<ZipBatch>::create();
+  batch->ready_paths = paths;
+  batch->ready_names = names;
+  batch->skipped_empty = skipped_empty;
+  batch->remaining = dirs.size();
+
+  const QString temp_root =
+      QStandardPaths::writableLocation(QStandardPaths::TempLocation) +
+      QStringLiteral("/scotty-share-%1")
+          .arg(QDateTime::currentMSecsSinceEpoch());
+
+  auto finishOne = [this, batch]() {
+    if (--batch->remaining == 0) {
+      beginSendWithFiles(batch->ready_paths, batch->ready_names,
+                         batch->skipped_empty);
+    }
+  };
+
+  for (const QString& dir : dirs) {
+    const QFileInfo dir_info(dir);
+    const QString folder_name = dir_info.fileName().isEmpty()
+                                    ? QStringLiteral("folder")
+                                    : dir_info.fileName();
+    // A fresh unique dir per folder: `zip` appends to an existing archive, so
+    // the destination must not already exist.
+    const QString out_dir =
+        temp_root + QStringLiteral("/") + QString::number(batch->index++);
+    QDir().mkpath(out_dir);
+    const QString zip_path =
+        out_dir + QStringLiteral("/") + folder_name + QStringLiteral(".zip");
+
+    auto* proc = new QProcess(this);
+    proc->setWorkingDirectory(dir_info.absolutePath());
+    connect(proc,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this, batch, proc, zip_path, folder_name, finishOne](
+                int exit_code, QProcess::ExitStatus status) {
+              if (status == QProcess::NormalExit && exit_code == 0 &&
+                  QFileInfo::exists(zip_path)) {
+                batch->ready_paths.append(zip_path);
+                batch->ready_names.append(QFileInfo(zip_path).fileName());
+              } else {
+                emit requestTrayMessage(
+                    QStringLiteral("Compression failed"),
+                    QStringLiteral("Could not compress %1.").arg(folder_name));
+              }
+              proc->deleteLater();
+              finishOne();
+            });
+    // -r recursive, -q quiet; run from the folder's parent so the archive
+    // stores `folder_name/…` rather than absolute paths.
+    proc->start(QStringLiteral("zip"),
+                {QStringLiteral("-r"), QStringLiteral("-q"), zip_path,
+                 folder_name});
+    if (!proc->waitForStarted(2000)) {
+      proc->disconnect();  // don't let a late finished() double-count
+      proc->deleteLater();
+      emit requestTrayMessage(
+          QStringLiteral("Compression unavailable"),
+          QStringLiteral("The 'zip' tool is not available to compress %1.")
+              .arg(folder_name));
+      finishOne();
+    }
+  }
+}
+
+void FileShareTrayController::beginSendWithFiles(const QStringList& paths,
+                                                 const QStringList& names,
+                                                 int skipped_empty) {
   if (paths.isEmpty()) {
     const QString detail =
         skipped_empty > 0
