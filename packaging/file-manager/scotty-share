@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
 # Hand the selected files/folders to Scotty's send sheet.
 #
-# Invoked by the file-manager integrations (Nautilus script, DING desktop menu).
-# Works whether Scotty is installed natively (a `scotty` on PATH) or as a
-# Flatpak. For the Flatpak, paths are forwarded through the document portal
-# (--file-forwarding + @@) so the sandbox can read a selection anywhere on disk,
-# not only the folders it was granted at install time. Folders are compressed to
-# a single archive by Scotty itself, so they are passed through unchanged here.
+# Invoked by the file-manager integrations (Nautilus extension/script, DING
+# desktop menu). Works whether Scotty is installed natively (a `scotty` on PATH)
+# or as a Flatpak.
+#
+# Native: folders are passed through unchanged — Scotty compresses each into a
+# single archive itself at its send choke point.
+#
+# Flatpak: files are forwarded through the document portal (--file-forwarding +
+# @@) so the sandbox can read a selection anywhere on disk, not only the folders
+# it was granted at install time. A *directory* cannot cross that boundary — the
+# portal forwards file fds, and a directory fd is rejected ("Invalid fd passed").
+# So a selected folder is zipped to a temp archive here and the archive (a file)
+# is forwarded instead. Same end result as the native path: the receiver gets
+# one .zip per folder.
 set -euo pipefail
 
 FLATPAK_ID="dev.scotty.Scotty"
@@ -44,10 +52,45 @@ if [ "${#selection[@]}" -eq 0 ]; then
 fi
 
 if command -v scotty >/dev/null 2>&1; then
-    exec scotty "${selection[@]}"
+    exec scotty --send "${selection[@]}"
 elif command -v flatpak >/dev/null 2>&1 \
         && flatpak info "$FLATPAK_ID" >/dev/null 2>&1; then
-    exec flatpak run --file-forwarding "$FLATPAK_ID" @@ "${selection[@]}" @@
+    # A directory cannot be forwarded to the sandbox, so replace each selected
+    # folder with a temp .zip of it and forward that. Plain files pass through.
+    forward=()
+    zip_root=""
+    for p in "${selection[@]}"; do
+        if [ -d "$p" ]; then
+            if ! command -v zip >/dev/null 2>&1; then
+                notify "The 'zip' tool is needed to share a folder."
+                exit 1
+            fi
+            [ -n "$zip_root" ] || zip_root="$(mktemp -d "${TMPDIR:-/tmp}/scotty-share-XXXXXX")"
+            name="$(basename -- "$p")"
+            [ -n "$name" ] && [ "$name" != "/" ] || name="folder"
+            # A fresh subdir per folder: `zip` appends to an existing archive, so
+            # the destination must not pre-exist, and two folders may share a name.
+            out_dir="$zip_root/${#forward[@]}"
+            mkdir -p "$out_dir"
+            archive="$out_dir/$name.zip"
+            # Run from the parent so the archive stores `name/…`, not absolute paths.
+            if ( cd "$(dirname -- "$p")" && zip -r -q "$archive" "$name" ) \
+                    && [ -f "$archive" ]; then
+                forward+=("$archive")
+            else
+                notify "Could not compress the folder \"$name\"."
+            fi
+        else
+            forward+=("$p")
+        fi
+    done
+    if [ "${#forward[@]}" -eq 0 ]; then
+        notify "Nothing to share."
+        exit 1
+    fi
+    # --send is an app argument (Scotty enters send mode only with it); it goes
+    # before the @@ block so flatpak passes it through literally.
+    exec flatpak run --file-forwarding "$FLATPAK_ID" --send @@ "${forward[@]}" @@
 else
     notify "Scotty is not installed."
     exit 1
