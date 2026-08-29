@@ -232,6 +232,32 @@ class FileShareTrayController : public QObject {
   // Outgoing QR peers we've already auto-sent to, so a re-advertised/updated
   // target doesn't trigger a duplicate send.
   QSet<qlonglong> auto_sent_qr_targets_;
+
+  // The peer's stable device_id per discovered share_target id. The id/endpoint
+  // rotate as the peer re-advertises; device_id does not, so it lets a failed
+  // send be re-resolved to the same physical device's live re-discovery.
+  QHash<qlonglong, QString> device_id_by_target_;
+
+  // Auto-retry a send that failed because the target was momentarily lost /
+  // receive-disabled (the peer flaps its receivability every ~15-30 s, minting a
+  // fresh share_target id each time). Rather than surfacing a hard failure that
+  // the user must clear and re-select to work around, we hold the pending files
+  // and re-fire the send when a target with the same device_id re-appears able
+  // to receive. Gives up after kSendRetryTimeoutMs.
+  QString pending_retry_device_id_;
+  QString pending_retry_target_name_;  // stable label while the id rotates
+  QStringList pending_retry_paths_;
+  QStringList pending_retry_names_;
+  qlonglong pending_retry_row_id_ = 0;   // the transfer row kept "Connecting"
+  qlonglong pending_retry_deadline_ms_ = 0;  // absolute give-up time
+  bool pending_retry_inflight_ = false;  // a retry SendFiles is outstanding
+  QTimer* pending_retry_timer_ = nullptr;
+  static constexpr int kSendRetryTimeoutMs = 30 * 1000;
+  void doSendToTarget(qlonglong share_target_id, bool is_retry);
+  void armSendRetry(qlonglong failed_target_id);
+  void maybeFireSendRetry(const NearbySharingApi::ShareTargetInfo& info);
+  void onSendRetryTimeout();
+  void clearSendRetry();
   // Per-target throughput tracking: last observed byte count + timestamp, and
   // the smoothed rate we report. Keyed by share_target_id.
   struct SpeedSample {

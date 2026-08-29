@@ -103,8 +103,12 @@ class FileShareState {
   // device_type: 0=unknown/other, and the Nearby ShareTargetType values (e.g.
   // phone/tablet/laptop). Pass -1 to leave an existing target's type unchanged
   // (used by transfer-update callers that don't carry a device type).
+  // trust ("own"/"contact"/"stranger") groups the send list. Pass an empty
+  // string to leave an existing target's trust unchanged (transfer-update
+  // callers don't carry it).
   void AddOrUpdateTarget(qlonglong id, const QString& name, bool is_incoming,
-                         int device_type = -1);
+                         int device_type = -1,
+                         const QString& trust = QString());
   void RemoveTarget(qlonglong id);
   // Removes every discovered target (each via RemoveTarget, so a target with an
   // active transfer is deferred rather than yanked). Used when the discovery

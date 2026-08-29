@@ -167,6 +167,7 @@ void FileShareTrayController::attachServiceListeners() {
     QMetaObject::invokeMethod(
         this, [this, share_target_id]() {
           state_.RemoveTarget(share_target_id);
+          device_id_by_target_.remove(share_target_id);
           emit discoveredTargetsChanged();
         },
         Qt::QueuedConnection);
@@ -193,8 +194,18 @@ void FileShareTrayController::updateTargetFromInfo(
     return;
   }
 
-  state_.AddOrUpdateTarget(info.id, name, info.is_incoming, info.device_type);
+  const QString trust = info.for_self_share ? QStringLiteral("own")
+                        : info.is_known     ? QStringLiteral("contact")
+                                            : QStringLiteral("stranger");
+  state_.AddOrUpdateTarget(info.id, name, info.is_incoming, info.device_type,
+                           trust);
+  if (!info.device_id.empty()) {
+    device_id_by_target_[info.id] = StringUtils::FromStdString(info.device_id);
+  }
   emit discoveredTargetsChanged();
+
+  // If a send is waiting for this device to become reachable again, fire it.
+  maybeFireSendRetry(info);
 }
 
 void FileShareTrayController::MaybeAutoSendToQrPeer(
@@ -1265,6 +1276,14 @@ void FileShareTrayController::switchToSendModeWithFiles(
 }
 
 void FileShareTrayController::sendPendingFileToTarget(qlonglong share_target_id) {
+  // A fresh, user-initiated send cancels any auto-retry still waiting on an
+  // earlier pick.
+  clearSendRetry();
+  doSendToTarget(share_target_id, /*is_retry=*/false);
+}
+
+void FileShareTrayController::doSendToTarget(qlonglong share_target_id,
+                                             bool is_retry) {
   if (share_target_id <= 0) {
     return;
   }
@@ -1310,27 +1329,107 @@ void FileShareTrayController::sendPendingFileToTarget(qlonglong share_target_id)
         QMetaObject::invokeMethod(
             this,
             [this, share_target_id, status]() {
+              pending_retry_inflight_ = false;
               const QString target_name = state_.GetTargetName(share_target_id);
               if (status == NearbySharingApi::StatusCode::kOk) {
+                clearSendRetry();
                 setStatus(QStringLiteral("Sending %1 to %2")
                               .arg(state_.pendingSendFileName(), target_name));
                 return;
               }
 
-              emit requestTrayMessage(
-                  QStringLiteral("Send failed"),
-                  QStringLiteral("Could not send to %1").arg(target_name));
-
-              state_.AddOrUpdateTransfer(share_target_id, target_name,
-                                         QStringLiteral("Failed"), 0.0, 0,
-                                         QStringLiteral("outgoing"),
-                                         state_.pendingSendFileName(),
-                                         state_.pendingSendFilePath(), 0.0, 0, 0);
-              emit transfersChanged();
-              state_.SetPendingSendFile("", "", 0);
+              // The peer flaps its receivability (a fresh share_target id each
+              // time), so a failure here is usually "the target just went away",
+              // not a real error. Hold the files and re-fire when the same
+              // device re-appears able to receive, instead of forcing the user
+              // to close the sheet, re-select, and resend by hand.
+              armSendRetry(share_target_id);
             },
             Qt::QueuedConnection);
       });
+}
+
+void FileShareTrayController::armSendRetry(qlonglong failed_target_id) {
+  const QString device_id = device_id_by_target_.value(failed_target_id);
+  const qlonglong now = QDateTime::currentMSecsSinceEpoch();
+
+  // No stable id to re-resolve against, or we've waited past the deadline:
+  // surface a real failure.
+  const bool expired =
+      !pending_retry_device_id_.isEmpty() && now >= pending_retry_deadline_ms_;
+  if (device_id.isEmpty() || expired) {
+    onSendRetryTimeout();
+    return;
+  }
+
+  if (pending_retry_device_id_.isEmpty()) {
+    // First failure: capture the file set and open the retry window.
+    pending_retry_device_id_ = device_id;
+    pending_retry_target_name_ = state_.GetTargetName(failed_target_id);
+    pending_retry_paths_ = state_.pendingSendFilePaths();
+    pending_retry_names_ = state_.pendingSendFileNames();
+    pending_retry_row_id_ = failed_target_id;
+    pending_retry_deadline_ms_ = now + kSendRetryTimeoutMs;
+    if (pending_retry_timer_ == nullptr) {
+      pending_retry_timer_ = new QTimer(this);
+      pending_retry_timer_->setSingleShot(true);
+      connect(pending_retry_timer_, &QTimer::timeout, this,
+              &FileShareTrayController::onSendRetryTimeout);
+    }
+    pending_retry_timer_->start(kSendRetryTimeoutMs);
+  }
+  // Keep the row visible as still-working rather than flashing "Failed".
+  state_.AddOrUpdateTransfer(
+      pending_retry_row_id_, pending_retry_target_name_,
+      QStringLiteral("Connecting"), 0.0, 0, QStringLiteral("outgoing"),
+      state_.pendingSendFileName(), state_.pendingSendFilePath(), 0.0, 0, 0);
+  emit transfersChanged();
+}
+
+void FileShareTrayController::maybeFireSendRetry(
+    const NearbySharingApi::ShareTargetInfo& info) {
+  if (pending_retry_device_id_.isEmpty() || pending_retry_inflight_) return;
+  if (info.is_incoming || info.receive_disabled) return;
+  if (StringUtils::FromStdString(info.device_id) != pending_retry_device_id_) {
+    return;
+  }
+  // The device is reachable again under a fresh id: move the pending files and
+  // holding row onto it and re-fire.
+  pending_retry_inflight_ = true;
+  state_.SetPendingSendFiles(pending_retry_paths_, pending_retry_names_, info.id);
+  if (pending_retry_row_id_ != info.id) {
+    state_.RemoveTransfer(pending_retry_row_id_);
+    pending_retry_row_id_ = info.id;
+  }
+  doSendToTarget(info.id, /*is_retry=*/true);
+}
+
+void FileShareTrayController::onSendRetryTimeout() {
+  if (pending_retry_row_id_ > 0) {
+    const QString target_name = pending_retry_target_name_;
+    emit requestTrayMessage(
+        QStringLiteral("Send failed"),
+        QStringLiteral("Could not reach %1").arg(target_name));
+    state_.AddOrUpdateTransfer(pending_retry_row_id_, target_name,
+                               QStringLiteral("Failed"), 0.0, 0,
+                               QStringLiteral("outgoing"),
+                               state_.pendingSendFileName(),
+                               state_.pendingSendFilePath(), 0.0, 0, 0);
+    emit transfersChanged();
+  }
+  state_.SetPendingSendFile("", "", 0);
+  clearSendRetry();
+}
+
+void FileShareTrayController::clearSendRetry() {
+  if (pending_retry_timer_ != nullptr) pending_retry_timer_->stop();
+  pending_retry_device_id_.clear();
+  pending_retry_target_name_.clear();
+  pending_retry_paths_.clear();
+  pending_retry_names_.clear();
+  pending_retry_row_id_ = 0;
+  pending_retry_deadline_ms_ = 0;
+  pending_retry_inflight_ = false;
 }
 
 void FileShareTrayController::copyTextToClipboard(const QString& text) {

@@ -122,6 +122,22 @@ ApplicationWindow {
                         spacing: 16
 
                         // ── Send: discovered nearby devices ──────────────
+                        // Trust grouping: when the account plugin is present and
+                        // signed in, split discovered targets into people/devices
+                        // you know (own cert + contact cert) vs. Everyone else.
+                        // Signed out / no plugin ⇒ no relationship exists, so the
+                        // list stays flat (literally everyone nearby).
+                        readonly property var _sendTargets:
+                            mainContent.isSendMode ? fileShareController.discoveredTargets : []
+                        function _trustOf(t) { return (t && t.trust) ? String(t.trust) : "stranger" }
+                        readonly property var _knownTargets:
+                            _sendTargets.filter(function(t){
+                                var k = _trustOf(t); return k === "own" || k === "contact" })
+                        readonly property var _everyoneTargets:
+                            _sendTargets.filter(function(t){ return _trustOf(t) === "stranger" })
+                        readonly property bool _grouped:
+                            fileShareController.signedInEmail.length > 0 && _knownTargets.length > 0
+
                         Label {
                             visible: mainContent.isSendMode
                             text: "Nearby devices"
@@ -130,11 +146,50 @@ ApplicationWindow {
                             color: Theme.textPrimary
                         }
 
+                        // Flat list (signed out / no known device nearby).
                         Repeater {
-                            // Only in send mode; receive rows come from the
-                            // incoming Repeater below so senders never double-render.
-                            model: mainContent.isSendMode
-                                   ? fileShareController.discoveredTargets : []
+                            model: (mainContent.isSendMode && !mainCol._grouped)
+                                   ? mainCol._sendTargets : []
+                            delegate: DeviceRow {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 84
+                            }
+                        }
+
+                        // Grouped: "Your devices & contacts".
+                        Label {
+                            Layout.fillWidth: true
+                            visible: mainContent.isSendMode && mainCol._grouped
+                            text: "YOUR DEVICES & CONTACTS"
+                            font.pixelSize: 12
+                            font.weight: Font.Medium
+                            font.letterSpacing: 1
+                            color: Theme.textMuted
+                        }
+                        Repeater {
+                            model: (mainContent.isSendMode && mainCol._grouped)
+                                   ? mainCol._knownTargets : []
+                            delegate: DeviceRow {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 84
+                            }
+                        }
+
+                        // Grouped: "Everyone else".
+                        Label {
+                            Layout.fillWidth: true
+                            visible: mainContent.isSendMode && mainCol._grouped
+                                     && mainCol._everyoneTargets.length > 0
+                            text: "EVERYONE ELSE"
+                            font.pixelSize: 12
+                            font.weight: Font.Medium
+                            font.letterSpacing: 1
+                            color: Theme.textMuted
+                            topPadding: 8
+                        }
+                        Repeater {
+                            model: (mainContent.isSendMode && mainCol._grouped)
+                                   ? mainCol._everyoneTargets : []
                             delegate: DeviceRow {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 84
