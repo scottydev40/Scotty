@@ -191,6 +191,20 @@ class FileShareTrayController : public QObject {
   QString resolveSavePath(const QString& raw) const;
   
   void updateTargetFromInfo(const NearbySharingApi::ShareTargetInfo& info);
+  // Enter send mode with a fully-resolved set of file paths (folders already
+  // compressed to archives by switchToSendModeWithFiles).
+  void beginSendWithFiles(const QStringList& paths, const QStringList& names,
+                          int skipped_empty);
+  // Shared state for an in-flight batch of folder-zip QProcesses. Held by
+  // QSharedPointer so each switchToSendModeWithFiles call is self-contained and
+  // the send only begins once every folder in the batch has finished zipping.
+  struct ZipBatch {
+    QStringList ready_paths;
+    QStringList ready_names;
+    int skipped_empty = 0;
+    int remaining = 0;
+    int index = 0;
+  };
   // Auto-send the pending file(s) to a peer that scanned our QR code.
   void MaybeAutoSendToQrPeer(const NearbySharingApi::ShareTargetInfo& info,
                              const QString& name);

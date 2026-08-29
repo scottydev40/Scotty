@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Install/remove Scotty's file-manager "Share" integration for the current user.
+#
+#   scotty-fm install     add the right-click share entries
+#   scotty-fm uninstall   remove them
+#   scotty-fm status      show what is installed
+#
+# Everything installs under the user's home (no root). Scotty itself does the
+# folder->zip and the sending; these are only launchers that hand a selection to
+# `scotty-share`.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+LIBEXEC="$HOME/.local/libexec/scotty"
+LAUNCHER="$LIBEXEC/scotty-share"
+NAUTILUS_SCRIPTS="$HOME/.local/share/nautilus/scripts"
+NAUTILUS_ITEM="$NAUTILUS_SCRIPTS/Share with Scotty"
+
+install_launcher() {
+    mkdir -p "$LIBEXEC"
+    install -m 0755 "$HERE/scotty-share" "$LAUNCHER"
+}
+
+install_nautilus() {
+    if ! command -v nautilus >/dev/null 2>&1; then
+        return 1
+    fi
+    mkdir -p "$NAUTILUS_SCRIPTS"
+    # Nautilus runs any executable dropped in scripts/; the file name becomes the
+    # menu label under right-click -> Scripts. A symlink to the shared launcher
+    # keeps a single source of truth.
+    ln -sf "$LAUNCHER" "$NAUTILUS_ITEM"
+    return 0
+}
+
+do_install() {
+    install_launcher
+    local any=0
+    if install_nautilus; then
+        printf 'Nautilus: right-click a file or folder -> Scripts -> "Share with Scotty".\n'
+        printf '         (Run "nautilus -q" once if it does not appear yet.)\n'
+        any=1
+    fi
+    if [ "$any" -eq 0 ]; then
+        printf 'No supported file manager found (Nautilus). Launcher installed at:\n  %s\n' "$LAUNCHER"
+    fi
+}
+
+do_uninstall() {
+    rm -f "$NAUTILUS_ITEM" "$LAUNCHER"
+    rmdir --ignore-fail-on-non-empty "$LIBEXEC" 2>/dev/null || true
+    printf 'Removed Scotty file-manager integration.\n'
+}
+
+do_status() {
+    printf 'Launcher:  %s\n' "$([ -x "$LAUNCHER" ] && echo "installed ($LAUNCHER)" || echo "not installed")"
+    printf 'Nautilus:  %s\n' "$([ -L "$NAUTILUS_ITEM" ] || [ -f "$NAUTILUS_ITEM" ] && echo "installed" || echo "not installed")"
+}
+
+case "${1:-}" in
+    install)   do_install ;;
+    uninstall) do_uninstall ;;
+    status)    do_status ;;
+    -h|--help|help|"")
+        printf 'Usage: scotty-fm install|uninstall|status\n' ;;
+    *)
+        printf 'Usage: scotty-fm install|uninstall|status\n' >&2
+        exit 2 ;;
+esac

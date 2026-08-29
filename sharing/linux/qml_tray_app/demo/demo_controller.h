@@ -11,7 +11,9 @@
 #include <QCoreApplication>
 #include <QObject>
 #include <QStringList>
+#include <QTimer>
 #include <QVariantList>
+#include <QVector>
 #include <QVariantMap>
 
 class DemoController : public QObject {
@@ -66,9 +68,9 @@ class DemoController : public QObject {
   void setEnable5GhzHotspot(bool v) { hotspot5_ = v; emit enable5GhzHotspotChanged(); }
   bool hotspotBoost() const { return boost_; }
   void setHotspotBoost(bool v) { boost_ = v; emit hotspotBoostChanged(); }
-  QString qrCodeUrl() const { return QString(); }
-  QStringList qrCodeRows() const { return {}; }
-  int qrCodeSize() const { return 0; }
+  QString qrCodeUrl() const { return QStringLiteral("https://quickshare.google/qr#scotty-demo"); }
+  QStringList qrCodeRows() const { return qr_rows_; }
+  int qrCodeSize() const { return qr_rows_.isEmpty() ? 0 : qr_rows_.size(); }
   QString logPath() const { return QStringLiteral("~/.local/state/scotty/scotty.log"); }
   void setLogPath(const QString& v) { log_ = v; emit logPathChanged(); }
   QString savePath() const { return QStringLiteral("~/Downloads"); }
@@ -93,7 +95,54 @@ class DemoController : public QObject {
   }
   Q_INVOKABLE void switchToSendModeWithFile(const QString&) { enterSend(); }
   Q_INVOKABLE void switchToSendModeWithFiles(const QStringList&) { enterSend(); }
-  Q_INVOKABLE void sendPendingFileToTarget(qlonglong) {}
+  Q_INVOKABLE void sendPendingFileToTarget(qlonglong id) {
+    QString target_name = QStringLiteral("Device");
+    for (const QVariant& t : targets_) {
+      const QVariantMap m = t.toMap();
+      if (m.value(QStringLiteral("id")).toLongLong() == id) {
+        target_name = m.value(QStringLiteral("name")).toString();
+        break;
+      }
+    }
+    QVariantMap tr;
+    tr[QStringLiteral("targetId")] = id;
+    tr[QStringLiteral("targetName")] = target_name;
+    tr[QStringLiteral("direction")] = QStringLiteral("outgoing");
+    tr[QStringLiteral("status")] = QStringLiteral("Connecting");
+    tr[QStringLiteral("progress")] = 0.0;
+    tr[QStringLiteral("fileName")] = pending_name_;
+    tr[QStringLiteral("filePath")] = pending_path_;
+    tr[QStringLiteral("speed")] = 0;
+    tr[QStringLiteral("currentFile")] = 1;
+    tr[QStringLiteral("totalFiles")] = 1;
+    transfers_ = {tr};
+    emit transfersChanged();
+    emit transferActiveChanged();
+
+    if (!send_timer_) {
+      send_timer_ = new QTimer(this);
+      connect(send_timer_, &QTimer::timeout, this, &DemoController::tickSend);
+    }
+    send_progress_ = 0.0;
+    send_timer_->start(120);
+  }
+  Q_INVOKABLE void tickSend() {
+    if (transfers_.isEmpty()) { send_timer_->stop(); return; }
+    QVariantMap tr = transfers_.first().toMap();
+    send_progress_ += 0.025;
+    if (send_progress_ >= 1.0) {
+      send_progress_ = 1.0;
+      tr[QStringLiteral("status")] = QStringLiteral("Complete");
+      send_timer_->stop();
+    } else {
+      tr[QStringLiteral("status")] = QStringLiteral("InProgress");
+      // ~14 MB/s, fabricated.
+      tr[QStringLiteral("speed")] = qlonglong(14 * 1024 * 1024);
+    }
+    tr[QStringLiteral("progress")] = send_progress_;
+    transfers_ = {tr};
+    emit transfersChanged();
+  }
   Q_INVOKABLE void requestMyDevicesSignIn() {}
   Q_INVOKABLE void signOutMyDevices() {
     email_.clear(); name_.clear(); emit signedInEmailChanged(); emit signedInNameChanged();
@@ -139,19 +188,26 @@ class DemoController : public QObject {
 
  private:
   // deviceType: 1/5 phone, 2 tablet, 3 laptop, else generic (see DeviceRow.qml).
-  static QVariantMap target(qlonglong id, const QString& name, int type) {
+  // trust: "own" (your cert), "contact" (contact cert), "stranger" (Everyone).
+  static QVariantMap target(qlonglong id, const QString& name, int type,
+                            const QString& trust) {
     QVariantMap m;
     m[QStringLiteral("id")] = id;
     m[QStringLiteral("name")] = name;
     m[QStringLiteral("deviceType")] = type;
+    m[QStringLiteral("trust")] = trust;
     return m;
   }
   void makeTargets() {
     // Star Trek easter egg. Montgomery "Scotty" Scott would approve.
     targets_ = {
-        target(1, QStringLiteral("Pike's Laptop"), 3),
-        target(2, QStringLiteral("Kirk's Pixel 10"), 1),
-        target(3, QStringLiteral("Chromebook"), 2),
+        target(1, QStringLiteral("Galaxy S26 Ultra"), 1, QStringLiteral("own")),
+        target(2, QStringLiteral("office-pc"), 3, QStringLiteral("own")),
+        target(3, QStringLiteral("Spock"), 1, QStringLiteral("contact")),
+        target(4, QStringLiteral("Uhura's iPad"), 2, QStringLiteral("contact")),
+        target(5, QStringLiteral("Pike's Laptop"), 3, QStringLiteral("stranger")),
+        target(6, QStringLiteral("Kirk's Pixel 10"), 1, QStringLiteral("stranger")),
+        target(7, QStringLiteral("Chromebook"), 2, QStringLiteral("stranger")),
     };
   }
   void enterSend() {
@@ -176,11 +232,11 @@ class DemoController : public QObject {
       tr[QStringLiteral("targetId")] = qlonglong(2);
       tr[QStringLiteral("targetName")] = QStringLiteral("Kirk's Pixel 10");
       tr[QStringLiteral("direction")] = QStringLiteral("incoming");
-      tr[QStringLiteral("status")] = QStringLiteral("Transferring");
+      tr[QStringLiteral("status")] = QStringLiteral("InProgress");
       tr[QStringLiteral("progress")] = 0.68;
+      tr[QStringLiteral("speed")] = qlonglong(14 * 1024 * 1024);
       tr[QStringLiteral("fileName")] = QStringLiteral("away_mission.mp4");
       tr[QStringLiteral("filePath")] = QString();
-      tr[QStringLiteral("speed")] = 0;
       tr[QStringLiteral("currentFile")] = 1;
       tr[QStringLiteral("totalFiles")] = 1;
       transfers_ = {tr};
@@ -188,11 +244,53 @@ class DemoController : public QObject {
     } else {
       mode_ = QStringLiteral("Receive");  // home / idle
     }
+    makeDummyQr();
+  }
+  // A fabricated 25x25 QR-looking matrix: three finder squares + a deterministic
+  // pseudo-random data field. Not a real code; just for screenshots.
+  void makeDummyQr() {
+    const int n = 25;
+    QVector<QVector<char>> g(n, QVector<char>(n, '0'));
+    auto finder = [&](int r0, int c0) {
+      for (int r = 0; r < 7; ++r)
+        for (int c = 0; c < 7; ++c) {
+          bool ring = (r == 0 || r == 6 || c == 0 || c == 6);
+          bool core = (r >= 2 && r <= 4 && c >= 2 && c <= 4);
+          g[r0 + r][c0 + c] = (ring || core) ? '1' : '0';
+        }
+    };
+    finder(0, 0);
+    finder(0, n - 7);
+    finder(n - 7, 0);
+    // Timing patterns.
+    for (int i = 8; i < n - 8; ++i) {
+      g[6][i] = (i % 2 == 0) ? '1' : '0';
+      g[i][6] = (i % 2 == 0) ? '1' : '0';
+    }
+    // Deterministic data fill outside the reserved zones.
+    quint32 x = 0x5c077ea1u;
+    for (int r = 0; r < n; ++r)
+      for (int c = 0; c < n; ++c) {
+        bool reserved = (r < 8 && c < 8) || (r < 8 && c >= n - 8) ||
+                        (r >= n - 8 && c < 8) || r == 6 || c == 6;
+        if (reserved) continue;
+        x = x * 1103515245u + 12345u;
+        g[r][c] = ((x >> 16) & 1) ? '1' : '0';
+      }
+    qr_rows_.clear();
+    for (int r = 0; r < n; ++r) {
+      QString row;
+      for (int c = 0; c < n; ++c) row.append(QChar(g[r][c]));
+      qr_rows_.append(row);
+    }
   }
 
   QString mode_ = QStringLiteral("Receive");
   QString device_name_, status_, pending_name_, pending_path_, email_, name_, log_, save_;
   QVariantList targets_, transfers_;
+  QStringList qr_rows_;
+  QTimer* send_timer_ = nullptr;
+  double send_progress_ = 0.0;
   int visibility_ = 0;
   bool auto_accept_ = false, hotspot5_ = false, boost_ = false, dev_ = false, run_startup_ = true;
 };

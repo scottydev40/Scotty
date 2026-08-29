@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Hand the selected files/folders to Scotty's send sheet.
+#
+# Invoked by the file-manager integrations (Nautilus script, DING desktop menu).
+# Works whether Scotty is installed natively (a `scotty` on PATH) or as a
+# Flatpak. For the Flatpak, paths are forwarded through the document portal
+# (--file-forwarding + @@) so the sandbox can read a selection anywhere on disk,
+# not only the folders it was granted at install time. Folders are compressed to
+# a single archive by Scotty itself, so they are passed through unchanged here.
+set -euo pipefail
+
+FLATPAK_ID="dev.scotty.Scotty"
+
+notify() {
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send "Scotty" "$1"
+    else
+        printf 'Scotty: %s\n' "$1" >&2
+    fi
+}
+
+# Collect the selection. In a Nautilus script the positional arguments are bare
+# file names, while NAUTILUS_SCRIPT_SELECTED_FILE_PATHS holds absolute paths, so
+# prefer that env var when it is set; otherwise (DING desktop menu, CLI) the
+# arguments are already absolute paths.
+paths=()
+if [ -n "${NAUTILUS_SCRIPT_SELECTED_FILE_PATHS:-}" ]; then
+    while IFS= read -r line; do
+        [ -n "$line" ] && paths+=("$line")
+    done <<< "$NAUTILUS_SCRIPT_SELECTED_FILE_PATHS"
+else
+    paths=("$@")
+fi
+
+# Drop blanks and non-existent entries.
+selection=()
+for p in "${paths[@]}"; do
+    [ -n "$p" ] && [ -e "$p" ] && selection+=("$p")
+done
+
+if [ "${#selection[@]}" -eq 0 ]; then
+    notify "Nothing selected to share."
+    exit 1
+fi
+
+if command -v scotty >/dev/null 2>&1; then
+    exec scotty "${selection[@]}"
+elif command -v flatpak >/dev/null 2>&1 \
+        && flatpak info "$FLATPAK_ID" >/dev/null 2>&1; then
+    exec flatpak run --file-forwarding "$FLATPAK_ID" @@ "${selection[@]}" @@
+else
+    notify "Scotty is not installed."
+    exit 1
+fi
