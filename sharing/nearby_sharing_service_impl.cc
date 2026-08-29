@@ -3097,9 +3097,16 @@ std::optional<ShareTarget> NearbySharingServiceImpl::CreateShareTarget(
   // (this also recovers the device name the token carries); on a match we
   // target it so the standard connect path can reach it (the peer authorizes
   // because it scanned our QR).
+  //
+  // This runs even when we *do* hold a decryptable certificate for the peer
+  // (i.e. we are signed in and they are a contact / our own device). Scanning
+  // the QR is an explicit intent to receive, so it must flag is_qr_code_peer —
+  // and thus auto-send — regardless of whether a cert also identifies them.
+  // Gating this on !certificate.has_value() silently broke QR send the moment
+  // the sender signed in (has_cert=true -> match skipped -> no auto-send).
   bool is_qr_peer = false;
   std::optional<std::string> qr_device_name;
-  if (!is_incoming && advertisement.has_qr_code() && !certificate.has_value()) {
+  if (!is_incoming && advertisement.has_qr_code()) {
     const std::string blob = service_extension_->qr_code_public_blob();
     QrCodeMatchResult qr = MatchQrCodeToken(
         absl::MakeConstSpan(reinterpret_cast<const uint8_t*>(blob.data()),
