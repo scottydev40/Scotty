@@ -74,3 +74,4 @@ sharing/linux/dist/
 /skills-lock.json
 packaging/flatpak/_build/
 scotty-src.tar
+packaging/file-manager/__pycache__/
