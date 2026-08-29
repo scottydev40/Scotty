@@ -261,6 +261,10 @@ class NearbySharingApi::Impl : public nearby::sharing::ShareTargetDiscoveredCall
     info.is_incoming = share_target.is_incoming;
     info.device_type = static_cast<int>(share_target.type);
     info.is_qr_code_peer = share_target.is_qr_code_peer;
+    info.for_self_share = share_target.for_self_share;
+    info.is_known = share_target.is_known;
+    info.device_id = share_target.device_id;
+    info.receive_disabled = share_target.receive_disabled;
     return info;
   }
 
