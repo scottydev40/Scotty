@@ -14,6 +14,9 @@ finish-args:
   - --system-talk-name=org.freedesktop.NetworkManager
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=dev.scotty.MyDevices1
+  # The tray/Quick-Settings icon is a StatusNotifierItem; without this the app
+  # cannot register it (QDBusTrayIcon "ServiceUnknown") and has no visible entry.
+  - --talk-name=org.kde.StatusNotifierWatcher
   - --filesystem=xdg-download
 modules:
   - name: nearby-engine
@@ -52,6 +55,14 @@ modules:
       - -DNEARBY_PREFIX=/app
       - -DCMAKE_PREFIX_PATH=/app
       - -DBUILD_TESTING=OFF
+    post-install:
+      # The shared D-Bus service defers activation to a systemd unit
+      # (scotty.service) that only the native packages install — inside the
+      # sandbox it does not exist, so app-grid / Quick-Settings launches (which
+      # go through D-Bus activation) dead-end silently. Drop the line so dbus
+      # runs the service Exec directly; the app then owns dev.scotty.Scotty and
+      # its org.freedesktop.Application.Activate raises the window as intended.
+      - sed -i '/^SystemdService=/d' /app/share/dbus-1/services/dev.scotty.Scotty.service
     sources:
       - type: archive
         path: scotty-src.tar
