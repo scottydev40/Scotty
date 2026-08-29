@@ -96,7 +96,11 @@ Item {
     readonly property color statusColor: isCancelled ? textMuted
                                          : isFailed ? danger
                                          : isComplete ? accentGreen : textMuted
-    readonly property bool rowClickable: canSend && (!hasTransfer || isFailed || isComplete)
+    // Only a plain, transfer-less target sends on a whole-row tap. Once a row is
+    // in a terminal state (complete / failed / cancelled) it carries explicit
+    // "Retry"/"Done" buttons, and the row itself is inert — otherwise a tap that
+    // just misses "Done" falls through and re-sends the file.
+    readonly property bool rowClickable: canSend && !hasTransfer
     readonly property bool awaitingLocal: transferStatus === "AwaitingLocalConfirmation"
 
     // ShareTargetType: 1=Phone, 2=Tablet, 3=Laptop, 5=Foldable, else generic.
@@ -256,6 +260,21 @@ Item {
                         anchors.margins: -8
                         cursorShape: Qt.PointingHandCursor
                         onClicked: fileShareController.openFileLocation(root.filePath)
+                    }
+                }
+                // Explicit re-send for a failed/cancelled attempt (the row itself
+                // no longer re-sends on a stray tap — see rowClickable).
+                Label {
+                    visible: root.canSend && root.isFailed && !root.incoming
+                    text: "Retry"
+                    font.pixelSize: 14
+                    font.weight: Font.Medium
+                    color: root.accentGreen
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -8
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: fileShareController.sendPendingFileToTarget(root.modelData.id)
                     }
                 }
                 Label {
