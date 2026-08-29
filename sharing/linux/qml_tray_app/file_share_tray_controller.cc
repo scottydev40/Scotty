@@ -167,6 +167,36 @@ void FileShareTrayController::updateQrCodeData() {
   emit qrCodeChanged();
 }
 
+void FileShareTrayController::showQrCode() {
+  // Mint a fresh session so the code we reveal is new; a peer is auto-authorized
+  // purely by scanning it, so an old/photographed QR must not still match.
+  if (service_) service_->RefreshQrCodeSession();
+  auto_sent_qr_targets_.clear();
+  state_.SetQrCodeData(
+      service_ ? QString::fromStdString(service_->GetQrCodeUrl()) : QString(),
+      {}, 0);
+  emit qrCodeUrlChanged();
+  updateQrCodeData();
+  if (!qr_visible_) {
+    qr_visible_ = true;
+    emit qrVisibleChanged();
+  }
+}
+
+void FileShareTrayController::hideQrCode() {
+  // Burn the key that was on screen (rotate to a fresh, unshown one) and drop
+  // the rendered code, so nothing that scanned it can still connect.
+  if (service_) service_->RefreshQrCodeSession();
+  auto_sent_qr_targets_.clear();
+  state_.SetQrCodeData(QString(), {}, 0);
+  emit qrCodeUrlChanged();
+  emit qrCodeChanged();
+  if (qr_visible_) {
+    qr_visible_ = false;
+    emit qrVisibleChanged();
+  }
+}
+
 void FileShareTrayController::attachServiceListeners() {
   NearbySharingApi::Listener listener;
 
@@ -1177,6 +1207,8 @@ void FileShareTrayController::switchToReceiveMode() {
   // A manual return pre-empts any pending post-send auto-return (harmless when
   // this call is the auto-return itself — the timer has already fired).
   cancelSendReturnToReceive();
+  // Leaving the send sheet burns any QR that was on screen.
+  if (qr_visible_) hideQrCode();
   // Drop the staged file so the UI (driven by pendingSendFilePath) returns
   // to the receive blob.
   state_.ClearPendingSendFile();
@@ -1205,8 +1237,10 @@ static bool IsSendableFile(const QFileInfo& info) {
 
 void FileShareTrayController::switchToSendModeWithFiles(
     const QStringList& file_paths) {
-  // Starting a fresh send cancels a pending post-send auto-return.
+  // Starting a fresh send cancels a pending post-send auto-return, and hides any
+  // QR left over from a previous share (a new share starts with no QR shown).
   cancelSendReturnToReceive();
+  if (qr_visible_) hideQrCode();
   QStringList paths;
   QStringList names;
   QStringList dirs;

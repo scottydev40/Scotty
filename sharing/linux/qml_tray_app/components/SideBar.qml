@@ -360,26 +360,79 @@ Item {
                 }
             }
 
-            Label {
+            // On-demand "Scan to connect" QR. The code is not shown by default:
+            // scanning it auto-authorizes the peer to receive, so it is minted
+            // fresh only when the user asks (showQrCode) and burned when hidden
+            // or when leaving the send sheet — a photographed/old QR cannot be
+            // replayed to pull files later.
+            Rectangle {
+                visible: !fileShareController.qrVisible
                 Layout.fillWidth: true
-                Layout.leftMargin: 12
-                Layout.topMargin: 12
-                Layout.rightMargin: 12
-                text: "Scan this with your phone to connect. Works best with both devices on the same Wi-Fi."
-                wrapMode: Text.WordWrap
-                font.pixelSize: 12
-                color: textMuted
-            }
-
-            // "Scan to connect" QR: carries this device's ephemeral session
-            // public key so a phone can start a local Quick Share QR session
-            // (no Google cloud relay). Rendered from fileShareController.qrCodeUrl.
-            SendUrlPanel {
-                visible: true
                 Layout.topMargin: 14
                 Layout.leftMargin: 12
-                Layout.alignment: Qt.AlignHCenter
-                qrFrameSize: 210
+                Layout.rightMargin: 12
+                Layout.preferredHeight: 44
+                radius: 12
+                color: showQrArea.containsMouse ? Theme.rowFillHover : Theme.rowFill
+                border.color: cardBorder
+                border.width: 1
+
+                Label {
+                    anchors.centerIn: parent
+                    text: "Show QR code"
+                    font.pixelSize: 14
+                    font.weight: Font.Medium
+                    color: textPrimary
+                }
+                MouseArea {
+                    id: showQrArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: fileShareController.showQrCode()
+                }
+            }
+
+            ColumnLayout {
+                visible: fileShareController.qrVisible
+                Layout.fillWidth: true
+                spacing: 8
+
+                Label {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 12
+                    Layout.topMargin: 12
+                    Layout.rightMargin: 12
+                    text: "Scan this with your phone to connect. Works best with both devices on the same Wi-Fi. This code is single-use — it stops working once you hide it."
+                    wrapMode: Text.WordWrap
+                    font.pixelSize: 12
+                    color: textMuted
+                }
+
+                // Rendered from fileShareController.qrCodeUrl (a fresh ephemeral
+                // session key minted by showQrCode()).
+                SendUrlPanel {
+                    Layout.topMargin: 6
+                    Layout.leftMargin: 12
+                    Layout.alignment: Qt.AlignHCenter
+                    qrFrameSize: 210
+                }
+
+                Label {
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.bottomMargin: 4
+                    text: "Hide QR code"
+                    font.pixelSize: 13
+                    color: hideQrArea.containsMouse ? textPrimary : textMuted
+                    MouseArea {
+                        id: hideQrArea
+                        anchors.fill: parent
+                        anchors.margins: -8
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: fileShareController.hideQrCode()
+                    }
+                }
             }
         }
 

@@ -136,6 +136,20 @@ TEST_F(NearbySharingServiceExtensionTest,
   EXPECT_FALSE(verifier.VerifyFinal());
 }
 
+// The QR public blob (what MatchQrCodeToken keys off) must also change on
+// rotation, not just the URL string — that is what makes an old/photographed QR
+// stop matching.
+TEST_F(NearbySharingServiceExtensionTest, RefreshQrCodeSessionRotatesPublicBlob) {
+  const std::string blob_before = service_extension()->qr_code_public_blob();
+  ASSERT_EQ(blob_before.size(), 35u);
+
+  service_extension()->RefreshQrCodeSession();
+
+  const std::string blob_after = service_extension()->qr_code_public_blob();
+  ASSERT_EQ(blob_after.size(), 35u);
+  EXPECT_NE(blob_before, blob_after);
+}
+
 }  // namespace
 }  // namespace sharing
 }  // namespace nearby

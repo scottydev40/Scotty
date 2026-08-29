@@ -154,6 +154,9 @@ class __attribute__((visibility("default"))) NearbySharingApi {
   void Shutdown(std::function<void(StatusCode)> callback);
   std::string GetQrCodeUrl() const;
 
+  // Rotates the QR-code session key so a previously shown QR stops matching.
+  void RefreshQrCodeSession();
+
   static std::string StatusCodeToString(StatusCode status);
   static std::string TransferStatusToString(TransferStatus status);
 
