@@ -63,6 +63,18 @@ class __attribute__((visibility("default"))) NearbySharingApi {
     // True if this outgoing target scanned our QR code (verified). The UI sends
     // to it directly instead of listing it in the send sheet.
     bool is_qr_code_peer = false;
+    // Relationship from the certificate layer, for the trust-grouped send list:
+    //   for_self_share → one of the signed-in user's own devices,
+    //   is_known       → a contact (contact certificate),
+    //   neither        → a stranger discovered via Everyone.
+    bool for_self_share = false;
+    bool is_known = false;
+    // Stable across endpoint-id rotation (the id/endpoint churn as the peer
+    // re-advertises); used to re-resolve a lost target to its live re-discovery.
+    std::string device_id;
+    // The peer is currently advertising that it cannot receive (its receive
+    // surface is inactive). A send to a receive_disabled target fails.
+    bool receive_disabled = false;
   };
 
   struct TextAttachmentInfo {
