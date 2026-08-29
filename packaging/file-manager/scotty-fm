@@ -15,46 +15,78 @@ LIBEXEC="$HOME/.local/libexec/scotty"
 LAUNCHER="$LIBEXEC/scotty-share"
 NAUTILUS_SCRIPTS="$HOME/.local/share/nautilus/scripts"
 NAUTILUS_ITEM="$NAUTILUS_SCRIPTS/Share with Scotty"
+NAUTILUS_PY_DIR="$HOME/.local/share/nautilus-python/extensions"
+NAUTILUS_PY_ITEM="$NAUTILUS_PY_DIR/scotty-nautilus.py"
 
 install_launcher() {
     mkdir -p "$LIBEXEC"
     install -m 0755 "$HERE/scotty-share" "$LAUNCHER"
 }
 
-install_nautilus() {
-    if ! command -v nautilus >/dev/null 2>&1; then
-        return 1
-    fi
+# True when python3-nautilus (nautilus-python) is available, so the top-level
+# menu extension can load. Tries both typelib versions Nautilus ships.
+has_nautilus_python() {
+    python3 - <<'PY' 2>/dev/null
+import gi, sys
+for v in ("4.1", "4.0"):
+    try:
+        gi.require_version("Nautilus", v)
+        sys.exit(0)
+    except ValueError:
+        continue
+sys.exit(1)
+PY
+}
+
+# Preferred: a real python-nautilus extension -> a TOP-LEVEL "Share with Scotty"
+# item. Returns 1 when the dependency is absent so the caller can fall back.
+install_nautilus_python() {
+    has_nautilus_python || return 1
+    mkdir -p "$NAUTILUS_PY_DIR"
+    install -m 0644 "$HERE/scotty-nautilus.py" "$NAUTILUS_PY_ITEM"
+    return 0
+}
+
+# Fallback: an executable in the Scripts dir -> right-click -> Scripts submenu.
+# No dependency, but the entry is nested rather than top-level.
+install_nautilus_script() {
+    command -v nautilus >/dev/null 2>&1 || return 1
     mkdir -p "$NAUTILUS_SCRIPTS"
     # Nautilus runs any executable dropped in scripts/; the file name becomes the
-    # menu label under right-click -> Scripts. A symlink to the shared launcher
-    # keeps a single source of truth.
+    # menu label. A symlink to the shared launcher keeps a single source of truth.
     ln -sf "$LAUNCHER" "$NAUTILUS_ITEM"
     return 0
 }
 
 do_install() {
     install_launcher
-    local any=0
-    if install_nautilus; then
-        printf 'Nautilus: right-click a file or folder -> Scripts -> "Share with Scotty".\n'
+    # Prefer the top-level extension; only fall back to the Scripts entry when
+    # nautilus-python is missing. Never install both — that shows two items.
+    if install_nautilus_python; then
+        # A stale symlink from a prior Scripts-only install would double up.
+        rm -f "$NAUTILUS_ITEM"
+        printf 'Nautilus: right-click a file or folder -> "Share with Scotty" (top level).\n'
+        printf '         (Run "nautilus -q" once for it to load.)\n'
+    elif install_nautilus_script; then
+        printf 'Nautilus: right-click -> Scripts -> "Share with Scotty".\n'
+        printf '         (Install python3-nautilus for a top-level entry, then re-run.)\n'
         printf '         (Run "nautilus -q" once if it does not appear yet.)\n'
-        any=1
-    fi
-    if [ "$any" -eq 0 ]; then
+    else
         printf 'No supported file manager found (Nautilus). Launcher installed at:\n  %s\n' "$LAUNCHER"
     fi
 }
 
 do_uninstall() {
-    rm -f "$NAUTILUS_ITEM" "$LAUNCHER"
+    rm -f "$NAUTILUS_ITEM" "$NAUTILUS_PY_ITEM" "$LAUNCHER"
+    rm -rf "$NAUTILUS_PY_DIR/__pycache__"
     rmdir --ignore-fail-on-non-empty "$LIBEXEC" 2>/dev/null || true
     printf 'Removed Scotty file-manager integration.\n'
 }
 
 do_status() {
     printf 'Launcher:  %s\n' "$([ -x "$LAUNCHER" ] && echo "installed ($LAUNCHER)" || echo "not installed")"
-    printf 'Nautilus:  %s\n' "$([ -L "$NAUTILUS_ITEM" ] || [ -f "$NAUTILUS_ITEM" ] && echo "installed" || echo "not installed")"
+    printf 'Nautilus (top-level):  %s\n' "$([ -f "$NAUTILUS_PY_ITEM" ] && echo "installed" || echo "not installed")"
+    printf 'Nautilus (Scripts):    %s\n' "$([ -L "$NAUTILUS_ITEM" ] || [ -f "$NAUTILUS_ITEM" ] && echo "installed" || echo "not installed")"
 }
 
 case "${1:-}" in
