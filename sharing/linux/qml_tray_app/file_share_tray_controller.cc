@@ -51,8 +51,10 @@ FileShareTrayController::FileShareTrayController(QObject* parent)
 
   // Sweep finished transfer rows a while after they end so the list settles
   // instead of accumulating completed entries — long enough to read the result
-  // and open the received file.
-  constexpr qlonglong kFinishedTtlMs = 15000;
+  // and open the received file. Matches kSendReturnToReceiveMs so a successful
+  // send's "Sent ✓" row stays put until the sheet returns to receive on its own,
+  // rather than fading back to a tappable target first.
+  constexpr qlonglong kFinishedTtlMs = kSendReturnToReceiveMs;
   transfer_sweep_timer_ = new QTimer(this);
   transfer_sweep_timer_->setInterval(1000);
   connect(transfer_sweep_timer_, &QTimer::timeout, this, [this] {
@@ -62,6 +64,20 @@ FileShareTrayController::FileShareTrayController(QObject* parent)
     }
     if (!state_.HasActiveTransfers() && state_.transfers().isEmpty()) {
       transfer_sweep_timer_->stop();
+    }
+  });
+
+  // Returns the send sheet to the receive home a while after a send finishes.
+  send_return_timer_ = new QTimer(this);
+  send_return_timer_->setSingleShot(true);
+  send_return_timer_->setInterval(kSendReturnToReceiveMs);
+  connect(send_return_timer_, &QTimer::timeout, this, [this] {
+    // Only if nothing new is going on: still idle, still in send mode. A new
+    // transfer or a manual switch in the meantime cancels the auto-return.
+    if (state_.running() && !state_.HasActiveTransfers() &&
+        state_.mode() == QStringLiteral("Send")) {
+      clearTransfers();
+      switchToReceiveMode();
     }
   });
 
@@ -362,6 +378,21 @@ void FileShareTrayController::handleTransferComplete(
       setStatus(QStringLiteral("Ready to receive"));
     }
   });
+
+  // After a successful send, leave the "Sent ✓" row up for a beat, then return
+  // the sheet to the receive home on its own. Failures stay put so the user can
+  // read why / retry.
+  if (!update.is_incoming && success) {
+    armSendReturnToReceive();
+  }
+}
+
+void FileShareTrayController::armSendReturnToReceive() {
+  if (send_return_timer_) send_return_timer_->start();  // restarts the interval
+}
+
+void FileShareTrayController::cancelSendReturnToReceive() {
+  if (send_return_timer_) send_return_timer_->stop();
 }
 
 void FileShareTrayController::handleIncomingTransferComplete(
@@ -1143,6 +1174,9 @@ void FileShareTrayController::switchToReceiveMode() {
         QStringLiteral("Wait for the current transfer to complete."));
     return;
   }
+  // A manual return pre-empts any pending post-send auto-return (harmless when
+  // this call is the auto-return itself — the timer has already fired).
+  cancelSendReturnToReceive();
   // Drop the staged file so the UI (driven by pendingSendFilePath) returns
   // to the receive blob.
   state_.ClearPendingSendFile();
@@ -1171,6 +1205,8 @@ static bool IsSendableFile(const QFileInfo& info) {
 
 void FileShareTrayController::switchToSendModeWithFiles(
     const QStringList& file_paths) {
+  // Starting a fresh send cancels a pending post-send auto-return.
+  cancelSendReturnToReceive();
   QStringList paths;
   QStringList names;
   QStringList dirs;
@@ -1336,6 +1372,8 @@ void FileShareTrayController::doSendToTarget(qlonglong share_target_id,
   if (share_target_id <= 0) {
     return;
   }
+  // A new send in flight supersedes any pending post-send auto-return.
+  cancelSendReturnToReceive();
 
   const QStringList file_paths = state_.pendingSendFilePaths();
   std::vector<std::string> valid_paths;

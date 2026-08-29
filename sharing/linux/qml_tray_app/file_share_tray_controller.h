@@ -283,6 +283,14 @@ class FileShareTrayController : public QObject {
   // Ticks while transfers exist, expiring finished rows a few seconds after
   // they end so completed entries fade instead of piling up.
   QTimer* transfer_sweep_timer_ = nullptr;
+  // After a successful send, the "Sent ✓" row is held (see kFinishedTtlMs) and
+  // then the whole send sheet returns to the receive home on its own, so the
+  // user does not have to navigate back. Single-shot; armed on a successful
+  // outgoing transfer and cancelled if a new send starts or they return first.
+  QTimer* send_return_timer_ = nullptr;
+  static constexpr int kSendReturnToReceiveMs = 30 * 1000;
+  void armSendReturnToReceive();
+  void cancelSendReturnToReceive();
   // Self-heals send-mode discovery: while looking for a device (send mode, no
   // active transfer), re-cycles the send surface every ~10 s so the list
   // reflects current availability and recovers if the service quietly dropped
