@@ -17,6 +17,10 @@ finish-args:
   # The tray/Quick-Settings icon is a StatusNotifierItem; without this the app
   # cannot register it (QDBusTrayIcon "ServiceUnknown") and has no visible entry.
   - --talk-name=org.kde.StatusNotifierWatcher
+  # Lets the app run host commands via `flatpak-spawn --host` — used to register
+  # the optional global summon hotkey as a host GNOME custom keybinding (the
+  # sandbox's own dconf is not the desktop's).
+  - --talk-name=org.freedesktop.Flatpak
   - --filesystem=xdg-download
 modules:
   - name: nearby-engine

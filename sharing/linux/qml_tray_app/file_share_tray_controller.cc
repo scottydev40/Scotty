@@ -1725,8 +1725,21 @@ constexpr char kScottyKbPath[] =
 constexpr char kScottyKbCommand[] = "gapplication activate dev.scotty.Scotty";
 
 QString RunGsettings(const QStringList& args, bool* ok = nullptr) {
+  QString program = QStringLiteral("gsettings");
+  QStringList full_args = args;
+  // Inside the flatpak sandbox, gsettings must run on the host to reach the
+  // desktop's real GNOME dconf (the sandbox has its own). flatpak-spawn --host
+  // bridges out; it needs the org.freedesktop.Flatpak talk-name in the manifest.
+  static const bool in_flatpak =
+      QFile::exists(QStringLiteral("/.flatpak-info"));
+  if (in_flatpak) {
+    program = QStringLiteral("flatpak-spawn");
+    full_args = QStringList{QStringLiteral("--host"),
+                            QStringLiteral("gsettings")} +
+                args;
+  }
   QProcess process;
-  process.start(QStringLiteral("gsettings"), args);
+  process.start(program, full_args);
   const bool success = process.waitForFinished(4000) &&
                        process.exitStatus() == QProcess::NormalExit &&
                        process.exitCode() == 0;
