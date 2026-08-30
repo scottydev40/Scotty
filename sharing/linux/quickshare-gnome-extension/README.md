@@ -14,18 +14,16 @@ no hard-coded executable path. Its menu has an explicit **Quit Scotty** action.
 All signals, proxy state, indicators, quick-settings items, and timeout sources
 are released by `disable()`.
 
-The Debian package installs the extension system-wide without enabling it. The
-logged-in user chooses whether to enable it:
+On the Flatpak and AppImage the tray icon and Quick Settings integration come
+from the app itself (StatusNotifierItem), so this extension is optional. To
+install it per user, copy this directory into your GNOME extensions folder and
+enable it:
 
 ```sh
-sudo apt install gnome-shell-extension-scotty
+cp -r sharing/linux/quickshare-gnome-extension \
+  ~/.local/share/gnome-shell/extensions/quickshare@scottydev40.github.io
 gnome-extensions enable quickshare@scottydev40.github.io
 ```
 
 On Wayland, log out and back in after installing a previously unknown extension
-if GNOME Shell has not loaded it. Package removal removes the extension files;
-the current Shell process may retain already-loaded code until the next session.
-
-An old per-user Scotty extension shadows the system package. Remove the legacy
-copy with the GNOME Extensions application, then log out and back in, before
-diagnosing the packaged extension.
+if GNOME Shell has not loaded it.
