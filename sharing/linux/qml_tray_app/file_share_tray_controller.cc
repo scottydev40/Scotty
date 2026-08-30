@@ -1669,6 +1669,26 @@ void FileShareTrayController::pasteFromClipboard() {
     }
   }
 
+  // GNOME/Nautilus copies files as "x-special/gnome-copied-files" (a first line
+  // of "copy"/"cut", then one file:// URI per line) rather than standard
+  // text/uri-list, so mime->hasUrls() misses them. Parse it explicitly so a
+  // file copied in the file manager pastes like a dragged one.
+  if (mime->hasFormat(QStringLiteral("x-special/gnome-copied-files"))) {
+    const QString payload = QString::fromUtf8(
+        mime->data(QStringLiteral("x-special/gnome-copied-files")));
+    QStringList paths;
+    const QStringList lines =
+        payload.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    for (const QString& line : lines) {
+      const QUrl url(line.trimmed());
+      if (url.isLocalFile()) paths << url.toLocalFile();
+    }
+    if (!paths.isEmpty()) {
+      switchToSendModeWithFiles(paths);
+      return;
+    }
+  }
+
   // A copied screenshot / image is raw bitmap bytes with no file behind it
   // (e.g. GNOME Screenshot → clipboard). Materialize it as a temp PNG so it
   // rides the ordinary file-send path. hasImage() also covers text/html that
