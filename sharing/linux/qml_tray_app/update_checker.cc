@@ -29,6 +29,10 @@ QString AppImagePath() {
   return qEnvironmentVariable("APPIMAGE");  // empty unless running as AppImage
 }
 
+bool InFlatpak() {
+  return QFileInfo::exists(QStringLiteral("/.flatpak-info"));
+}
+
 // A release tag is "beta" if the API flags it prerelease OR the tag name says
 // so (the repo does not reliably set the prerelease flag).
 bool TagIsBeta(const QString& tag, bool api_prerelease) {
@@ -50,7 +54,9 @@ UpdateChecker::UpdateChecker(QObject* parent)
 
 UpdateChecker::~UpdateChecker() = default;
 
-bool UpdateChecker::canSelfUpdate() const { return !AppImagePath().isEmpty(); }
+bool UpdateChecker::canSelfUpdate() const {
+  return !AppImagePath().isEmpty() || InFlatpak();
+}
 
 void UpdateChecker::setBetaChannel(bool on) {
   if (beta_channel_ == on) return;
@@ -155,8 +161,11 @@ void UpdateChecker::onReleasesReply(QNetworkReply* reply) {
     break;
   }
 
+  // Flatpak updates through OSTree, so it needs no GitHub AppImage asset; the
+  // AppImage path still requires a verifiable download.
   const bool can_install =
-      canSelfUpdate() && !asset_url_.isEmpty() && !asset_sha256_.isEmpty();
+      InFlatpak() ||
+      (canSelfUpdate() && !asset_url_.isEmpty() && !asset_sha256_.isEmpty());
   if (can_install) {
     setStatus(Status::UpdateAvailable,
               tr("Update available: %1").arg(best_tag));
@@ -170,7 +179,14 @@ void UpdateChecker::onReleasesReply(QNetworkReply* reply) {
 
 void UpdateChecker::downloadAndInstall() {
   if (status_ != Status::UpdateAvailable) return;
-  if (!canSelfUpdate() || asset_url_.isEmpty() || asset_sha256_.isEmpty()) {
+
+  // Flatpak: hand off to `flatpak update`; OSTree/GPG verify, no GitHub asset.
+  if (InFlatpak()) {
+    installViaFlatpak();
+    return;
+  }
+
+  if (AppImagePath().isEmpty() || asset_url_.isEmpty() || asset_sha256_.isEmpty()) {
     // No verifiable self-update path; send them to the page instead.
     openReleasePage();
     return;
@@ -269,6 +285,43 @@ void UpdateChecker::finishInstall(const QString& downloaded_path) {
   // Launch the new AppImage detached, then quit this one.
   QProcess::startDetached(appimage, {});
   QCoreApplication::quit();
+}
+
+void UpdateChecker::installViaFlatpak() {
+  setStatus(Status::Downloading, tr("Updating via Flatpak…"));
+  download_progress_ = -1;  // indeterminate: flatpak prints its own progress
+  emit downloadProgressChanged();
+
+  auto* proc = new QProcess(this);
+  proc->setProcessChannelMode(QProcess::MergedChannels);
+  connect(
+      proc,
+      QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+      [this, proc](int exit_code, QProcess::ExitStatus exit_status) {
+        const QString output = QString::fromUtf8(proc->readAll());
+        proc->deleteLater();
+        if (exit_status != QProcess::NormalExit || exit_code != 0) {
+          setStatus(Status::Failed,
+                    tr("Flatpak update failed. Your current version still "
+                       "works."));
+          return;
+        }
+        // "flatpak update" is a no-op when already current; the deploy only
+        // takes effect on a fresh launch, so relaunch through the host.
+        setStatus(Status::ReadyToRelaunch,
+                  tr("Updated to %1 — restarting…").arg(available_version_));
+        QProcess::startDetached(
+            QStringLiteral("flatpak-spawn"),
+            {QStringLiteral("--host"), QStringLiteral("flatpak"),
+             QStringLiteral("run"), QStringLiteral("dev.scotty.Scotty")});
+        QCoreApplication::quit();
+      });
+
+  // Run on the host: the sandbox can neither see nor update its own deployment.
+  proc->start(QStringLiteral("flatpak-spawn"),
+              {QStringLiteral("--host"), QStringLiteral("flatpak"),
+               QStringLiteral("update"), QStringLiteral("-y"),
+               QStringLiteral("dev.scotty.Scotty")});
 }
 
 void UpdateChecker::openReleasePage() {
