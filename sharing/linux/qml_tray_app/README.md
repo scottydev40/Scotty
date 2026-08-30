@@ -78,7 +78,8 @@ The app is installed as `bin/scotty` with its private sharing library under
 
 ## Distribution
 
-Use the repository-level `debian/` package for a native Debian/Ubuntu build or
-`packaging/build-appimage.sh` for a portable artifact. The AppImage is not an
-installer; package-managed desktop, D-Bus, service, GNOME, and system integration
-remain the responsibility of the native packages.
+Scotty ships as a Flatpak (`packaging/flatpak/build-local.sh`, the recommended
+auto-updating install) and a portable AppImage
+(`packaging/build-appimage.sh`). Both provide their own desktop, D-Bus, tray,
+and startup integration; see
+[`packaging/README.md`](packaging/README.md).
