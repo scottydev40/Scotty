@@ -54,6 +54,7 @@ jobs:
             libxkbcommon-dev \
             patchelf \
             qt6-base-dev \
+            qt6-base-dev-tools \
             qt6-declarative-dev \
             qt6-wayland \
             qt6-tools-dev \
@@ -93,6 +94,38 @@ jobs:
       - name: Build QML tray app
         run: cmake --build sharing/linux/qml_tray_app/build -j
 
+      - name: Download AppImage tooling
+        run: |
+          TOOLS="$GITHUB_WORKSPACE/.appimage-tools"
+          mkdir -p "$TOOLS"
+          base_ld="https://github.com/linuxdeploy"
+          curl -fsSL -o "$TOOLS/linuxdeploy-x86_64.AppImage" \
+            "$base_ld/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
+          curl -fsSL -o "$TOOLS/linuxdeploy-plugin-qt-x86_64.AppImage" \
+            "$base_ld/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
+          curl -fsSL -o "$TOOLS/appimagetool-x86_64.AppImage" \
+            "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+          curl -fsSL -o "$TOOLS/runtime-x86_64" \
+            "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64"
+          chmod +x "$TOOLS"/*.AppImage "$TOOLS/runtime-x86_64"
+
+      - name: Build AppImage
+        env:
+          # The tool AppImages run without libfuse2 on the CI runner.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          BINARY: sharing/linux/qml_tray_app/build/scotty
+          SHARED_LIB: ${{ steps.nearby.outputs.nearby_prefix }}/lib/libnearby_sharing_api_shared.so
+        run: |
+          OUTPUT_DIR="$RUNNER_TEMP" \
+            sharing/linux/qml_tray_app/packaging/build-appimage.sh
+          echo "appimage=$RUNNER_TEMP/Scotty-x86_64.AppImage" >> "$GITHUB_ENV"
+          echo "appimage_name=Scotty-x86_64.AppImage" >> "$GITHUB_ENV"
+
+      - name: AppImage checksum
+        run: |
+          cd "$RUNNER_TEMP"
+          sha256sum "${{ env.appimage_name }}" > "${{ env.appimage_name }}.sha256"
+
       - name: Install to staging directory
         run: cmake --install sharing/linux/qml_tray_app/build
 
@@ -129,6 +162,8 @@ jobs:
           path: |
             ${{ env.tarball }}
             ${{ env.tarball }}.sha256
+            ${{ env.appimage }}
+            ${{ env.appimage }}.sha256
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
@@ -138,3 +173,5 @@ jobs:
           files: |
             ${{ env.tarball }}
             ${{ env.tarball }}.sha256
+            ${{ env.appimage }}
+            ${{ env.appimage }}.sha256
