@@ -1646,47 +1646,17 @@ void FileShareTrayController::copyTextToClipboard(const QString& text) {
                           QStringLiteral("Link copied to clipboard."));
 }
 
-// Ctrl+V on the home screen: the keyboard mirror of the whole-window drop.
-// Files copied from a file manager arrive as file:// URLs (prefer them);
-// otherwise plain text/a link starts a text send.
+// Ctrl+V on the home screen: send whatever is actually on the clipboard as
+// data — a copied image (e.g. a screenshot) or text/a link. Copied *files* are
+// only path references to things outside the sandbox, so they are deliberately
+// not handled here; drag-drop (which goes through the document portal) is the
+// way to send a file.
 void FileShareTrayController::pasteFromClipboard() {
   const QClipboard* clipboard = QGuiApplication::clipboard();
   const QMimeData* mime = clipboard ? clipboard->mimeData() : nullptr;
   if (mime == nullptr) {
     setStatus(QStringLiteral("Nothing to paste"));
     return;
-  }
-
-  if (mime->hasUrls()) {
-    QStringList paths;
-    const QList<QUrl> urls = mime->urls();
-    for (const QUrl& url : urls) {
-      if (url.isLocalFile()) paths << url.toLocalFile();
-    }
-    if (!paths.isEmpty()) {
-      switchToSendModeWithFiles(paths);
-      return;
-    }
-  }
-
-  // GNOME/Nautilus copies files as "x-special/gnome-copied-files" (a first line
-  // of "copy"/"cut", then one file:// URI per line) rather than standard
-  // text/uri-list, so mime->hasUrls() misses them. Parse it explicitly so a
-  // file copied in the file manager pastes like a dragged one.
-  if (mime->hasFormat(QStringLiteral("x-special/gnome-copied-files"))) {
-    const QString payload = QString::fromUtf8(
-        mime->data(QStringLiteral("x-special/gnome-copied-files")));
-    QStringList paths;
-    const QStringList lines =
-        payload.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-    for (const QString& line : lines) {
-      const QUrl url(line.trimmed());
-      if (url.isLocalFile()) paths << url.toLocalFile();
-    }
-    if (!paths.isEmpty()) {
-      switchToSendModeWithFiles(paths);
-      return;
-    }
   }
 
   // A copied screenshot / image is raw bitmap bytes with no file behind it
@@ -1726,7 +1696,7 @@ void FileShareTrayController::pasteFromClipboard() {
   setStatus(QStringLiteral("Nothing to paste"));
   emit requestTrayMessage(
       QStringLiteral("Nothing to paste"),
-      QStringLiteral("Copy a file, some text, or a link first."));
+      QStringLiteral("Copy an image, some text, or a link first."));
 }
 
 // ── Global summon hotkey (Developer, GNOME) ─────────────────────────────────
@@ -1742,7 +1712,11 @@ constexpr char kCustomKbSchema[] =
     "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding";
 constexpr char kScottyKbPath[] =
     "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/scotty/";
-constexpr char kScottyKbCommand[] = "gapplication activate dev.scotty.Scotty";
+// `gapplication launch` activates the running instance (DBusActivatable) or
+// cold-starts it via the desktop file. NOTE: `gapplication activate` is not a
+// valid subcommand — it silently no-ops, which is why an earlier build's hotkey
+// registered but never opened anything.
+constexpr char kScottyKbCommand[] = "gapplication launch dev.scotty.Scotty";
 
 QString RunGsettings(const QStringList& args, bool* ok = nullptr) {
   QString program = QStringLiteral("gsettings");
