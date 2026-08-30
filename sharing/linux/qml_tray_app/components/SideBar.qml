@@ -234,12 +234,14 @@ Item {
             ColumnLayout {
                 id: textSend
                 property bool open: false
+                property bool expanded: false
                 function go() {
                     var t = textInput.text.trim()
                     if (t.length === 0) return
                     fileShareController.switchToSendModeWithText(t)
                     textInput.text = ""
                     textSend.open = false
+                    textSend.expanded = false
                 }
                 Layout.fillWidth: true
                 Layout.topMargin: 8
@@ -270,12 +272,83 @@ Item {
                     }
                 }
 
-                TextField {
-                    id: textInput
+                // Themed compose box: one line by default, expandable to a taller
+                // area for a longer message. Collapsed → Enter sends. Expanded →
+                // Enter makes a new line; Ctrl+Enter or the Send button sends.
+                Rectangle {
                     visible: textSend.open
                     Layout.fillWidth: true
-                    placeholderText: "Paste a link or type text"
-                    onAccepted: textSend.go()
+                    Layout.preferredHeight: textSend.expanded ? 132 : 44
+                    radius: 12
+                    color: Theme.surfaceAlt
+                    border.color: textInput.activeFocus ? Theme.accentColor : cardBorder
+                    border.width: textInput.activeFocus ? 2 : 1
+
+                    Behavior on Layout.preferredHeight {
+                        NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+                    }
+
+                    ScrollView {
+                        anchors.fill: parent
+                        anchors.margins: 6
+                        anchors.rightMargin: 34
+                        clip: true
+
+                        TextArea {
+                            id: textInput
+                            placeholderText: "Paste a link or type text"
+                            placeholderTextColor: textMuted
+                            wrapMode: TextEdit.Wrap
+                            font.pixelSize: 14
+                            color: textPrimary
+                            background: null
+                            verticalAlignment: textSend.expanded ? TextEdit.AlignTop
+                                                                 : TextEdit.AlignVCenter
+                            Keys.onReturnPressed: function(event) {
+                                if (textSend.expanded && !(event.modifiers & Qt.ControlModifier)) {
+                                    event.accepted = false   // newline while expanded
+                                } else {
+                                    event.accepted = true
+                                    textSend.go()
+                                }
+                            }
+                            Keys.onEnterPressed: function(event) {
+                                if (textSend.expanded && !(event.modifiers & Qt.ControlModifier)) {
+                                    event.accepted = false
+                                } else {
+                                    event.accepted = true
+                                    textSend.go()
+                                }
+                            }
+                        }
+                    }
+
+                    // Expand / collapse to a larger body.
+                    Rectangle {
+                        anchors.top: parent.top
+                        anchors.right: parent.right
+                        anchors.margins: 6
+                        width: 24
+                        height: 24
+                        radius: 6
+                        color: expandArea.containsMouse ? Theme.rowFillHover : "transparent"
+                        Label {
+                            anchors.centerIn: parent
+                            text: textSend.expanded ? "⤡" : "⤢"
+                            font.pixelSize: 15
+                            color: textMuted
+                        }
+                        MouseArea {
+                            id: expandArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                textSend.expanded = !textSend.expanded
+                                textInput.forceActiveFocus()
+                            }
+                        }
+                    }
                 }
                 RowLayout {
                     visible: textSend.open
@@ -290,7 +363,7 @@ Item {
                             anchors.fill: parent
                             anchors.margins: -8
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: { textInput.text = ""; textSend.open = false }
+                            onClicked: { textInput.text = ""; textSend.open = false; textSend.expanded = false }
                         }
                     }
                     Label {
@@ -324,15 +397,24 @@ Item {
 
         // Send mode: outbound file info
         ColumnLayout {
+            id: sendCard
             visible: fileShareController.pendingSendFilePath.length > 0
             Layout.fillWidth: true
             spacing: 0
+
+            // Text/link sends reuse this card but show the actual payload
+            // (see the preview block below) instead of the file glyph.
+            readonly property bool isText: fileShareController.pendingSendText.length > 0
+            readonly property bool isLink:
+                isText && /^\s*https?:\/\/\S+\s*$/i.test(fileShareController.pendingSendText)
 
             Label {
                 Layout.leftMargin: 12
                 Layout.topMargin: 16
                 Layout.bottomMargin: 8
                 text: {
+                    if (sendCard.isText)
+                        return sendCard.isLink ? "Sharing a link" : "Sharing text"
                     const n = fileShareController.pendingSendFileCount
                     return n === 1 ? "Sharing 1 file"
                                    : "Sharing " + n + " files"
@@ -341,7 +423,42 @@ Item {
                 color: textPrimary
             }
 
+            // Text/link preview: the exact payload, wrapped and scroll-capped so
+            // the user can confirm what leaves the machine.
             Rectangle {
+                visible: sendCard.isText
+                Layout.leftMargin: 12
+                Layout.rightMargin: 12
+                Layout.topMargin: 4
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(previewFlick.contentHeight + 20, 160)
+                radius: 12
+                color: surface
+                border.width: 1
+                border.color: cardBorder
+
+                Flickable {
+                    id: previewFlick
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    contentWidth: width
+                    contentHeight: previewText.implicitHeight
+                    clip: true
+                    ScrollBar.vertical: ScrollBar {}
+
+                    Label {
+                        id: previewText
+                        width: previewFlick.width
+                        text: fileShareController.pendingSendText
+                        wrapMode: Text.Wrap
+                        font.pixelSize: 13
+                        color: sendCard.isLink ? Theme.accentColor : textPrimary
+                    }
+                }
+            }
+
+            Rectangle {
+                visible: !sendCard.isText
                 Layout.leftMargin: 12
                 width: 72
                 height: 72
@@ -401,7 +518,7 @@ Item {
             // File name(s). Single file shows inline; multiple files list in a
             // capped, scrollable column.
             Label {
-                visible: fileShareController.pendingSendFileCount <= 1
+                visible: !sendCard.isText && fileShareController.pendingSendFileCount <= 1
                 Layout.fillWidth: true
                 Layout.leftMargin: 12
                 Layout.topMargin: 8

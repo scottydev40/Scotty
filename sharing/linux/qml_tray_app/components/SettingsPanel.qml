@@ -571,6 +571,162 @@ Popup {
                             }
                         }
 
+                        // Global summon hotkey (experimental). Click the box and
+                        // press a combo; it registers as a GNOME custom keybinding
+                        // whose command re-activates Scotty (raising the window).
+                        ColumnLayout {
+                            id: shortcutRow
+                            Layout.fillWidth: true
+                            Layout.topMargin: 4
+                            spacing: 6
+                            property string captureError: ""
+
+                            function pretty(s) {
+                                if (s.length === 0) return "Not set — click to record"
+                                return s.replace(/<Control>/gi, "Ctrl+")
+                                        .replace(/<Primary>/gi, "Ctrl+")
+                                        .replace(/<Alt>/gi, "Alt+")
+                                        .replace(/<Shift>/gi, "Shift+")
+                                        .replace(/<Super>/gi, "Super+")
+                                        .toUpperCase()
+                            }
+
+                            Label {
+                                Layout.fillWidth: true
+                                color: root.textPrimary
+                                font.pixelSize: 13
+                                text: "Global shortcut to open Scotty"
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                font.pixelSize: 11
+                                color: root.textMuted
+                                text: "A system-wide hotkey that brings Scotty to the front. Click the box, then press your combo (needs at least one modifier). GNOME only."
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                Rectangle {
+                                    id: captureBox
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 38
+                                    radius: 8
+                                    color: Theme.surfaceAlt
+                                    border.color: captureBox.recording ? root.accent
+                                                                       : root.borderColor
+                                    border.width: captureBox.recording ? 2 : 1
+                                    property bool recording: false
+
+                                    Label {
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        anchors.leftMargin: 12
+                                        anchors.rightMargin: 12
+                                        elide: Text.ElideRight
+                                        font.pixelSize: 13
+                                        color: captureBox.recording ? root.accent
+                                               : (fileShareController.globalShortcut.length > 0
+                                                  ? root.textPrimary : root.textMuted)
+                                        text: captureBox.recording
+                                              ? "Press a combo… (Esc to cancel)"
+                                              : shortcutRow.pretty(fileShareController.globalShortcut)
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            shortcutRow.captureError = ""
+                                            captureBox.recording = true
+                                            keyCatcher.forceActiveFocus()
+                                        }
+                                    }
+
+                                    Item {
+                                        id: keyCatcher
+                                        anchors.fill: parent
+                                        Keys.onPressed: function(event) {
+                                            if (!captureBox.recording) return
+                                            const k = event.key
+                                            if (k === Qt.Key_Control || k === Qt.Key_Alt
+                                                || k === Qt.Key_Shift || k === Qt.Key_Meta
+                                                || k === Qt.Key_Super_L || k === Qt.Key_Super_R) {
+                                                event.accepted = true; return
+                                            }
+                                            if (k === Qt.Key_Escape) {
+                                                captureBox.recording = false
+                                                event.accepted = true; return
+                                            }
+                                            var mods = ""
+                                            if (event.modifiers & Qt.ControlModifier) mods += "<Control>"
+                                            if (event.modifiers & Qt.AltModifier) mods += "<Alt>"
+                                            if (event.modifiers & Qt.ShiftModifier) mods += "<Shift>"
+                                            if (event.modifiers & Qt.MetaModifier) mods += "<Super>"
+                                            if (mods === "") {
+                                                shortcutRow.captureError = "Include a modifier (Ctrl / Alt / Super)."
+                                                event.accepted = true; return
+                                            }
+                                            var keyName = ""
+                                            if (k >= Qt.Key_A && k <= Qt.Key_Z)
+                                                keyName = String.fromCharCode(k).toLowerCase()
+                                            else if (k >= Qt.Key_0 && k <= Qt.Key_9)
+                                                keyName = String.fromCharCode(k)
+                                            if (keyName === "") {
+                                                shortcutRow.captureError = "Use a letter or number."
+                                                event.accepted = true; return
+                                            }
+                                            captureBox.recording = false
+                                            shortcutRow.captureError =
+                                                fileShareController.setGlobalShortcut(mods + keyName)
+                                            event.accepted = true
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    Layout.preferredWidth: 64
+                                    Layout.preferredHeight: 38
+                                    radius: 8
+                                    visible: fileShareController.globalShortcut.length > 0
+                                             || captureBox.recording
+                                    color: clearShortcutArea.containsMouse ? Theme.rowFillHover
+                                                                           : "transparent"
+                                    border.color: root.borderColor
+                                    border.width: 1
+                                    Label {
+                                        anchors.centerIn: parent
+                                        text: "Clear"
+                                        font.pixelSize: 13
+                                        color: root.textMuted
+                                    }
+                                    MouseArea {
+                                        id: clearShortcutArea
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            captureBox.recording = false
+                                            shortcutRow.captureError = ""
+                                            fileShareController.clearGlobalShortcut()
+                                        }
+                                    }
+                                }
+                            }
+
+                            Label {
+                                Layout.fillWidth: true
+                                visible: shortcutRow.captureError.length > 0
+                                wrapMode: Text.WordWrap
+                                font.pixelSize: 11
+                                color: Theme.danger
+                                text: shortcutRow.captureError
+                            }
+                        }
+
                         // Hard reset — the "unstick" button.
                         ColumnLayout {
                             Layout.fillWidth: true

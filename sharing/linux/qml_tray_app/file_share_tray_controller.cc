@@ -19,11 +19,13 @@
 #include <QDebug>
 #include <QDir>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QSharedPointer>
 #include <QFileInfo>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QFile>
+#include <QImage>
 #include <QGuiApplication>
 #include <QMetaObject>
 #include <QSettings>
@@ -31,6 +33,7 @@
 #include <QSysInfo>
 #include <QTextStream>
 #include <QTimer>
+#include <QMimeData>
 #include <QUrl>
 
 #include "string_utils.h"
@@ -564,6 +567,9 @@ void FileShareTrayController::loadSettings() {
 
   state_.SetDeveloperMode(
       settings.value(QStringLiteral("developerMode"), false).toBool());
+
+  global_shortcut_ =
+      settings.value(QStringLiteral("globalShortcut")).toString().trimmed();
 
   int stored_visibility =
       settings.value(QStringLiteral("visibility"), 0).toInt();
@@ -1638,6 +1644,254 @@ void FileShareTrayController::copyTextToClipboard(const QString& text) {
   setStatus(QStringLiteral("Connection URL copied to clipboard"));
   emit requestTrayMessage(QStringLiteral("URL copied"),
                           QStringLiteral("Link copied to clipboard."));
+}
+
+// Ctrl+V on the home screen: the keyboard mirror of the whole-window drop.
+// Files copied from a file manager arrive as file:// URLs (prefer them);
+// otherwise plain text/a link starts a text send.
+void FileShareTrayController::pasteFromClipboard() {
+  const QClipboard* clipboard = QGuiApplication::clipboard();
+  const QMimeData* mime = clipboard ? clipboard->mimeData() : nullptr;
+  if (mime == nullptr) {
+    setStatus(QStringLiteral("Nothing to paste"));
+    return;
+  }
+
+  if (mime->hasUrls()) {
+    QStringList paths;
+    const QList<QUrl> urls = mime->urls();
+    for (const QUrl& url : urls) {
+      if (url.isLocalFile()) paths << url.toLocalFile();
+    }
+    if (!paths.isEmpty()) {
+      switchToSendModeWithFiles(paths);
+      return;
+    }
+  }
+
+  // A copied screenshot / image is raw bitmap bytes with no file behind it
+  // (e.g. GNOME Screenshot → clipboard). Materialize it as a temp PNG so it
+  // rides the ordinary file-send path. hasImage() also covers text/html that
+  // carries an <img>, so it is checked before hasText().
+  if (mime->hasImage()) {
+    const QImage image = qvariant_cast<QImage>(mime->imageData());
+    if (!image.isNull()) {
+      const QString dir =
+          QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+      const QString name =
+          QStringLiteral("Pasted image %1.png")
+              .arg(QDateTime::currentDateTime().toString(
+                  QStringLiteral("yyyy-MM-dd HH-mm-ss")));
+      const QString path = QDir(dir).filePath(name);
+      if (image.save(path, "PNG")) {
+        switchToSendModeWithFiles(QStringList{path});
+        return;
+      }
+      setStatus(QStringLiteral("Could not stage pasted image"));
+      emit requestTrayMessage(
+          QStringLiteral("Paste failed"),
+          QStringLiteral("Could not save the pasted image."));
+      return;
+    }
+  }
+
+  if (mime->hasText()) {
+    const QString text = mime->text().trimmed();
+    if (!text.isEmpty()) {
+      switchToSendModeWithText(text);
+      return;
+    }
+  }
+
+  setStatus(QStringLiteral("Nothing to paste"));
+  emit requestTrayMessage(
+      QStringLiteral("Nothing to paste"),
+      QStringLiteral("Copy a file, some text, or a link first."));
+}
+
+// ── Global summon hotkey (Developer, GNOME) ─────────────────────────────────
+// Registered as a GNOME custom keybinding whose command re-activates Scotty
+// over its D-Bus name (raising the window). All state lives in gsettings + the
+// app prefs; nothing runs in-process, so it survives restarts and is fully
+// reversible via clearGlobalShortcut().
+namespace {
+
+constexpr char kMediaKeysSchema[] =
+    "org.gnome.settings-daemon.plugins.media-keys";
+constexpr char kCustomKbSchema[] =
+    "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding";
+constexpr char kScottyKbPath[] =
+    "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/scotty/";
+constexpr char kScottyKbCommand[] = "gapplication activate dev.scotty.Scotty";
+
+QString RunGsettings(const QStringList& args, bool* ok = nullptr) {
+  QProcess process;
+  process.start(QStringLiteral("gsettings"), args);
+  const bool success = process.waitForFinished(4000) &&
+                       process.exitStatus() == QProcess::NormalExit &&
+                       process.exitCode() == 0;
+  if (ok != nullptr) *ok = success;
+  return QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+}
+
+// gsettings prints strings and string arrays with single-quoted items
+// ("'foo'" or "['foo', 'bar']"); pull the quoted contents out.
+QStringList ParseGVariantStrings(const QString& raw) {
+  QStringList out;
+  static const QRegularExpression re(QStringLiteral("'([^']*)'"));
+  auto it = re.globalMatch(raw);
+  while (it.hasNext()) out << it.next().captured(1);
+  return out;
+}
+
+QString FirstGVariantString(const QString& raw) {
+  const QStringList items = ParseGVariantStrings(raw);
+  return items.isEmpty() ? QString() : items.first();
+}
+
+// Compare accelerators tolerantly: case-insensitive, <Primary> == <Control>,
+// and ignore stray spaces.
+QString NormalizeCombo(const QString& combo) {
+  QString s = combo.toLower();
+  s.replace(QStringLiteral("<primary>"), QStringLiteral("<control>"));
+  s.remove(QLatin1Char(' '));
+  return s;
+}
+
+QString AsGVariantString(const QString& value) {
+  QString escaped = value;
+  escaped.replace(QLatin1Char('\''), QStringLiteral("\\'"));
+  return QStringLiteral("'%1'").arg(escaped);
+}
+
+}  // namespace
+
+QString FileShareTrayController::shortcutConflict(const QString& combo) {
+  const QString target = NormalizeCombo(combo.trimmed());
+  if (target.isEmpty()) return QString();
+
+  // 1) Other custom keybindings (our own entry is skipped).
+  bool ok = false;
+  const QString list_raw =
+      RunGsettings({QStringLiteral("get"), QLatin1String(kMediaKeysSchema),
+                    QStringLiteral("custom-keybindings")},
+                   &ok);
+  if (ok) {
+    const QStringList paths = ParseGVariantStrings(list_raw);
+    for (const QString& path : paths) {
+      if (path == QLatin1String(kScottyKbPath)) continue;
+      const QString entry =
+          QStringLiteral("%1:%2").arg(QLatin1String(kCustomKbSchema), path);
+      const QString binding = FirstGVariantString(RunGsettings(
+          {QStringLiteral("get"), entry, QStringLiteral("binding")}));
+      if (NormalizeCombo(binding) == target) {
+        const QString name = FirstGVariantString(RunGsettings(
+            {QStringLiteral("get"), entry, QStringLiteral("name")}));
+        return name.isEmpty() ? QStringLiteral("another custom shortcut") : name;
+      }
+    }
+  }
+
+  // 2) Fixed-schema bindings: the window manager and media keys own the vast
+  //    majority of default combos. Each key holds a single accelerator or an
+  //    array of them.
+  const char* schemas[] = {"org.gnome.desktop.wm.keybindings", kMediaKeysSchema};
+  for (const char* schema : schemas) {
+    const QString keys_raw = RunGsettings(
+        {QStringLiteral("list-keys"), QLatin1String(schema)}, &ok);
+    if (!ok) continue;
+    const QStringList keys =
+        keys_raw.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    for (const QString& key : keys) {
+      const QString value_raw = RunGsettings(
+          {QStringLiteral("get"), QLatin1String(schema), key.trimmed()});
+      const QStringList values = ParseGVariantStrings(value_raw);
+      for (const QString& value : values) {
+        if (NormalizeCombo(value) == target) {
+          return QStringLiteral("%1 (%2)")
+              .arg(key.trimmed(), QLatin1String(schema));
+        }
+      }
+    }
+  }
+  return QString();
+}
+
+QString FileShareTrayController::setGlobalShortcut(const QString& combo) {
+  const QString trimmed = combo.trimmed();
+  if (trimmed.isEmpty()) {
+    clearGlobalShortcut();
+    return QString();
+  }
+
+  const QString conflict = shortcutConflict(trimmed);
+  if (!conflict.isEmpty()) {
+    return QStringLiteral("Already used by %1").arg(conflict);
+  }
+
+  // Make sure our entry is listed under custom-keybindings.
+  bool ok = false;
+  const QString list_raw =
+      RunGsettings({QStringLiteral("get"), QLatin1String(kMediaKeysSchema),
+                    QStringLiteral("custom-keybindings")},
+                   &ok);
+  if (!ok) {
+    return QStringLiteral("Could not reach GNOME settings (is this GNOME?)");
+  }
+  QStringList paths = ParseGVariantStrings(list_raw);
+  if (!paths.contains(QLatin1String(kScottyKbPath))) {
+    paths << QLatin1String(kScottyKbPath);
+    QStringList quoted;
+    for (const QString& p : paths) quoted << AsGVariantString(p);
+    RunGsettings({QStringLiteral("set"), QLatin1String(kMediaKeysSchema),
+                  QStringLiteral("custom-keybindings"),
+                  QStringLiteral("[%1]").arg(quoted.join(QStringLiteral(", ")))},
+                 &ok);
+    if (!ok) return QStringLiteral("Could not register the shortcut.");
+  }
+
+  const QString entry = QStringLiteral("%1:%2").arg(QLatin1String(kCustomKbSchema),
+                                                    QLatin1String(kScottyKbPath));
+  RunGsettings({QStringLiteral("set"), entry, QStringLiteral("name"),
+                AsGVariantString(QStringLiteral("Open Scotty"))});
+  RunGsettings({QStringLiteral("set"), entry, QStringLiteral("command"),
+                AsGVariantString(QLatin1String(kScottyKbCommand))});
+  RunGsettings({QStringLiteral("set"), entry, QStringLiteral("binding"),
+                AsGVariantString(trimmed)},
+               &ok);
+  if (!ok) return QStringLiteral("Could not register the shortcut.");
+
+  QSettings settings(QStringLiteral("Nearby"), QStringLiteral("QmlFileTrayApp"));
+  settings.setValue(QStringLiteral("globalShortcut"), trimmed);
+  global_shortcut_ = trimmed;
+  emit globalShortcutChanged();
+  return QString();
+}
+
+void FileShareTrayController::clearGlobalShortcut() {
+  bool ok = false;
+  const QString list_raw =
+      RunGsettings({QStringLiteral("get"), QLatin1String(kMediaKeysSchema),
+                    QStringLiteral("custom-keybindings")},
+                   &ok);
+  if (ok) {
+    QStringList paths = ParseGVariantStrings(list_raw);
+    if (paths.removeAll(QLatin1String(kScottyKbPath)) > 0) {
+      QStringList quoted;
+      for (const QString& p : paths) quoted << AsGVariantString(p);
+      RunGsettings(
+          {QStringLiteral("set"), QLatin1String(kMediaKeysSchema),
+           QStringLiteral("custom-keybindings"),
+           paths.isEmpty()
+               ? QStringLiteral("@as []")
+               : QStringLiteral("[%1]").arg(quoted.join(QStringLiteral(", ")))});
+    }
+  }
+
+  QSettings settings(QStringLiteral("Nearby"), QStringLiteral("QmlFileTrayApp"));
+  settings.remove(QStringLiteral("globalShortcut"));
+  global_shortcut_.clear();
+  emit globalShortcutChanged();
 }
 
 void FileShareTrayController::openFileLocation(const QString& file_path) {

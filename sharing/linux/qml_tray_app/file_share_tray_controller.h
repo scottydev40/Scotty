@@ -23,6 +23,9 @@ class FileShareTrayController : public QObject {
   Q_PROPERTY(QString pendingSendFilePath READ pendingSendFilePath NOTIFY pendingSendFilePathChanged)
   Q_PROPERTY(QStringList pendingSendFileNames READ pendingSendFileNames NOTIFY pendingSendFilePathChanged)
   Q_PROPERTY(int pendingSendFileCount READ pendingSendFileCount NOTIFY pendingSendFilePathChanged)
+  // Non-empty only when the staged payload is text/a link (drives the text
+  // preview in the send sheet). File sends leave this empty.
+  Q_PROPERTY(QString pendingSendText READ pendingSendText NOTIFY pendingSendFileNameChanged)
   Q_PROPERTY(QVariantList discoveredTargets READ discoveredTargets NOTIFY discoveredTargetsChanged)
   Q_PROPERTY(QVariantList transfers READ transfers NOTIFY transfersChanged)
   Q_PROPERTY(bool transferActive READ transferActive NOTIFY transferActiveChanged)
@@ -50,6 +53,10 @@ class FileShareTrayController : public QObject {
   Q_PROPERTY(bool mydevicesAvailable READ mydevicesAvailable NOTIFY mydevicesAvailableChanged)
   // Launch the app on login (managed via an XDG autostart .desktop entry).
   Q_PROPERTY(bool runAtStartup READ runAtStartup WRITE setRunAtStartup NOTIFY runAtStartupChanged)
+  // System-wide hotkey that raises Scotty, as a GNOME binding string (e.g.
+  // "<Control><Alt>S"); empty when unset. Registered as a GNOME custom
+  // keybinding (Developer-only, experimental). See setGlobalShortcut().
+  Q_PROPERTY(QString globalShortcut READ globalShortcut NOTIFY globalShortcutChanged)
 
  public:
   explicit FileShareTrayController(QObject* parent = nullptr);
@@ -63,6 +70,7 @@ class FileShareTrayController : public QObject {
   QString pendingSendFileName() const { return state_.pendingSendFileName(); }
   QString pendingSendFilePath() const { return state_.pendingSendFilePath(); }
   QStringList pendingSendFileNames() const { return state_.pendingSendFileNames(); }
+  QString pendingSendText() const { return state_.pendingSendText(); }
   int pendingSendFileCount() const { return state_.pendingSendFileCount(); }
   QVariantList discoveredTargets() const { return state_.discoveredTargets(); }
   QVariantList transfers() const { return state_.transfers(); }
@@ -84,6 +92,7 @@ class FileShareTrayController : public QObject {
   QString signedInPhotoPath() const { return signed_in_photo_path_; }
   bool mydevicesAvailable() const { return mydevices_available_; }
   bool runAtStartup() const;
+  QString globalShortcut() const { return global_shortcut_; }
 
   // Public methods
   void setDeviceName(const QString& device_name);
@@ -124,7 +133,17 @@ class FileShareTrayController : public QObject {
   // Nuclear "unstick": destroy and rebuild the engine, dropping every active
   // connection (a wedged transfer included) and re-registering the mediums.
   Q_INVOKABLE void hardReset();
+  // Home-screen Ctrl+V: pastes files (file:// URLs) or text/a link from the
+  // clipboard straight into send mode (keyboard mirror of the whole-window drop).
+  Q_INVOKABLE void pasteFromClipboard();
   Q_INVOKABLE void copyTextToClipboard(const QString& text);
+  // Global summon hotkey (Developer). shortcutConflict() returns the name of an
+  // existing GNOME binding that already owns `combo`, or "" if it is free.
+  // setGlobalShortcut() refuses (returns the conflict/error text) unless free,
+  // otherwise registers it and returns "". clearGlobalShortcut() removes it.
+  Q_INVOKABLE QString shortcutConflict(const QString& combo);
+  Q_INVOKABLE QString setGlobalShortcut(const QString& combo);
+  Q_INVOKABLE void clearGlobalShortcut();
   Q_INVOKABLE void openFileLocation(const QString& file_path);
   Q_INVOKABLE void clearTransfers();
   Q_INVOKABLE void hideToTray();
@@ -163,6 +182,7 @@ class FileShareTrayController : public QObject {
   void developerModeChanged();
   void visibilityChanged();
   void runAtStartupChanged();
+  void globalShortcutChanged();
   void signedInEmailChanged();
   void signedInNameChanged();
   void signedInPhotoPathChanged();
@@ -256,6 +276,7 @@ class FileShareTrayController : public QObject {
   QString signed_in_name_;
   QString signed_in_photo_path_;
   bool mydevices_available_ = false;
+  QString global_shortcut_;
   FileShareState state_;
   // Outgoing QR peers we've already auto-sent to, so a re-advertised/updated
   // target doesn't trigger a duplicate send.
