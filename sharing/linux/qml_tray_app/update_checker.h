@@ -25,7 +25,8 @@ class UpdateChecker : public QObject {
   Q_PROPERTY(QString currentVersion READ currentVersion CONSTANT)
   Q_PROPERTY(bool betaChannel READ betaChannel WRITE setBetaChannel NOTIFY
                  betaChannelChanged)
-  // True when this build can replace itself (running as an AppImage).
+  // True when this build can update itself in place: an AppImage (download +
+  // swap) or a flatpak (`flatpak update` on the host).
   Q_PROPERTY(bool canSelfUpdate READ canSelfUpdate CONSTANT)
   Q_PROPERTY(Status status READ status NOTIFY statusChanged)
   Q_PROPERTY(QString statusText READ statusText NOTIFY statusChanged)
@@ -81,6 +82,9 @@ class UpdateChecker : public QObject {
   void onDownloadFinished(QNetworkReply* reply);
   void setStatus(Status status, const QString& text);
   void finishInstall(const QString& downloaded_path);
+  // Flatpak self-update: `flatpak update` on the host (via flatpak-spawn), then
+  // relaunch. OSTree/GPG handles integrity, so no digest/download here.
+  void installViaFlatpak();
 
   QNetworkAccessManager* nam_;
   QString current_version_;
