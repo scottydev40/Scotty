@@ -55,6 +55,7 @@ class FileShareState {
 
   void SetPendingSendFile(const QString& file_path, const QString& file_name,
                           qlonglong target_id) {
+    pending_send_text_.clear();
     pending_send_file_path_ = file_path;
     pending_send_file_name_ = file_name;
     pending_send_target_id_ = target_id;
@@ -70,6 +71,7 @@ class FileShareState {
   void SetPendingSendFiles(const QStringList& file_paths,
                            const QStringList& file_names,
                            qlonglong target_id) {
+    pending_send_text_.clear();
     pending_send_file_paths_ = file_paths;
     pending_send_file_names_ = file_names;
     pending_send_file_path_ = file_paths.isEmpty() ? QString() : file_paths.first();
@@ -77,7 +79,21 @@ class FileShareState {
     pending_send_target_id_ = target_id;
   }
 
+  // Stage a text/link payload. Reuses the pending-file display fields (path is a
+  // non-empty sentinel so the send sheet treats a device as sendable, name is
+  // the shown label); the send path branches on pendingSendText().
+  void SetPendingSendText(const QString& text) {
+    pending_send_text_ = text;
+    pending_send_file_path_ = text;
+    pending_send_file_name_ = text;
+    pending_send_file_paths_ = QStringList{text};
+    pending_send_file_names_ = QStringList{text};
+    pending_send_target_id_ = 0;
+  }
+  QString pendingSendText() const { return pending_send_text_; }
+
   void ClearPendingSendFile() {
+    pending_send_text_.clear();
     pending_send_file_path_.clear();
     pending_send_file_name_.clear();
     pending_send_file_paths_.clear();
@@ -88,6 +104,9 @@ class FileShareState {
   // Keep the staged file, drop only the active target. Lets the user stay in
   // send mode after a transfer and pick another device.
   void ClearPendingSendTarget() { pending_send_target_id_ = 0; }
+  void SetPendingSendTargetId(qlonglong target_id) {
+    pending_send_target_id_ = target_id;
+  }
 
   void SetQrCodeData(const QString& url, const QStringList& rows, int size) {
     qr_code_url_ = url;
@@ -159,6 +178,7 @@ class FileShareState {
   bool developer_mode_ = false;
 
   // Pending send state
+  QString pending_send_text_;  // non-empty => the staged payload is text/a link
   QString pending_send_file_path_;
   QString pending_send_file_name_;
   QStringList pending_send_file_paths_;

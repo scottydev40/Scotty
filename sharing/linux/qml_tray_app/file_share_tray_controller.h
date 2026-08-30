@@ -109,6 +109,9 @@ class FileShareTrayController : public QObject {
   Q_INVOKABLE void hideQrCode();
   Q_INVOKABLE void switchToSendModeWithFile(const QString& file_path);
   Q_INVOKABLE void switchToSendModeWithFiles(const QStringList& file_paths);
+  // Stage a text/link payload and enter the send sheet (same device picking /
+  // QR / off-wifi path as files). Sent as a text attachment on device-pick.
+  Q_INVOKABLE void switchToSendModeWithText(const QString& text);
   Q_INVOKABLE void sendPendingFileToTarget(qlonglong share_target_id);
   // Triggers the opt-in plugin's sign-in flow over D-Bus (StartSignIn). The
   // plugin owns the WebView / token / RPC; the core never touches grey code.

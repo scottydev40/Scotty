@@ -134,6 +134,10 @@ class __attribute__((visibility("default"))) NearbySharingApi {
   void SendFiles(int64_t share_target_id,
                  const std::vector<std::string>& file_paths,
                  std::function<void(StatusCode)> callback);
+  // Send a single text/link attachment. A value that looks like a URL is sent
+  // as kUrl (so the receiver gets a copy-link affordance), otherwise kText.
+  void SendText(int64_t share_target_id, const std::string& text,
+                std::function<void(StatusCode)> callback);
   void Accept(int64_t share_target_id, std::function<void(StatusCode)> callback);
   void Reject(int64_t share_target_id, std::function<void(StatusCode)> callback);
   void Cancel(int64_t share_target_id, std::function<void(StatusCode)> callback);
