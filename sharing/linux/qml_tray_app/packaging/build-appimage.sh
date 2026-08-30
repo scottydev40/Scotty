@@ -97,7 +97,23 @@ export QML_SOURCES_PATHS="$APP_DIR_SRC"
 # categories via EXTRA_QT_PLUGINS — the previous "platforms;wayland" values were
 # not valid categories, so only xcb got bundled and the AppImage failed to find
 # the wayland platform on Wayland sessions.
-export EXTRA_PLATFORM_PLUGINS="libqwayland.so"
+# The Wayland *platform* plugin filename varies by Qt build: older Qt6 shipped
+# libqwayland.so, current Qt6 ships libqwayland-generic.so (+ libqwayland-egl.so).
+# Hardcoding a name makes linuxdeploy-plugin-qt abort with "Cannot deploy
+# non-existing library file" when it changes, so pass only the ones that exist.
+QT_PLUGIN_DIR="$(qmake6 -query QT_INSTALL_PLUGINS 2>/dev/null \
+  || qmake -query QT_INSTALL_PLUGINS 2>/dev/null \
+  || echo /usr/lib/x86_64-linux-gnu/qt6/plugins)"
+_wl_platforms=()
+for _so in "$QT_PLUGIN_DIR"/platforms/libqwayland*.so; do
+  [[ -e "$_so" ]] && _wl_platforms+=("$(basename "$_so")")
+done
+if ((${#_wl_platforms[@]})); then
+  export EXTRA_PLATFORM_PLUGINS="$(IFS=';'; printf '%s' "${_wl_platforms[*]}")"
+  echo "Wayland platform plugins to bundle: $EXTRA_PLATFORM_PLUGINS"
+else
+  echo "WARNING: no wayland platform plugin found in $QT_PLUGIN_DIR/platforms; bundling xcb only"
+fi
 export EXTRA_QT_PLUGINS="wayland-decoration-client;wayland-graphics-integration-client;wayland-shell-integration;imageformats"
 
 "$LD" --appdir "$APPDIR" \
