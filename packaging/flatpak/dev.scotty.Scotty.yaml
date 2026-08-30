@@ -59,6 +59,9 @@ modules:
       - -DNEARBY_PREFIX=/app
       - -DCMAKE_PREFIX_PATH=/app
       - -DBUILD_TESTING=OFF
+      # build-local.sh substitutes the host `git describe` here (the sandbox
+      # source is a .git-less tarball); leave as-is for a raw manifest build.
+      - -DSCOTTY_VERSION_TAG=@SCOTTY_VERSION_TAG@
     post-install:
       # The shared D-Bus service defers activation to a systemd unit
       # (scotty.service) that only the native packages install — inside the
