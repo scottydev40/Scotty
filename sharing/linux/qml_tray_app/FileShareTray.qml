@@ -38,6 +38,19 @@ ApplicationWindow {
         onActivated: fileShareController.quitApplication()
     }
 
+    // Ctrl+V on the idle home screen = keyboard twin of the whole-window drop:
+    // paste a file, screenshot/image, or text/link straight into send mode.
+    // Disabled once something is going on (a send staged, an incoming transfer,
+    // the QR sheet, or settings open) so paste never hijacks an active flow.
+    Shortcut {
+        sequence: StandardKey.Paste
+        enabled: !mainContent.isSendMode
+                 && mainContent.incomingCount === 0
+                 && !fileShareController.qrVisible
+                 && !settingsPanel.opened
+        onActivated: fileShareController.pasteFromClipboard()
+    }
+
     SettingsPanel {
         id: settingsPanel
     }
@@ -246,13 +259,17 @@ ApplicationWindow {
                     id: dropArea
                     anchors.fill: parent
                     z: 2
-                    keys: ["text/uri-list"]
+                    keys: ["text/uri-list", "text/plain"]
 
                     onDropped: function(drop) {
+                        // Files win over text: a file drag also carries a URI
+                        // string, and the file payload is what was meant.
                         if (drop.hasUrls && drop.urls.length > 0) {
                             const paths = drop.urls.map(
                                 u => u.toString().replace(/^file:\/\//, ""))
                             fileShareController.switchToSendModeWithFiles(paths)
+                        } else if (drop.hasText && drop.text.length > 0) {
+                            fileShareController.switchToSendModeWithText(drop.text)
                         }
                     }
 
