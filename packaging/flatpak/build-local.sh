@@ -40,6 +40,11 @@ fi
 
 echo ">> 4/4  flatpak-builder (build runs offline)"
 cp "$HERE/dev.scotty.Scotty.yaml" "$OUT/"
+# The sandbox source is a .git-less tarball, so CMake's `git describe` can't run
+# there; resolve the release tag on the host and bake it into the manifest copy.
+VERSION_TAG="$(git -C "$REPO" describe --tags --always)"
+echo ">> version tag: $VERSION_TAG"
+sed -i "s|@SCOTTY_VERSION_TAG@|${VERSION_TAG}|g" "$OUT/dev.scotty.Scotty.yaml"
 # The two big sources are local unchecksummed archives (a fresh `git archive`
 # each run). flatpak-builder does not re-hash those, so it will "Cache hit,
 # skipping build" and ship a STALE binary even after the code changed. `--force-clean`
