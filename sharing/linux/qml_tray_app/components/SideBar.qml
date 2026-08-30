@@ -304,7 +304,10 @@ Item {
                             background: null
                             verticalAlignment: textSend.expanded ? TextEdit.AlignTop
                                                                  : TextEdit.AlignVCenter
-                            Keys.onReturnPressed: function(event) {
+                            // Collapsed: Enter/Return sends. Expanded: they add a
+                            // newline unless Ctrl is held. Return (main) and Enter
+                            // (numpad) share one handler.
+                            function submitKey(event) {
                                 if (textSend.expanded && !(event.modifiers & Qt.ControlModifier)) {
                                     event.accepted = false   // newline while expanded
                                 } else {
@@ -312,14 +315,8 @@ Item {
                                     textSend.go()
                                 }
                             }
-                            Keys.onEnterPressed: function(event) {
-                                if (textSend.expanded && !(event.modifiers & Qt.ControlModifier)) {
-                                    event.accepted = false
-                                } else {
-                                    event.accepted = true
-                                    textSend.go()
-                                }
-                            }
+                            Keys.onReturnPressed: submitKey(event)
+                            Keys.onEnterPressed: submitKey(event)
                         }
                     }
 
