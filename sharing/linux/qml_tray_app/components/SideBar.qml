@@ -228,6 +228,88 @@ Item {
                 color: textMuted
             }
 
+            // Send text / a link — Quick Share sends these as a text attachment;
+            // the receiver gets it with a copy button. Collapsed to a button
+            // until used so it doesn't crowd the send-files action.
+            ColumnLayout {
+                id: textSend
+                property bool open: false
+                function go() {
+                    var t = textInput.text.trim()
+                    if (t.length === 0) return
+                    fileShareController.switchToSendModeWithText(t)
+                    textInput.text = ""
+                    textSend.open = false
+                }
+                Layout.fillWidth: true
+                Layout.topMargin: 8
+                Layout.leftMargin: 12
+                Layout.rightMargin: 12
+                spacing: 8
+
+                Rectangle {
+                    visible: !textSend.open
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 40
+                    radius: 12
+                    color: textBtnArea.containsMouse ? Theme.rowFillHover : Theme.rowFill
+                    border.color: cardBorder
+                    border.width: 1
+                    Label {
+                        anchors.centerIn: parent
+                        text: "Send text or link"
+                        font.pixelSize: 14
+                        color: textPrimary
+                    }
+                    MouseArea {
+                        id: textBtnArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: { textSend.open = true; textInput.forceActiveFocus() }
+                    }
+                }
+
+                TextField {
+                    id: textInput
+                    visible: textSend.open
+                    Layout.fillWidth: true
+                    placeholderText: "Paste a link or type text"
+                    onAccepted: textSend.go()
+                }
+                RowLayout {
+                    visible: textSend.open
+                    Layout.fillWidth: true
+                    spacing: 16
+                    Item { Layout.fillWidth: true }
+                    Label {
+                        text: "Cancel"
+                        font.pixelSize: 13
+                        color: textMuted
+                        MouseArea {
+                            anchors.fill: parent
+                            anchors.margins: -8
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: { textInput.text = ""; textSend.open = false }
+                        }
+                    }
+                    Label {
+                        readonly property bool ready: textInput.text.trim().length > 0
+                        text: "Send"
+                        font.pixelSize: 14
+                        font.weight: Font.Medium
+                        color: ready ? Theme.accentColor : textMuted
+                        MouseArea {
+                            anchors.fill: parent
+                            anchors.margins: -8
+                            enabled: parent.ready
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: textSend.go()
+                        }
+                    }
+                }
+            }
+
             FileDialog {
                 id: sidebarSendDialog
                 title: "Select file(s) to send"

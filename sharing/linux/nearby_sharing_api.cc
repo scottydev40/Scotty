@@ -1,5 +1,7 @@
 #include "sharing/linux/nearby_sharing_api.h"
 
+#include <algorithm>
+#include <cctype>
 #include <limits>
 #include <mutex>
 #include <optional>
@@ -22,6 +24,7 @@
 #include "sharing/analytics/analytics_recorder.h"
 #include "sharing/attachment_container.h"
 #include "sharing/file_attachment.h"
+#include "sharing/text_attachment.h"
 #include "sharing/flags/generated/nearby_sharing_feature_flags.h"
 #include "sharing/linux/nearby_noop_analytics_recorder.h"
 #include "sharing/linux/platform/linux_sharing_platform.h"
@@ -552,6 +555,67 @@ void NearbySharingApi::SendFiles(int64_t share_target_id,
     builder.AddFileAttachment(std::move(attachment));
   }
 
+  std::unique_ptr<nearby::sharing::AttachmentContainer> attachments =
+      builder.Build();
+  if (!attachments || !attachments->HasAttachments()) {
+    if (callback) {
+      callback(StatusCode::kInvalidArgument);
+    }
+    return;
+  }
+
+  impl_->service->SendAttachments(
+      share_target_id, std::move(attachments),
+      [cb = std::move(callback)](
+          nearby::sharing::NearbySharingService::StatusCodes status) mutable {
+        if (cb) {
+          cb(ToFacadeStatus(status));
+        }
+      });
+}
+
+namespace {
+// A pragmatic URL check: no whitespace and either an explicit scheme or a bare
+// www. host. Good enough to pick kUrl vs kText for the receiver's copy-link UI;
+// a false negative just sends it as plain text, still copyable.
+bool LooksLikeUrl(const std::string& text) {
+  if (text.empty() ||
+      text.find_first_of(" \t\r\n") != std::string::npos) {
+    return false;
+  }
+  std::string lower = text;
+  std::transform(lower.begin(), lower.end(), lower.begin(),
+                 [](unsigned char c) { return std::tolower(c); });
+  return lower.rfind("http://", 0) == 0 || lower.rfind("https://", 0) == 0 ||
+         lower.rfind("www.", 0) == 0 ||
+         lower.find("://") != std::string::npos;
+}
+}  // namespace
+
+void NearbySharingApi::SendText(int64_t share_target_id,
+                                const std::string& text,
+                                std::function<void(StatusCode)> callback) {
+  if (impl_->service == nullptr) {
+    if (callback) {
+      callback(StatusCode::kError);
+    }
+    return;
+  }
+  if (text.empty()) {
+    if (callback) {
+      callback(StatusCode::kInvalidArgument);
+    }
+    return;
+  }
+
+  const auto type = LooksLikeUrl(text)
+                        ? nearby::sharing::service::proto::TextMetadata::URL
+                        : nearby::sharing::service::proto::TextMetadata::TEXT;
+  nearby::sharing::TextAttachment attachment(type, text, /*text_title=*/text,
+                                             /*mime_type=*/std::nullopt);
+
+  nearby::sharing::AttachmentContainer::Builder builder;
+  builder.AddTextAttachment(std::move(attachment));
   std::unique_ptr<nearby::sharing::AttachmentContainer> attachments =
       builder.Build();
   if (!attachments || !attachments->HasAttachments()) {

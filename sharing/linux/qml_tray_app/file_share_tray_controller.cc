@@ -1228,6 +1228,38 @@ void FileShareTrayController::switchToSendModeWithFile(const QString& file_path)
   switchToSendModeWithFiles(QStringList{file_path});
 }
 
+void FileShareTrayController::switchToSendModeWithText(const QString& text) {
+  // A new send is a fresh intent (see beginSendWithFiles).
+  cancelSendReturnToReceive();
+  if (qr_visible_) hideQrCode();
+
+  const QString trimmed = text.trimmed();
+  if (trimmed.isEmpty()) {
+    setStatus(QStringLiteral("Nothing to send"));
+    emit requestTrayMessage(QStringLiteral("Send canceled"),
+                            QStringLiteral("Enter some text or a link to send."));
+    return;
+  }
+
+  state_.ClearFinishedTransfers();
+  emit transfersChanged();
+
+  state_.SetPendingSendText(trimmed);
+  emit pendingSendFilePathChanged();
+  emit pendingSendFileNameChanged();
+
+  if (state_.running()) {
+    startSendMode();
+    state_.SetMode(QStringLiteral("Send"));
+    emit modeChanged();
+    startDiscoveryWatchdog();
+  }
+  setStatus(QStringLiteral("Discovery started. Choose a nearby device."));
+  emit requestTrayMessage(
+      QStringLiteral("Send mode"),
+      QStringLiteral("Ready to send text/link. Choose a nearby device."));
+}
+
 // A sendable file: the transport needs a real, non-empty size, and a single
 // zero-byte entry fails the *whole* batch (NearbySharingApi::SendFiles returns
 // kInvalidArgument for the set), so they are dropped rather than passed on.
@@ -1408,6 +1440,42 @@ void FileShareTrayController::doSendToTarget(qlonglong share_target_id,
   }
   // A new send in flight supersedes any pending post-send auto-return.
   cancelSendReturnToReceive();
+
+  // Text/link payload: send as a text attachment, skipping file validation.
+  const QString pending_text = state_.pendingSendText();
+  if (!pending_text.isEmpty()) {
+    const QString target_name = state_.GetTargetName(share_target_id);
+    state_.SetPendingSendTargetId(share_target_id);
+    state_.AddOrUpdateTransfer(share_target_id, target_name,
+                               QStringLiteral("Queued"), 0.0, 0,
+                               QStringLiteral("outgoing"), pending_text,
+                               QString(), 0.0, 0, 1);
+    if (transfer_sweep_timer_ && !transfer_sweep_timer_->isActive()) {
+      transfer_sweep_timer_->start();
+    }
+    emit transfersChanged();
+
+    service_->SendText(
+        share_target_id, pending_text.toStdString(),
+        [this, share_target_id](NearbySharingApi::StatusCode status) {
+          QMetaObject::invokeMethod(
+              this,
+              [this, share_target_id, status]() {
+                const QString target_name = state_.GetTargetName(share_target_id);
+                if (status == NearbySharingApi::StatusCode::kOk) {
+                  setStatus(QStringLiteral("Sending to %1").arg(target_name));
+                } else {
+                  setStatus(QStringLiteral("Send failed"));
+                  emit requestTrayMessage(
+                      QStringLiteral("Send failed"),
+                      QStringLiteral("Couldn't send to %1 — tap Retry.")
+                          .arg(target_name));
+                }
+              },
+              Qt::QueuedConnection);
+        });
+    return;
+  }
 
   const QStringList file_paths = state_.pendingSendFilePaths();
   std::vector<std::string> valid_paths;
