@@ -189,7 +189,27 @@ jobs:
         if: steps.gate.outputs.ok == 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install -y flatpak flatpak-builder
+          # flatpak-builder plus the -dev packages the HOST `bazel vendor` step
+          # needs to resolve its new_local_repository rules (e.g. libsystemd
+          # headers); without them vendoring fails at analysis time.
+          sudo apt-get install -y \
+            flatpak \
+            flatpak-builder \
+            build-essential \
+            clang \
+            cmake \
+            ninja-build \
+            pkg-config \
+            libssl-dev \
+            libsystemd-dev \
+            libcurlpp-dev \
+            libasound2-dev \
+            libunistring-dev \
+            libldap-dev \
+            libkrb5-dev \
+            libgpg-error-dev \
+            libbluetooth-dev \
+            libxkbcommon-dev
           flatpak remote-add --user --if-not-exists flathub \
             https://flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y flathub \
