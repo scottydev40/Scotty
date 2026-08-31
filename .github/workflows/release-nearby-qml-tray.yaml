@@ -126,42 +126,11 @@ jobs:
           cd "$RUNNER_TEMP"
           sha256sum "${{ env.appimage_name }}" > "${{ env.appimage_name }}.sha256"
 
-      - name: Install to staging directory
-        run: cmake --install sharing/linux/qml_tray_app/build
-
-      - name: Stage installer and launcher assets
-        run: |
-          STAGING="$RUNNER_TEMP/staging"
-          install -d "$STAGING/share/applications"
-          install -d "$STAGING/share/icons/hicolor/256x256/apps"
-          install -d "$STAGING/include/sharing/linux"
-          install -m 0644 sharing/linux/qml_tray_app/packaging/dev.scotty.Scotty.desktop \
-            "$STAGING/share/applications/dev.scotty.Scotty.desktop"
-          install -m 0644 sharing/linux/qml_tray_app/nearby-linux-desktop.png \
-            "$STAGING/share/icons/hicolor/256x256/apps/dev.scotty.Scotty.png"
-          install -m 0644 sharing/linux/nearby_sharing_api.h \
-            "$STAGING/include/sharing/linux/nearby_sharing_api.h"
-
-      - name: Package tarball
-        run: |
-          STAGING="$RUNNER_TEMP/staging"
-          TARBALL="nearby-file-share-linux-x86_64.tar.gz"
-          tar -czf "$RUNNER_TEMP/$TARBALL" -C "$STAGING" .
-          echo "tarball=$RUNNER_TEMP/$TARBALL" >> "$GITHUB_ENV"
-          echo "tarball_name=$TARBALL" >> "$GITHUB_ENV"
-
-      - name: Generate SHA256 checksums
-        run: |
-          cd "$RUNNER_TEMP"
-          sha256sum "${{ env.tarball_name }}" > "${{ env.tarball_name }}.sha256"
-
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: nearby-file-share-linux-x86_64
+          name: scotty-appimage-x86_64
           path: |
-            ${{ env.tarball }}
-            ${{ env.tarball }}.sha256
             ${{ env.appimage }}
             ${{ env.appimage }}.sha256
 
@@ -171,7 +140,81 @@ jobs:
         with:
           generate_release_notes: true
           files: |
-            ${{ env.tarball }}
-            ${{ env.tarball }}.sha256
             ${{ env.appimage }}
             ${{ env.appimage }}.sha256
+
+  # Build the Flatpak from source and export it, signed, into the self-hosted
+  # OSTree repo served at https://scottydev40.github.io/repo/, so in-app
+  # `flatpak update` actually finds the new release. Without this the Flatpak
+  # channel silently lags the GitHub AppImage release and self-update is a no-op.
+  #
+  # Requires two repo secrets; the job self-skips (no failure) when either is
+  # missing, so forks and secret-less runs are unaffected:
+  #   SCOTTY_FLATPAK_GPG_KEY  ASCII-armored private signing key
+  #                           (`gpg --armor --export-secret-keys FB5293E0EAEE66FB5235DE0278F60844B9C1E3F6`)
+  #   PAGES_DEPLOY_TOKEN      token with contents:write on scottydev40/scottydev40.github.io
+  publish-flatpak:
+    name: Publish Flatpak to self-hosted repo
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Check required secrets
+        id: gate
+        env:
+          GPG_KEY: ${{ secrets.SCOTTY_FLATPAK_GPG_KEY }}
+          PAGES_TOKEN: ${{ secrets.PAGES_DEPLOY_TOKEN }}
+        run: |
+          if [ -n "$GPG_KEY" ] && [ -n "$PAGES_TOKEN" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Flatpak publish skipped — set SCOTTY_FLATPAK_GPG_KEY and PAGES_DEPLOY_TOKEN secrets to enable."
+          fi
+
+      - name: Checkout Scotty
+        if: steps.gate.outputs.ok == 'true'
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Set up Bazelisk
+        if: steps.gate.outputs.ok == 'true'
+        uses: bazel-contrib/setup-bazel@0.18.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-flatpak
+          repository-cache: true
+
+      - name: Install Flatpak toolchain
+        if: steps.gate.outputs.ok == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub \
+            https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub \
+            org.kde.Platform//6.9 org.kde.Sdk//6.9
+
+      - name: Import signing key
+        if: steps.gate.outputs.ok == 'true'
+        env:
+          GPG_KEY: ${{ secrets.SCOTTY_FLATPAK_GPG_KEY }}
+        run: printf '%s' "$GPG_KEY" | gpg --batch --import
+
+      - name: Checkout Pages repo
+        if: steps.gate.outputs.ok == 'true'
+        uses: actions/checkout@v6
+        with:
+          repository: scottydev40/scottydev40.github.io
+          token: ${{ secrets.PAGES_DEPLOY_TOKEN }}
+          path: pages
+          persist-credentials: true
+
+      - name: Build, sign, export, and push
+        if: steps.gate.outputs.ok == 'true'
+        env:
+          PAGES_DIR: ${{ github.workspace }}/pages
+        run: |
+          git config --global user.name "Scotty Release Bot"
+          git config --global user.email "scottydev40@users.noreply.github.com"
+          packaging/flatpak/publish-repo.sh
