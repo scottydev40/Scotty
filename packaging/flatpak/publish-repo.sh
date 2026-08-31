@@ -21,6 +21,12 @@ REPO_DIR="$PAGES_DIR/repo"
 
 [ -d "$PAGES_DIR/.git" ] || { echo "PAGES_DIR ($PAGES_DIR) is not a git checkout" >&2; exit 1; }
 mkdir -p "$REPO_DIR"
+# OSTree enumerates refs/remotes and refs/mirrors on export; git does not track
+# empty dirs, so a fresh Pages checkout (CI) lacks them and `flatpak
+# build-export` dies with "opendir(refs/remotes): No such file or directory".
+# Recreate them before building. (Local runs already have them, so this is a
+# no-op there.)
+mkdir -p "$REPO_DIR/refs/remotes" "$REPO_DIR/refs/mirrors"
 
 echo ">> building + exporting signed flatpak into $REPO_DIR"
 SCOTTY_FLATPAK_REPO="$REPO_DIR" SCOTTY_GPG_KEY="$GPG_KEY" "$HERE/build-local.sh"
