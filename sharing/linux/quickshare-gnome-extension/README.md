@@ -14,16 +14,18 @@ no hard-coded executable path. Its menu has an explicit **Quit Scotty** action.
 All signals, proxy state, indicators, quick-settings items, and timeout sources
 are released by `disable()`.
 
-On the Flatpak and AppImage the tray icon and Quick Settings integration come
-from the app itself (StatusNotifierItem), so this extension is optional. To
-install it per user, copy this directory into your GNOME extensions folder and
-enable it:
+On the Flatpak and AppImage the tray icon comes from the app itself
+(StatusNotifierItem), but GNOME hides SNI tray icons, so on GNOME this extension
+is the idiomatic control surface. Install it per user with:
 
 ```sh
-cp -r sharing/linux/quickshare-gnome-extension \
-  ~/.local/share/gnome-shell/extensions/quickshare@scottydev40.github.io
-gnome-extensions enable quickshare@scottydev40.github.io
+./install.sh              # copy + enable
+./install.sh --uninstall  # disable + remove
 ```
 
 On Wayland, log out and back in after installing a previously unknown extension
-if GNOME Shell has not loaded it.
+if GNOME Shell has not loaded it (the running shell cannot rescan live); a
+reinstall of an already-known extension enables without a relogin.
+
+This is one of several planned per-desktop frontends that all speak the same
+`dev.scotty.Scotty` D-Bus seam — see `docs/quick-tile-plugins.md`.
