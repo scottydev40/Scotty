@@ -75,3 +75,6 @@ sharing/linux/dist/
 packaging/flatpak/_build/
 scotty-src.tar
 packaging/file-manager/__pycache__/
+
+# Local release runbook — kept off the public repo
+RELEASING.md
