@@ -33,6 +33,24 @@ bool InFlatpak() {
   return QFileInfo::exists(QStringLiteral("/.flatpak-info"));
 }
 
+// The currently deployed active commit of our flatpak, read on the host (the
+// sandbox cannot see its own deployment). Used to tell a real update from a
+// no-op: `flatpak update` exits 0 and prints "Nothing to do" when the remote
+// has no newer build, so exit code alone cannot prove anything was installed.
+// Empty string on any failure — callers treat "couldn't read" as "unknown".
+QString DeployedFlatpakCommit() {
+  QProcess proc;
+  proc.start(QStringLiteral("flatpak-spawn"),
+             {QStringLiteral("--host"), QStringLiteral("flatpak"),
+              QStringLiteral("info"), QStringLiteral("--show-commit"),
+              QStringLiteral("dev.scotty.Scotty")});
+  if (!proc.waitForFinished(10000) ||
+      proc.exitStatus() != QProcess::NormalExit || proc.exitCode() != 0) {
+    return QString();
+  }
+  return QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
+}
+
 // A release tag is "beta" if the API flags it prerelease OR the tag name says
 // so (the repo does not reliably set the prerelease flag).
 bool TagIsBeta(const QString& tag, bool api_prerelease) {
@@ -292,12 +310,20 @@ void UpdateChecker::installViaFlatpak() {
   download_progress_ = -1;  // indeterminate: flatpak prints its own progress
   emit downloadProgressChanged();
 
+  // Record what is deployed now so we can tell a real update from a no-op:
+  // `flatpak update` succeeds (exit 0, "Nothing to do") when the remote has no
+  // newer build, and the old code then falsely reported "Updated to X" and
+  // relaunched into the same version. The GitHub release the banner was based
+  // on may simply not be on the Flatpak channel yet.
+  const QString commit_before = DeployedFlatpakCommit();
+
   auto* proc = new QProcess(this);
   proc->setProcessChannelMode(QProcess::MergedChannels);
   connect(
       proc,
       QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-      [this, proc](int exit_code, QProcess::ExitStatus exit_status) {
+      [this, proc, commit_before](int exit_code,
+                                  QProcess::ExitStatus exit_status) {
         const QString output = QString::fromUtf8(proc->readAll());
         proc->deleteLater();
         if (exit_status != QProcess::NormalExit || exit_code != 0) {
@@ -306,8 +332,22 @@ void UpdateChecker::installViaFlatpak() {
                        "works."));
           return;
         }
-        // "flatpak update" is a no-op when already current; the deploy only
-        // takes effect on a fresh launch, so relaunch through the host.
+        // Did anything actually deploy? If the active commit is unchanged the
+        // remote had nothing newer — don't fake a success or relaunch. (If we
+        // couldn't read either commit, fall through and relaunch as before.)
+        const QString commit_after = DeployedFlatpakCommit();
+        const bool no_op = !commit_before.isEmpty() &&
+                           !commit_after.isEmpty() &&
+                           commit_before == commit_after;
+        if (no_op) {
+          setStatus(Status::UpdateAvailable,
+                    tr("The Flatpak channel doesn't have %1 yet — nothing was "
+                       "installed. Try again later, or use the AppImage.")
+                        .arg(available_version_));
+          return;
+        }
+        // A new commit deployed; it only takes effect on a fresh launch, so
+        // relaunch through the host.
         setStatus(Status::ReadyToRelaunch,
                   tr("Updated to %1 — restarting…").arg(available_version_));
         QProcess::startDetached(
