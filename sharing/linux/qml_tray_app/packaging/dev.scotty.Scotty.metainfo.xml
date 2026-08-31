@@ -26,6 +26,11 @@
   <launchable type="desktop-id">dev.scotty.Scotty.desktop</launchable>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.2.0-beta.5" date="2026-08-31" type="development">
+      <description>
+        <p>Flatpak autostart fix, GNOME Quick Settings tile, and a release-publish fix.</p>
+      </description>
+    </release>
     <release version="0.2.0-beta.2" date="2026-08-30" type="development">
       <description>
         <p>In-app updater, QR send, off-network transfers, and UX fixes.</p>
