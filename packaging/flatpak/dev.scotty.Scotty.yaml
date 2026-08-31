@@ -22,6 +22,11 @@ finish-args:
   # sandbox's own dconf is not the desktop's).
   - --talk-name=org.freedesktop.Flatpak
   - --filesystem=xdg-download
+  # Run-at-startup writes a host XDG autostart entry. Inside the sandbox
+  # QStandardPaths points at ~/.var/app/.../config, which the host session
+  # never reads, so the controller targets the real host path — which requires
+  # this narrow grant (just the autostart dir, not all of ~/.config).
+  - --filesystem=xdg-config/autostart:create
 modules:
   - name: nearby-engine
     buildsystem: simple

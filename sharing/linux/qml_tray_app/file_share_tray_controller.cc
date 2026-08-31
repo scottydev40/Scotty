@@ -881,9 +881,23 @@ void FileShareTrayController::setSignedInEmail(const QString& email) {
   }
 }
 
+static bool InFlatpakSandbox() {
+  static const bool in = QFile::exists(QStringLiteral("/.flatpak-info"));
+  return in;
+}
+
 static QString AutostartFilePath() {
+  const QString rel = QStringLiteral("/autostart/dev.scotty.Scotty.desktop");
+  // Inside the flatpak sandbox QStandardPaths resolves to ~/.var/app/.../config,
+  // which the host login session never scans, so an entry written there is dead.
+  // Target the real host ~/.config/autostart instead; the manifest grants
+  // exactly that dir via --filesystem=xdg-config/autostart:create. ($HOME is the
+  // real host home in a flatpak; only XDG_CONFIG_HOME is redirected.)
+  if (InFlatpakSandbox()) {
+    return QDir::homePath() + QStringLiteral("/.config") + rel;
+  }
   return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
-         QStringLiteral("/autostart/dev.scotty.Scotty.desktop");
+         rel;
 }
 
 // There is no XDG key for "start minimized" (Hidden= means disabled), so the
@@ -896,12 +910,23 @@ static void WriteAutostartFile() {
   if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
     return;
   }
+  // In the sandbox, applicationFilePath() is /app/bin/scotty — a path that does
+  // not exist on the host. The host launches the app through flatpak instead.
+  QString exec;
+  if (InFlatpakSandbox()) {
+    const QString app_id = qEnvironmentVariable(
+        "FLATPAK_ID", QStringLiteral("dev.scotty.Scotty"));
+    exec = QStringLiteral("flatpak run ") + app_id +
+           QStringLiteral(" --background");
+  } else {
+    exec = QLatin1Char('"') + QCoreApplication::applicationFilePath() +
+           QStringLiteral("\" --background");
+  }
   QTextStream out(&file);
   out << "[Desktop Entry]\n"
       << "Type=Application\n"
       << "Name=Scotty\n"
-      << "Exec=\"" << QCoreApplication::applicationFilePath()
-      << "\" --background\n"
+      << "Exec=" << exec << "\n"
       << "Icon=dev.scotty.Scotty\n"
       << "Terminal=false\n"
       << "X-GNOME-Autostart-enabled=true\n";
