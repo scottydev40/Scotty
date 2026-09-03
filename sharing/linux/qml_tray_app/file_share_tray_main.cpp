@@ -158,10 +158,25 @@ int main(int argc, char* argv[]) {
   if (ForwardToRunningInstance(instance_payload)) {
     return 0;
   }
-  // Clear any stale socket left by a previous crash, then claim the name.
-  QLocalServer::removeServer(QString::fromLatin1(kInstanceKey));
+  // Claim the single-instance name. listen() is the atomic arbiter: the kernel
+  // lets only one process bind the socket path, so on a simultaneous-launch
+  // race (autostart entry + the GNOME tile's D-Bus activation firing in the
+  // same instant) the loser's listen() fails with AddressInUseError. Re-probe
+  // and hand off to the winner rather than calling removeServer() blindly --
+  // an unconditional removeServer() here unlinks a *live* sibling's freshly
+  // bound socket, which is exactly what let both copies survive and show two
+  // icons.
   QLocalServer instance_server;
-  instance_server.listen(QString::fromLatin1(kInstanceKey));
+  if (!instance_server.listen(QString::fromLatin1(kInstanceKey))) {
+    // Something holds the socket path. If a live sibling answers, defer to it.
+    if (ForwardToRunningInstance(instance_payload)) {
+      return 0;
+    }
+    // Nobody answered -- the file is a stale leftover from a crash. Clear it
+    // and claim the name for real.
+    QLocalServer::removeServer(QString::fromLatin1(kInstanceKey));
+    instance_server.listen(QString::fromLatin1(kInstanceKey));
+  }
   // Wayland/GNOME matches a window to its .desktop entry (and thus its taskbar
   // icon) via the desktop file name / app_id, not setWindowIcon. Without this
   // the shell falls back to a generic icon.

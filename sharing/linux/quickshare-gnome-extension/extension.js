@@ -155,6 +155,11 @@ export default class QuickShareExtension extends Extension {
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
 
         // Async proxy. Auto-tracks the app appearing/disappearing on the bus.
+        // DO_NOT_AUTO_START: merely building this proxy at login must not spawn
+        // the app -- the autostart entry already launches it, and a passive
+        // auto-start here would race that into a second instance (two icons).
+        // Explicit launch still works: openWindow() falls back to the desktop
+        // entry (_launchApp) when ShowRemote hits a name with no owner.
         this._proxy = new QuickShareProxy(
             Gio.DBus.session, BUS_NAME, OBJECT_PATH,
             (proxy, error) => {
@@ -165,7 +170,9 @@ export default class QuickShareExtension extends Extension {
                     return;
                 }
                 this._onProxyReady();
-            });
+            },
+            null,
+            Gio.DBusProxyFlags.DO_NOT_AUTO_START);
     }
 
     _onProxyReady() {
