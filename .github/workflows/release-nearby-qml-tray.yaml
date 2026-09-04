@@ -59,7 +59,8 @@ jobs:
             qt6-wayland \
             qt6-tools-dev \
             qt6-tools-dev-tools \
-            libqrencode-dev
+            libqrencode-dev \
+            zip
 
       - name: Build and install Nearby Sharing API shared library
         id: nearby
@@ -93,6 +94,9 @@ jobs:
 
       - name: Build QML tray app
         run: cmake --build sharing/linux/qml_tray_app/build -j
+
+      - name: Run app regression tests
+        run: ctest --test-dir sharing/linux/qml_tray_app/build --output-on-failure
 
       - name: Download AppImage tooling
         run: |

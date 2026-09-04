@@ -59,6 +59,10 @@ qt_add_executable(nearby_qml_file_tray_app
   file_share_tray_controller.h
   file_share_state.cc
   file_share_state.h
+  send_preparation.cc
+  send_preparation.h
+  settings_migration.h
+  shutdown_barrier.h
   app_paths.cc
   app_paths.h
   theme_controller.cc
@@ -98,16 +102,32 @@ target_link_libraries(nearby_qml_file_tray_app PRIVATE
   "${NEARBY_SHARING_LIB}"
 )
 
-# --- Unit tests (comparator is pure std C++; no Qt/Nearby needed) ----------
+# --- App regression tests (no running Nearby engine required) ------------
 # Build with -DBUILD_TESTING=OFF to skip (e.g. minimal AppImage build hosts).
 option(BUILD_TESTING "Build unit tests" ON)
 if(BUILD_TESTING)
+  find_package(Qt6 REQUIRED COMPONENTS Test)
+  find_package(Threads REQUIRED)
   enable_testing()
   add_executable(version_compare_test
     version_compare_test.cc
     version_compare.cc
     version_compare.h)
   add_test(NAME version_compare_test COMMAND version_compare_test)
+  add_executable(reliability_test
+    reliability_test.cc
+    send_preparation.cc
+    send_preparation.h
+    ../../../internal/platform/implementation/linux/linux_flags.cc)
+  # This target exercises app logic without loading the Nearby engine or
+  # accessing Bluetooth, NetworkManager, account services, or real settings.
+  target_include_directories(reliability_test PRIVATE ../../..)
+  # GNU extensions define a legacy `linux` macro that collides with Nearby's
+  # namespace. Match the engine's strict C++20 dialect for these sources.
+  set_target_properties(reliability_test PROPERTIES CXX_EXTENSIONS OFF)
+  target_link_libraries(reliability_test PRIVATE Qt6::Core Qt6::Test Threads::Threads)
+  add_test(NAME reliability_test COMMAND reliability_test)
+  set_tests_properties(reliability_test PROPERTIES TIMEOUT 30)
 endif()
 
 set_target_properties(nearby_qml_file_tray_app PROPERTIES

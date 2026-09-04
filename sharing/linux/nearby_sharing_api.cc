@@ -154,7 +154,7 @@ class NearbySharingApi::Impl : public nearby::sharing::ShareTargetDiscoveredCall
   Impl()
       : analytics_recorder(),
         platform(),
-        service(NearbySharingServiceFactory::GetInstance()->CreateSharingService(
+        service(service_factory.CreateSharingService(
             platform, &analytics_recorder, /*event_logger=*/nullptr,
             /*supports_file_sync=*/false)) {}
 
@@ -162,7 +162,7 @@ class NearbySharingApi::Impl : public nearby::sharing::ShareTargetDiscoveredCall
       : analytics_recorder(),
         device_name_override(device_name_override),
         platform(device_name_override),
-        service(NearbySharingServiceFactory::GetInstance()->CreateSharingService(
+        service(service_factory.CreateSharingService(
             platform, &analytics_recorder, /*event_logger=*/nullptr,
             /*supports_file_sync=*/false)) {
     if (service != nullptr && !device_name_override.empty()) {
@@ -271,9 +271,13 @@ class NearbySharingApi::Impl : public nearby::sharing::ShareTargetDiscoveredCall
     return info;
   }
 
+  // Listener storage must outlive the factory-owned service and its workers.
+  std::mutex listener_mutex;
+  NearbySharingApi::Listener listener;
   nearby::sharing::linux::NoOpAnalyticsRecorder analytics_recorder;
   std::string device_name_override;
   nearby::sharing::linux::LinuxSharingPlatform platform;
+  NearbySharingServiceFactory service_factory;
   NativeService* service = nullptr;
   bool send_mode_started = false;
   bool receive_mode_started = false;
@@ -283,8 +287,6 @@ class NearbySharingApi::Impl : public nearby::sharing::ShareTargetDiscoveredCall
   // App-facing advertising visibility (see ToProtoVisibility): 0=Everyone,
   // 1=Contacts, 2=No one, 3=Your devices, 4=Everyone(10 min).
   int visibility_mode = 0;
-  std::mutex listener_mutex;
-  NearbySharingApi::Listener listener;
 };
 
 NearbySharingApi::NearbySharingApi() {
@@ -298,13 +300,16 @@ NearbySharingApi::NearbySharingApi(std::string device_name_override)
   impl_ = std::make_unique<Impl>(std::move(device_name_override));
 }
 
-NearbySharingApi::~NearbySharingApi() = default;
+NearbySharingApi::~NearbySharingApi() {
+  if (impl_) SetListener({});
+}
 
 NearbySharingApi::NearbySharingApi(NearbySharingApi&&) noexcept = default;
 
 NearbySharingApi& NearbySharingApi::operator=(NearbySharingApi&&) noexcept = default;
 
 void NearbySharingApi::SetListener(Listener listener) {
+  nearby::linux::SetWifiDisruptionCallback(listener.wifi_disruption_cb);
   std::scoped_lock lock(impl_->listener_mutex);
   impl_->listener = std::move(listener);
 }

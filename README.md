@@ -23,8 +23,11 @@ Quick-Settings tile.
 - **Transfers** over the fastest available path:
   - **Wi-Fi LAN** when both devices share a network.
   - **Wi-Fi Hotspot** when the peer is off your network — Scotty hosts a SoftAP
-    on its own virtual interface so **your Wi-Fi and internet stay up** during
-    the transfer.
+    on its own virtual interface so **your Wi-Fi and internet stay up** when
+    the hardware and system setup support both connections. Otherwise Scotty
+    notifies you and temporarily disconnects the current Wi-Fi to keep the
+    transfer fast, then attempts to reconnect it afterward. This fallback also
+    applies with Boost off.
   - **Bluetooth** as the always-available fallback.
 - **Boost mode** (opt-in): hands the whole radio to the hotspot for higher
   throughput, at the cost of dropping Wi-Fi for the duration of the transfer.
@@ -56,8 +59,9 @@ contacts) that the other Quick Share clients don't implement.
 | Native Linux packaging (**Flatpak + AppImage**) | ✅ | ⚠️ ⁴ | ⚠️ ⁴ | ✅ | ✅ |
 
 <sub>¹ Packet uses Wi-Fi Direct, which takes over the radio. ² Scotty hosts a
-SoftAP on a virtual interface, so your normal Wi-Fi and internet stay connected
-(Boost mode trades that for speed). ³ Works on-network and off-network.
+SoftAP on a virtual interface when supported, so your normal Wi-Fi and internet
+stay connected. Otherwise Scotty notifies you and temporarily drops Wi-Fi to
+keep the transfer fast, even with Boost off. ³ Works on-network and off-network.
 ⁴ Distributed mainly as Flatpak. Compiled from each project's docs as of
 August 2026 — corrections welcome via an issue.</sub>
 

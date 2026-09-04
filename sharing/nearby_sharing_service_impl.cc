@@ -371,7 +371,14 @@ NearbySharingServiceImpl::NearbySharingServiceImpl(
   SetupBluetoothAdapter();
 }
 
-NearbySharingServiceImpl::~NearbySharingServiceImpl() = default;
+NearbySharingServiceImpl::~NearbySharingServiceImpl() {
+  // Join the worker before destroying any of the members its final callback
+  // or queued tasks can still touch. Shutdown's callback signals completion
+  // just before the worker returns from that task.
+  // Keep the stopped runner alive until dependent members are destroyed;
+  // their destructors may still try to post callbacks, which are rejected.
+  service_thread_->Shutdown();
+}
 
 void NearbySharingServiceImpl::Shutdown(
     std::function<void(StatusCodes)> status_codes_callback) {

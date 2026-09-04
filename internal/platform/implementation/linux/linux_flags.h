@@ -15,6 +15,8 @@
 #ifndef PLATFORM_IMPL_LINUX_LINUX_FLAGS_H_
 #define PLATFORM_IMPL_LINUX_LINUX_FLAGS_H_
 
+#include <functional>
+
 namespace nearby::linux {
 
 bool Is5GhzHotspotEnabled();
@@ -25,6 +27,11 @@ void Set5GhzHotspotEnabled(bool enabled);
 // channel at full width, instead of coexisting with the station on its channel.
 bool IsHotspotBoostEnabled();
 void SetHotspotBoostEnabled(bool enabled);
+
+// The app's single sharing engine installs a notice callback. Notification is
+// informational: the Wi-Fi upgrade continues without waiting for approval.
+void SetWifiDisruptionCallback(std::function<void()> callback);
+void NotifyWifiDisruption();
 
 }  // namespace nearby::linux
 

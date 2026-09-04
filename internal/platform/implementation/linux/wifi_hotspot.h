@@ -78,11 +78,11 @@ class NetworkManagerWifiHotspotMedium : public api::WifiHotspotMedium {
  private:
   bool WifiHotspotActive();
   bool ConnectedToWifi();
-  // Reactivates the station Wi-Fi connection that boost deactivated (if any),
-  // then clears deactivated_station_connection_path_. No-op when boost did not
-  // drop the station. Idempotent, so it is safe to call from both the hotspot
+  // Reactivates the station Wi-Fi connection the hotspot deactivated (if any),
+  // then clears deactivated_station_connection_path_. No-op when the station
+  // stayed up. Idempotent, so it is safe to call from both the hotspot
   // teardown and every StartWifiHotspot failure path — leaving the user with no
-  // Wi-Fi after a failed boost hotspot is the bug this closes.
+  // Wi-Fi after a failed hotspot is the bug this closes.
   void ReactivateStation();
 
   // The Wi-Fi upgrade needs the radio on. If the user has Wi-Fi switched off
@@ -122,11 +122,11 @@ class NetworkManagerWifiHotspotMedium : public api::WifiHotspotMedium {
   // knows to tear the interface back down.
   bool ap_interface_started_by_us_ = false;
 
-  // Boost hosts the AP on the station device, so it deactivates the station's
+  // Boost and the no-coexistence fallback deactivate the station's
   // Wi-Fi connection first. NetworkManager will NOT auto-reconnect a manually-
   // deactivated connection, so we remember its settings path here and
   // reactivate it when the hotspot is torn down — otherwise Wi-Fi stays dead
-  // after a boost transfer. Empty when boost didn't drop the station.
+  // after a transfer. Empty when the hotspot did not drop the station.
   sdbus::ObjectPath deactivated_station_connection_path_;
   // True when EnsureWifiRadioEnabled turned the Wi-Fi radio on for a transfer,
   // so RestoreWifiRadio knows to switch it back off afterwards. False when the
