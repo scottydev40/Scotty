@@ -26,6 +26,11 @@
   <launchable type="desktop-id">dev.scotty.Scotty.desktop</launchable>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.2.0-beta.6" date="2026-09-04" type="development">
+      <description>
+        <p>Reliability: ordered engine shutdown, safer transfer/compression lifecycle, and a notice before Wi-Fi is used for a faster transfer.</p>
+      </description>
+    </release>
     <release version="0.2.0-beta.5" date="2026-08-31" type="development">
       <description>
         <p>Flatpak autostart fix, GNOME Quick Settings tile, and a release-publish fix.</p>
