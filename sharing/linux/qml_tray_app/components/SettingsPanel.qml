@@ -119,6 +119,13 @@ Popup {
                 }
 
                 SectionLabel { text: "SHARING" }
+                Label {
+                    width: settingsCol.width
+                    wrapMode: Text.WordWrap
+                    color: root.textMuted
+                    font.pixelSize: 12
+                    text: "Off-network transfers use Wi-Fi for speed. If this device cannot keep both connections active, Scotty will notify you and temporarily disconnect your current Wi-Fi, even with Boost off."
+                }
                 SectionCard {
                     width: settingsCol.width
 

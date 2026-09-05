@@ -15,12 +15,16 @@
 #include "internal/platform/implementation/linux/linux_flags.h"
 
 #include <atomic>
+#include <mutex>
+#include <utility>
 
 namespace nearby::linux {
 namespace {
 
 std::atomic_bool kEnable5GhzHotspot = true;
 std::atomic_bool kHotspotBoost = false;
+std::mutex wifi_disruption_mutex;
+std::function<void()> wifi_disruption_callback;
 
 }  // namespace
 
@@ -31,5 +35,19 @@ void Set5GhzHotspotEnabled(bool enabled) { kEnable5GhzHotspot.store(enabled); }
 bool IsHotspotBoostEnabled() { return kHotspotBoost.load(); }
 
 void SetHotspotBoostEnabled(bool enabled) { kHotspotBoost.store(enabled); }
+
+void SetWifiDisruptionCallback(std::function<void()> callback) {
+  std::lock_guard lock(wifi_disruption_mutex);
+  wifi_disruption_callback = std::move(callback);
+}
+
+void NotifyWifiDisruption() {
+  std::function<void()> callback;
+  {
+    std::lock_guard lock(wifi_disruption_mutex);
+    callback = wifi_disruption_callback;
+  }
+  if (callback) callback();
+}
 
 }  // namespace nearby::linux

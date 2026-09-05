@@ -14,6 +14,7 @@ app for file sharing via Nearby Sharing, wired to:
 
 - `file_share_tray_main.cpp`: Qt app bootstrap + system tray behavior.
 - `file_share_tray_controller.h/.cc`: QML-facing backend wrapper around Nearby Sharing.
+- `send_preparation.h/.cc`: cancellable folder compression and temporary archives.
 - `FileShareTray.qml`: Top-level UI for the file share tray app.
 - `components/`: Shared QML UI components used by `FileShareTray.qml`.
 - `resources_file_share.qrc`: Embeds `FileShareTray.qml` and components.
@@ -21,7 +22,11 @@ app for file sharing via Nearby Sharing, wired to:
 ## Runtime behavior
 
 - Close hides the window while background receiving remains active.
+- Starting at login is opt-in in Settings; existing startup entries are preserved.
 - Quit from the app integration or press Ctrl+Q to stop the process cleanly.
+- Shutdown waits for engine cleanup before releasing resources. Slow or stuck
+  hardware operations can delay quitting or resetting; a warning is logged
+  after five seconds rather than destroying an engine that is still running.
 - Mode `Send`:
   - Starts discovery.
   - Shows discovered share targets.
@@ -38,6 +43,10 @@ app for file sharing via Nearby Sharing, wired to:
 - If `logPath` is changed from Settings, restart the app to apply redirection.
 
 ## Building
+
+Tests are enabled by default and require Qt6 Test and `zip`. Run `ctest` in
+the build directory; see [the test guide](../../../docs/testing.md). Set
+`-DBUILD_TESTING=OFF` to build only the app.
 
 This CMake app links against the installed Nearby shared library and header:
 

@@ -322,7 +322,7 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
   // Hosting the hotspot needs the radio on. If the user switched Wi-Fi off,
   // bring it up just for this transfer; the guard restores it on any early exit
   // and StopWifiHotspot restores it on success. No-op when Wi-Fi was already on.
-  EnsureWifiRadioEnabled();
+  if (!EnsureWifiRadioEnabled()) return false;
   struct WifiRadioRestoreGuard {
     NetworkManagerWifiHotspotMedium *self;
     bool armed = true;
@@ -481,15 +481,18 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
   const bool using_ap_interface =
       ap_device_path != wireless_device_->getProxy().getObjectPath();
 
-  // Boost hosts the AP on the station's own device. If the station is still
+  // Both Boost and the no-coexistence fallback use the station device. If it is
   // connected when we activate the AP, NetworkManager tears it down mid-
   // activation and the new connection is reported as failed ("the device it
   // was using was disconnected") — it only succeeds on a retry. Free the
   // device first so the AP comes up cleanly on the first try.
-  if (boost && !using_ap_interface) {
+  if (!using_ap_interface) {
     try {
       auto station_conn = wireless_device_->GetActiveConnection();
       if (station_conn != nullptr) {
+        // Keep the fast hotspot fallback, but tell the user before interrupting
+        // their network. The same restore path applies with Boost off.
+        NotifyWifiDisruption();
         // Remember the underlying settings connection so we can bring the
         // station Wi-Fi back after the transfer (StopWifiHotspot); NM won't
         // auto-reconnect a manually-deactivated connection.
@@ -500,12 +503,12 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
           deactivated_station_connection_path_ = conn.get<sdbus::ObjectPath>();
         } catch (const sdbus::Error &e) {
           LOG(WARNING) << __func__
-                       << ": Boost — could not read the station's settings "
+                       << ": Hotspot — could not read the station's settings "
                           "connection path ("
                        << e.getMessage() << "); Wi-Fi may not auto-restore";
         }
         LOG(INFO) << __func__
-                  << ": Boost — deactivating the station connection first so "
+                  << ": Hotspot — deactivating the station connection first so "
                      "the AP activates cleanly";
         network_manager_->DeactivateConnection(
             station_conn->getProxy().getObjectPath());
@@ -515,12 +518,12 @@ bool NetworkManagerWifiHotspotMedium::StartWifiHotspot(
       }
     } catch (const sdbus::Error &e) {
       LOG(WARNING) << __func__
-                   << ": Boost — could not pre-deactivate the station ("
+                   << ": Hotspot — could not pre-deactivate the station ("
                    << e.getMessage() << "); relying on activation retry";
     }
   }
 
-  // From here on the boost station may be deactivated. Every early exit below
+  // From here on the station may be deactivated. Every early exit below
   // is a failure to bring the hotspot up, and each one used to leave the
   // station down — so a start that failed (common during a mid-transfer retry
   // storm) stranded the user with no Wi-Fi "entirely". This guard restores the
@@ -664,7 +667,7 @@ void NetworkManagerWifiHotspotMedium::ReactivateStation() {
   if (deactivated_station_connection_path_.empty()) return;
   const sdbus::ObjectPath station = deactivated_station_connection_path_;
   deactivated_station_connection_path_ = {};
-  LOG(INFO) << __func__ << ": Boost — reactivating the station connection "
+  LOG(INFO) << __func__ << ": Hotspot — reactivating the station connection "
             << station << " so Wi-Fi comes back";
   try {
     network_manager_->ActivateConnection(
@@ -777,14 +780,14 @@ bool NetworkManagerWifiHotspotMedium::StopWifiHotspot() {
       EnsureApInterface(false);
       ap_interface_started_by_us_ = false;
     }
-    // Boost deactivated the station Wi-Fi to host on the station device; bring
+    // The hotspot deactivated station Wi-Fi to use the station device; bring
     // it back now, or the user is left with no Wi-Fi after the transfer. Done
     // after the hotspot connection is torn down so the station device is free.
     ReactivateStation();
     return ok;
   }
 
-  // Defence in depth: if boost deactivated the station but we never recorded a
+  // Defence in depth: if we deactivated the station but never recorded a
   // hotspot connection (a start that failed after the deactivation), the block
   // above is skipped — restore the station here so Wi-Fi never stays dead.
   ReactivateStation();

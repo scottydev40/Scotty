@@ -29,6 +29,9 @@ namespace nearby::sharing {
 
 class NearbySharingServiceFactory {
  public:
+  // A facade can own a factory so its service and context have the same
+  // lifetime as the platform. The singleton remains for existing callers.
+  NearbySharingServiceFactory() = default;
   // Return a singleton instance of NearbySharingServiceFactory.
   static NearbySharingServiceFactory* GetInstance();
 
@@ -39,14 +42,13 @@ class NearbySharingServiceFactory {
       bool supports_file_sync);
 
  private:
-  NearbySharingServiceFactory() = default;
-
   std::unique_ptr<Context> context_;
-  std::unique_ptr<NearbySharingService> nearby_sharing_service_;
   std::unique_ptr<nearby::sharing::platform::common::GrpcAsyncClientFactory>
       nearby_share_client_factory_;
   std::unique_ptr<nearby::sharing::api::CertTransportClient>
       cert_transport_client_;
+  // Destroy the service before the dependencies it uses.
+  std::unique_ptr<NearbySharingService> nearby_sharing_service_;
 };
 
 }  // namespace nearby::sharing

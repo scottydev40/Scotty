@@ -1,6 +1,7 @@
 .DS_Store
 
 build/**
+/build-qt/
 .build
 
 # We might want to create a real project config at some point, but for now we

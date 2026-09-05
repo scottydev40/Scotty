@@ -2,8 +2,6 @@
 
 #include "app_paths.h"
 
-#include <chrono>
-#include <future>
 #include <iostream>
 #include <QClipboard>
 #include <QDBusConnection>
@@ -20,7 +18,6 @@
 #include <QDir>
 #include <QProcess>
 #include <QRegularExpression>
-#include <QSharedPointer>
 #include <QFileInfo>
 #include <QCoreApplication>
 #include <QDateTime>
@@ -39,6 +36,9 @@
 #include "string_utils.h"
 #include "status_mapper.h"
 #include "qr_code_generator.h"
+#include "settings_migration.h"
+#include "shutdown_barrier.h"
+#include "send_preparation.h"
 
 FileShareTrayController::FileShareTrayController(QObject* parent)
     : QObject(parent) {
@@ -48,6 +48,21 @@ FileShareTrayController::FileShareTrayController(QObject* parent)
   }
 
   loadSettings();
+  send_preparation_ = new SendPreparation(this);
+  connect(send_preparation_, &SendPreparation::prepared, this,
+          [this](const PreparedSend& send) {
+            beginSendWithFiles(send.paths, send.names, send.skipped_empty);
+          });
+  connect(send_preparation_, &SendPreparation::compressing, this,
+          [this](int count) {
+            setStatus(count == 1 ? QStringLiteral("Compressing folder…")
+                                 : QStringLiteral("Compressing folders…"));
+          });
+  connect(send_preparation_, &SendPreparation::error, this,
+          [this](const QString& message) {
+            setStatus(QStringLiteral("Compression failed"));
+            emit requestTrayMessage(QStringLiteral("Compression failed"), message);
+          });
   setupMyDevicesBus();
   refreshAutostartFile();
   initializeService();
@@ -112,6 +127,7 @@ FileShareTrayController::FileShareTrayController(QObject* parent)
 FileShareTrayController::~FileShareTrayController() {
   stop();
   shutdownServiceBlocking();
+  service_.reset();
 }
 
 void FileShareTrayController::shutdownServiceBlocking() {
@@ -122,14 +138,15 @@ void FileShareTrayController::shutdownServiceBlocking() {
   // dereferences the platform/context (e.g. StopFastInitiationAdvertising ->
   // GetFastInitiationManager). If service_ (and the platform it owns) destructs
   // before that task runs, the task makes a pure-virtual call on the
-  // half-destroyed platform and aborts. Block until the shutdown callback fires
-  // (bounded) so teardown is ordered.
-  std::promise<void> shutdown_done;
-  std::future<void> done = shutdown_done.get_future();
-  service_->Shutdown([&shutdown_done](NearbySharingApi::StatusCode) {
-    shutdown_done.set_value();
-  });
-  done.wait_for(std::chrono::seconds(5));
+  // half-destroyed platform and aborts. Wait for real completion even when a
+  // hardware operation takes longer than the diagnostic timeout.
+  service_->SetListener({});
+  scotty::AwaitShutdown(
+      [this](auto complete) {
+        service_->Shutdown([complete = std::move(complete)](
+                               NearbySharingApi::StatusCode) { complete(); });
+      },
+      [] { qWarning() << "Still waiting for the sharing engine to shut down"; });
 }
 
 void FileShareTrayController::rebuildService() {
@@ -137,15 +154,16 @@ void FileShareTrayController::rebuildService() {
   // to finish shutting down, THEN replace it (initializeService destroys the old
   // service). Without the blocking wait this races a pending shutdown task and
   // aborts — see shutdownServiceBlocking().
-  if (state_.running()) {
-    stop();
-  }
+  stop();
   shutdownServiceBlocking();
   initializeService();
   start();
 }
 
 void FileShareTrayController::initializeService() {
+  // Release the old factory-owned service before constructing a new engine.
+  service_.reset();
+  service_callback_context_ = std::make_unique<QObject>();
   service_ = std::make_unique<NearbySharingApi>(state_.deviceName().toStdString());
   service_->Set5GhzHotspotEnabled(state_.enable5GhzHotspot());
   service_->SetHotspotBoostEnabled(state_.hotspotBoost());
@@ -203,19 +221,29 @@ void FileShareTrayController::hideQrCode() {
 void FileShareTrayController::attachServiceListeners() {
   NearbySharingApi::Listener listener;
 
+  listener.wifi_disruption_cb = [this] {
+    QMetaObject::invokeMethod(service_callback_context_.get(), [this] {
+      emit requestTrayMessage(
+          QStringLiteral("Wi-Fi will disconnect temporarily"),
+          QStringLiteral("Scotty is using Wi-Fi for a faster transfer. Your "
+                         "current network will disconnect; Scotty will try to "
+                         "reconnect it when the transfer ends."));
+    }, Qt::QueuedConnection);
+  };
+
   listener.target_discovered_cb = [this](const NearbySharingApi::ShareTargetInfo& info) {
-    QMetaObject::invokeMethod(this, [this, info]() { updateTargetFromInfo(info); },
+    QMetaObject::invokeMethod(service_callback_context_.get(), [this, info]() { updateTargetFromInfo(info); },
                               Qt::QueuedConnection);
   };
 
   listener.target_updated_cb = [this](const NearbySharingApi::ShareTargetInfo& info) {
-    QMetaObject::invokeMethod(this, [this, info]() { updateTargetFromInfo(info); },
+    QMetaObject::invokeMethod(service_callback_context_.get(), [this, info]() { updateTargetFromInfo(info); },
                               Qt::QueuedConnection);
   };
 
   listener.target_lost_cb = [this](int64_t share_target_id) {
     QMetaObject::invokeMethod(
-        this, [this, share_target_id]() {
+        service_callback_context_.get(), [this, share_target_id]() {
           state_.RemoveTarget(share_target_id);
           device_id_by_target_.remove(share_target_id);
           emit discoveredTargetsChanged();
@@ -224,7 +252,7 @@ void FileShareTrayController::attachServiceListeners() {
   };
 
   listener.transfer_update_cb = [this](const NearbySharingApi::TransferUpdateInfo& update) {
-    QMetaObject::invokeMethod(this, [this, update]() { handleTransferUpdate(update); },
+    QMetaObject::invokeMethod(service_callback_context_.get(), [this, update]() { handleTransferUpdate(update); },
                               Qt::QueuedConnection);
   };
 
@@ -571,19 +599,7 @@ void FileShareTrayController::loadSettings() {
   global_shortcut_ =
       settings.value(QStringLiteral("globalShortcut")).toString().trimmed();
 
-  int stored_visibility =
-      settings.value(QStringLiteral("visibility"), 0).toInt();
-  // Migrate the old 3-value model. Old "Contacts" (1) advertised the self
-  // identity (SELF_SHARE), which is now the dedicated "Your devices" (3); remap
-  // it so existing users keep the exact behavior they had. The temporary
-  // Everyone (4) is never persisted (saveSettings stores the base), so anything
-  // out of the 0..3 range falls back to Everyone.
-  if (stored_visibility == 1) {
-    stored_visibility = 3;
-  } else if (stored_visibility < 0 || stored_visibility > 3) {
-    stored_visibility = 0;
-  }
-  visibility_ = stored_visibility;
+  visibility_ = scotty::LoadVisibility(settings);
   pre_temp_visibility_ = visibility_;
 }
 
@@ -950,20 +966,8 @@ void FileShareTrayController::setRunAtStartup(bool enabled) {
 }
 
 void FileShareTrayController::refreshAutostartFile() {
-  QSettings settings(QStringLiteral("Nearby"), QStringLiteral("QmlFileTrayApp"));
-  // Run at startup defaults ON: on the first launch, enable it once. The
-  // autostart entry passes --background, so nothing pops on login. The guard
-  // key makes this a one-time default — if the user later turns it off, it
-  // stays off.
-  if (!settings.value(QStringLiteral("runAtStartupInitialized"), false)
-           .toBool()) {
-    WriteAutostartFile();
-    settings.setValue(QStringLiteral("runAtStartupInitialized"), true);
-    return;
-  }
-  // Otherwise rewrite in place so entries written by an older build (no
-  // --background, the earlier --hidden spelling, or an unquoted Exec path) pick
-  // up the current format.
+  // Startup is opt-in. Refresh an existing entry to migrate older command
+  // formats, without enabling startup on a fresh installation.
   if (runAtStartup()) {
     WriteAutostartFile();
   }
@@ -1069,6 +1073,10 @@ void FileShareTrayController::start() {
 }
 
 void FileShareTrayController::stop() {
+  send_preparation_->Cancel();
+  clearSendRetry();
+  cancelSendReturnToReceive();
+  stopDiscoveryWatchdog();
   if (!state_.running()) {
     return;
   }
@@ -1096,7 +1104,7 @@ void FileShareTrayController::startSendMode() {
   service_->StopReceiveMode([this](NearbySharingApi::StatusCode /*status*/) {
     service_->StartSendMode([this](NearbySharingApi::StatusCode status) {
       QMetaObject::invokeMethod(
-          this,
+          service_callback_context_.get(),
           [this, status]() {
             setStatus(QStringLiteral("StartSendMode: %1")
                           .arg(StatusMapper::ApiStatusToString(status)));
@@ -1211,7 +1219,7 @@ void FileShareTrayController::startReceiveMode() {
         status == NearbySharingApi::StatusCode::kStatusAlreadyStopped) {
       service_->StartReceiveMode([this](NearbySharingApi::StatusCode status) {
         QMetaObject::invokeMethod(
-            this,
+            service_callback_context_.get(),
             [this, status]() {
               if (status == NearbySharingApi::StatusCode::kOk) {
                 setStatus(QStringLiteral("Ready to receive"));
@@ -1238,6 +1246,8 @@ void FileShareTrayController::switchToReceiveMode() {
   // A manual return pre-empts any pending post-send auto-return (harmless when
   // this call is the auto-return itself — the timer has already fired).
   cancelSendReturnToReceive();
+  send_preparation_->Cancel();
+  clearSendRetry();
   // Leaving the send sheet burns any QR that was on screen.
   if (qr_visible_) hideQrCode();
   // Drop the staged file so the UI (driven by pendingSendFilePath) returns
@@ -1260,6 +1270,8 @@ void FileShareTrayController::switchToSendModeWithFile(const QString& file_path)
 }
 
 void FileShareTrayController::switchToSendModeWithText(const QString& text) {
+  send_preparation_->Cancel();
+  clearSendRetry();
   // A new send is a fresh intent (see beginSendWithFiles).
   cancelSendReturnToReceive();
   if (qr_visible_) hideQrCode();
@@ -1304,113 +1316,8 @@ void FileShareTrayController::switchToSendModeWithFiles(
   // QR left over from a previous share (a new share starts with no QR shown).
   cancelSendReturnToReceive();
   if (qr_visible_) hideQrCode();
-  QStringList paths;
-  QStringList names;
-  QStringList dirs;
-  int skipped_empty = 0;
-  for (const QString& raw : file_paths) {
-    const QString trimmed_path = raw.trimmed();
-    if (trimmed_path.isEmpty()) {
-      continue;
-    }
-    const QFileInfo info(trimmed_path);
-    if (!info.exists()) {
-      continue;
-    }
-
-    if (info.isDir()) {
-      // Quick Share has no folder attachment type; the desktop clients (Quick
-      // Share for Windows/ChromeOS) compress a shared folder into one archive.
-      // Collect directories and zip each below before entering send mode.
-      dirs.append(info.absoluteFilePath());
-      continue;
-    }
-
-    if (!IsSendableFile(info)) {
-      if (info.isFile()) {
-        ++skipped_empty;
-      }
-      continue;
-    }
-    paths.append(info.absoluteFilePath());
-    names.append(info.fileName());
-  }
-
-  if (dirs.isEmpty()) {
-    beginSendWithFiles(paths, names, skipped_empty);
-    return;
-  }
-
-  // Compress each selected folder into a single .zip and send that. Zipping
-  // runs as async QProcesses so the UI never freezes; when they all finish we
-  // continue into send mode with the archives added to any plain files.
-  setStatus(dirs.size() == 1 ? QStringLiteral("Compressing folder…")
-                             : QStringLiteral("Compressing folders…"));
-
-  auto batch = QSharedPointer<ZipBatch>::create();
-  batch->ready_paths = paths;
-  batch->ready_names = names;
-  batch->skipped_empty = skipped_empty;
-  batch->remaining = dirs.size();
-
-  const QString temp_root =
-      QStandardPaths::writableLocation(QStandardPaths::TempLocation) +
-      QStringLiteral("/scotty-share-%1")
-          .arg(QDateTime::currentMSecsSinceEpoch());
-
-  auto finishOne = [this, batch]() {
-    if (--batch->remaining == 0) {
-      beginSendWithFiles(batch->ready_paths, batch->ready_names,
-                         batch->skipped_empty);
-    }
-  };
-
-  for (const QString& dir : dirs) {
-    const QFileInfo dir_info(dir);
-    const QString folder_name = dir_info.fileName().isEmpty()
-                                    ? QStringLiteral("folder")
-                                    : dir_info.fileName();
-    // A fresh unique dir per folder: `zip` appends to an existing archive, so
-    // the destination must not already exist.
-    const QString out_dir =
-        temp_root + QStringLiteral("/") + QString::number(batch->index++);
-    QDir().mkpath(out_dir);
-    const QString zip_path =
-        out_dir + QStringLiteral("/") + folder_name + QStringLiteral(".zip");
-
-    auto* proc = new QProcess(this);
-    proc->setWorkingDirectory(dir_info.absolutePath());
-    connect(proc,
-            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [this, batch, proc, zip_path, folder_name, finishOne](
-                int exit_code, QProcess::ExitStatus status) {
-              if (status == QProcess::NormalExit && exit_code == 0 &&
-                  QFileInfo::exists(zip_path)) {
-                batch->ready_paths.append(zip_path);
-                batch->ready_names.append(QFileInfo(zip_path).fileName());
-              } else {
-                emit requestTrayMessage(
-                    QStringLiteral("Compression failed"),
-                    QStringLiteral("Could not compress %1.").arg(folder_name));
-              }
-              proc->deleteLater();
-              finishOne();
-            });
-    // -r recursive, -q quiet; run from the folder's parent so the archive
-    // stores `folder_name/…` rather than absolute paths.
-    proc->start(QStringLiteral("zip"),
-                {QStringLiteral("-r"), QStringLiteral("-q"), zip_path,
-                 folder_name});
-    if (!proc->waitForStarted(2000)) {
-      proc->disconnect();  // don't let a late finished() double-count
-      proc->deleteLater();
-      emit requestTrayMessage(
-          QStringLiteral("Compression unavailable"),
-          QStringLiteral("The 'zip' tool is not available to compress %1.")
-              .arg(folder_name));
-      finishOne();
-    }
-  }
+  clearSendRetry();
+  send_preparation_->Prepare(file_paths);
 }
 
 void FileShareTrayController::beginSendWithFiles(const QStringList& paths,
@@ -1490,7 +1397,7 @@ void FileShareTrayController::doSendToTarget(qlonglong share_target_id,
         share_target_id, pending_text.toStdString(),
         [this, share_target_id](NearbySharingApi::StatusCode status) {
           QMetaObject::invokeMethod(
-              this,
+              service_callback_context_.get(),
               [this, share_target_id, status]() {
                 const QString target_name = state_.GetTargetName(share_target_id);
                 if (status == NearbySharingApi::StatusCode::kOk) {
@@ -1547,7 +1454,7 @@ void FileShareTrayController::doSendToTarget(qlonglong share_target_id,
       share_target_id, valid_paths,
       [this, share_target_id](NearbySharingApi::StatusCode status) {
         QMetaObject::invokeMethod(
-            this,
+            service_callback_context_.get(),
             [this, share_target_id, status]() {
               pending_retry_inflight_ = false;
               const QString target_name = state_.GetTargetName(share_target_id);

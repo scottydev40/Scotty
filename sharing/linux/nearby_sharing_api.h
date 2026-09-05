@@ -102,6 +102,9 @@ class __attribute__((visibility("default"))) NearbySharingApi {
     std::function<void(const ShareTargetInfo&)> target_updated_cb;
     std::function<void(int64_t)> target_lost_cb;
     std::function<void(const TransferUpdateInfo&)> transfer_update_cb;
+    // Called before a hotspot upgrade takes over an active station connection.
+    // May run on an engine worker; clients must marshal UI work themselves.
+    std::function<void()> wifi_disruption_cb;
   };
 
   NearbySharingApi();

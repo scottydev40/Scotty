@@ -15,6 +15,31 @@ That script is the **single source of truth** for the target list and the bazel
 flags, and runs identically locally and in CI (`.github/workflows/test.yml`).
 Set `BAZEL=/path/to/bazel` if `bazel` isn't on your `PATH`.
 
+## Qt app regression tests
+
+The Qt app also has a separate CTest suite. After building
+`//sharing/linux:nearby_sharing_api_shared`, run from the repository root:
+
+```sh
+cmake -S sharing/linux/qml_tray_app -B build-qt -G Ninja \
+  -DNEARBY_SHARING_LIB="$PWD/bazel-bin/sharing/linux/libnearby_sharing_api_shared.so" \
+  -DNEARBY_SHARING_INCLUDE="$PWD" -DBUILD_TESTING=ON
+cmake --build build-qt -j 2
+ctest --test-dir build-qt --output-on-failure
+```
+
+This requires Qt6 development packages (including Qt Test) and `zip`. The
+app tests cover version comparison, visibility migration and persistence,
+delayed shutdown completion, Wi-Fi notices, cancelled/superseded compression,
+missing zip, and temporary archive lifetime. They use temporary settings and
+folders and do not start the sharing engine or touch the radios. The Validate
+workflow builds the Qt app and runs these tests on pushes and pull requests.
+
+Hardware checks remain necessary: try a hotspot transfer with Boost off and
+`nearby-ap0` unavailable; confirm the notice appears, Wi-Fi transfer continues,
+and the original station connection is restored on completion and cancellation.
+Also exercise hard reset and device-name changes repeatedly on a real adapter.
+
 ## The one flag that matters: `--dynamic_mode=off`
 
 The shipping build uses `--copt=-fvisibility=hidden`. That hides symbols on the

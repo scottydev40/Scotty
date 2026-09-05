@@ -9,6 +9,7 @@
 #include "file_share_state.h"
 
 class QTimer;
+class SendPreparation;
 #include <sharing/linux/nearby_sharing_api.h>
 
 using NearbySharingApi = nearby::sharing::NearbySharingApi;
@@ -201,7 +202,7 @@ class FileShareTrayController : public QObject {
 
  private:
   void initializeService();
-  // Blocks until the engine's asynchronous Shutdown() callback fires (bounded),
+  // Blocks until the engine's asynchronous Shutdown() callback fires,
   // so the old service is fully quiesced before it is destroyed. Skipping this
   // races the destructor against a pending shutdown task and aborts.
   void shutdownServiceBlocking();
@@ -229,16 +230,6 @@ class FileShareTrayController : public QObject {
   // compressed to archives by switchToSendModeWithFiles).
   void beginSendWithFiles(const QStringList& paths, const QStringList& names,
                           int skipped_empty);
-  // Shared state for an in-flight batch of folder-zip QProcesses. Held by
-  // QSharedPointer so each switchToSendModeWithFiles call is self-contained and
-  // the send only begins once every folder in the batch has finished zipping.
-  struct ZipBatch {
-    QStringList ready_paths;
-    QStringList ready_names;
-    int skipped_empty = 0;
-    int remaining = 0;
-    int index = 0;
-  };
   // Auto-send the pending file(s) to a peer that scanned our QR code.
   void MaybeAutoSendToQrPeer(const NearbySharingApi::ShareTargetInfo& info,
                              const QString& name);
@@ -272,6 +263,10 @@ class FileShareTrayController : public QObject {
 
  private:
   std::unique_ptr<NearbySharingApi> service_;
+  // Queued UI updates belong to one engine. Destroy after joining that engine
+  // so old callbacks cannot alter a freshly rebuilt service's state.
+  std::unique_ptr<QObject> service_callback_context_;
+  SendPreparation* send_preparation_ = nullptr;
   QString signed_in_email_;
   QString signed_in_name_;
   QString signed_in_photo_path_;

@@ -64,7 +64,8 @@ jobs:
             qt6-wayland \
             qt6-tools-dev \
             qt6-tools-dev-tools \
-            libqrencode-dev
+            libqrencode-dev \
+            zip
 
       - name: Build Connections
         run: |
@@ -91,7 +92,17 @@ jobs:
           bazel build \
             --@com_google_protobuf//bazel/toolchains:prefer_prebuilt_protoc=true \
             --copt='-DGITHUB_BUILD' \
-            //sharing/linux:nearby_sharing_cli
+            //sharing/linux:nearby_sharing_cli \
+            //sharing/linux:nearby_sharing_api_shared
+
+      - name: Build Qt app and run app regression tests
+        run: |
+          cmake -S sharing/linux/qml_tray_app -B build-qt -G Ninja \
+            -DNEARBY_SHARING_LIB="$GITHUB_WORKSPACE/bazel-bin/sharing/linux/libnearby_sharing_api_shared.so" \
+            -DNEARBY_SHARING_INCLUDE="$GITHUB_WORKSPACE" \
+            -DBUILD_TESTING=ON
+          cmake --build build-qt -j 2
+          ctest --test-dir build-qt --output-on-failure
 
   #build-rust-linux:
   #  name: Build Rust on Linux
